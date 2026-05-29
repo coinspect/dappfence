@@ -5,6 +5,10 @@
     "description": "Development server and e2e tests for DappFence",
     "type": "commonjs",
     "main": "src/dev-server.js",
+    "exports": {
+        ".": "./src/dev-server.js",
+        "./server": "./src/dev-server.js"
+    },
     "scripts": {
         "clean": "rm -rf dist test-results",
         "build": "node src/build.js --quiet",
