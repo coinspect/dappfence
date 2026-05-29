@@ -78,6 +78,12 @@ export default defineConfig(({ mode }) => ({
         root: __dirname,
         include: ['src/**/*.test.js'],
         onConsoleLog: () => false, // Silence production logger output during tests
+        coverage: {
+            provider: 'v8',
+            all: true,
+            include: ['src/**/*.js'],
+            exclude: ['src/**/*.test.js'],
+        },
     },
 
     // Plugins (none needed - using built-in ?raw imports)

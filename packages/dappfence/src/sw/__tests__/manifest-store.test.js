@@ -176,6 +176,16 @@ describe('createManifestStore', () => {
             const reopened = createManifestStore(sameBackend);
             expect(await reopened.trustedManifestStore.findByHash('hash-a')).toEqual(persisted);
         });
+
+        it('line 69: findByHash does not throw when manifest.files is undefined', async () => {
+            const db = createInMemoryStorage();
+            await db.set('trusted-manifest', [
+                { appVersion: 'v-no-files', manifest: { mode: 'reporting' } },
+            ]);
+            const store = createManifestStore(db);
+            const found = await store.trustedManifestStore.findByHash('nonexistent-hash');
+            expect(found).toBeNull();
+        });
     });
 
     describe('verificationResults', () => {

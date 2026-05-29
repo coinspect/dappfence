@@ -6,21 +6,21 @@
  * making it injectable and testable with in-memory backends.
  */
 
-function openDatabase() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open('AppSecurity', 1);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-        request.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains('data')) {
-                db.createObjectStore('data');
-            }
-        };
-    });
-}
+export function createDatabase(idb) {
+    function openDatabase() {
+        return new Promise((resolve, reject) => {
+            const request = idb.open('AppSecurity', 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('data')) {
+                    db.createObjectStore('data');
+                }
+            };
+        });
+    }
 
-export function createDatabase() {
     async function get(key) {
         const db = await openDatabase();
         return new Promise((resolve, reject) => {

@@ -148,6 +148,26 @@ describe('recordSecurityViolation', () => {
         expect(mustBlock).toBe(true);
     });
 
+    it('lines 59-60: handles VERIFICATION_STATUS.ERROR without throwing', async () => {
+        const appStore = createStore();
+        const mustBlock = await appStore.recordSecurityViolation({
+            ...mismatchDetails,
+            status: VERIFICATION_STATUS.ERROR,
+        });
+        expect(mustBlock).toBe(true);
+    });
+
+    it('lines 59-60: else branch with undefined url and fileKey uses N/A fallbacks', async () => {
+        const appStore = createStore();
+        const mustBlock = await appStore.recordSecurityViolation({
+            status: VERIFICATION_STATUS.ERROR,
+            url: undefined,
+            fileKey: undefined,
+            assetType: 'asset',
+        });
+        expect(mustBlock).toBe(true);
+    });
+
     it('does not crash if event logging fails', async () => {
         const db = createInMemoryDatabase();
         const originalSet = db.set;
@@ -158,6 +178,29 @@ describe('recordSecurityViolation', () => {
             return originalSet(key, value);
         };
         const appStore = createAppStore(db);
+        const mustBlock = await appStore.recordSecurityViolation(mismatchDetails);
+        expect(mustBlock).toBe(true);
+    });
+
+    it('fail-safes to mustBlock=true when outer recordSecurityBlock call throws', async () => {
+        const db = createInMemoryDatabase();
+        const appStore = createAppStore(db);
+        const details = {
+            status: null,
+            fileKey: '/bad.js',
+            url: 'https://example.com/bad.js',
+            assetType: 'asset',
+        };
+        const mustBlock = await appStore.recordSecurityViolation(details);
+        expect(mustBlock).toBe(true);
+    });
+
+    it('handles securityEventsStore.logSecurityEvent throwing directly', async () => {
+        const db = createInMemoryDatabase();
+        const appStore = createAppStore(db);
+        appStore.securityEventsStore.logSecurityEvent = async () => {
+            throw new Error('direct logSecurityEvent failure');
+        };
         const mustBlock = await appStore.recordSecurityViolation(mismatchDetails);
         expect(mustBlock).toBe(true);
     });

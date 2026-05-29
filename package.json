@@ -5,6 +5,8 @@
     "scripts": {
         "dev": "npm run build && npm run dev -w @dappfence/test-app",
         "test": "npm run build && npm test --ws --if-present",
+        "test:unit": "npm test -w @dappfence/core",
+        "test:coverage": "npm run test:coverage --ws --if-present",
         "build": "npm run build --ws --if-present",
         "build:prod": "npm run build:prod -w @dappfence/core",
         "build:watch": "npm run build:watch -w @dappfence/core & npm run build:watch -w @dappfence/test-app",
