@@ -183,7 +183,7 @@ export const createManifestService = ({ swContext, appStore, config }) => {
      * outside the fetch pipeline such as importScripts.
      */
 
-    const resolveManifest = async ({ clientId, isNavigation } = {}) => {
+    const resolveManifest = async () => {
         // The latest stored manifest drives policy; on a cold start we fetch one.
         // On fetch failure the result has no `manifest` field, so policy
         // falls through to defaults via policyFromManifest's optional
@@ -211,8 +211,9 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         );
         return {
             mode,
-            verifyFile: (url, response) => {
-                const fileKey = getFileKey(url, swContext.getLocationHref());
+            verifyFile: (request, response, clientId) => {
+                const isNavigation = request.mode === 'navigate';
+                const fileKey = getFileKey(request.url, swContext.getLocationHref());
                 if (!shouldVerifyAsset(fileKey, isNavigation, response, extensions, contentTypes)) {
                     logger.log(`⏭️  Skipping verification: ${fileKey}`);
                     return { status: VERIFICATION_STATUS.SKIPPED, fileKey };

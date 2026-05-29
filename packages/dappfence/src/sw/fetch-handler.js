@@ -33,9 +33,9 @@ export function createSecurityFetchHandler({
      * Add DappFence tracking markers to the request.
      * Pure function — takes originUrl as a string so it can be tested without swContext.
      */
-    function addMarkToRequest(event, request, isNavigation, originUrl = locationOrigin) {
+    function addMarkToRequest(event, request) {
         const requestUrl = new URL(request.url);
-        const isSameOrigin = requestUrl.origin === originUrl;
+        const isSameOrigin = requestUrl.origin === locationOrigin;
 
         if (!isSameOrigin) {
             logger.log(`[SW-X-ORIGIN] Cross-origin (no tracking): ${request.url}`);
@@ -50,7 +50,7 @@ export function createSecurityFetchHandler({
             let modifiedRequest;
 
             // Handle navigation requests differently (they can't be fully cloned)
-            if (isNavigation) {
+            if (request.mode === 'navigate') {
                 logger.log(
                     `[DFSW-NAVIGATE] Navigation request (URL tracking only): ${request.url}`
                 );
@@ -145,12 +145,12 @@ export function createSecurityFetchHandler({
      * assets) or hashes and compares. Only true violations reach
      * recordSecurityViolation; SKIPPED and MATCH pass through.
      */
-    async function verifyAssetIntegrity(ctx, request, response) {
+    async function verifyAssetIntegrity(ctx, request, response, clientId) {
         logger.log('Verifying security-critical asset:', request.url);
 
         // Clone so the original body is still available to forward to the page;
         // verifyFile consumes the clone via arrayBuffer().
-        const verificationResult = await ctx.verifyFile(request.url, response.clone());
+        const verificationResult = await ctx.verifyFile(request, response.clone(), clientId);
         if (verificationResult.status.isViolation) {
             return await appStore.recordSecurityViolation({
                 ...verificationResult,
@@ -165,12 +165,12 @@ export function createSecurityFetchHandler({
         const originalRequest = event.request;
         try {
             const url = new URL(originalRequest.url);
-            const isNavigation = originalRequest.mode === 'navigate';
-            const clientId = isNavigation ? event.resultingClientId : event.clientId;
+            const clientId =
+                originalRequest.mode === 'navigate' ? event.resultingClientId : event.clientId;
 
             // Log all fetch requests for debugging
             logger.log(
-                `%cFetch: ${originalRequest.method} ${originalRequest.url} ${isNavigation ? 'isNavigation' : ''} clientId: ${clientId} `,
+                `%cFetch: ${originalRequest.method} ${originalRequest.url} mode: ${originalRequest.mode} clientId: ${clientId} `,
                 'color:cyan'
             );
 
@@ -187,21 +187,21 @@ export function createSecurityFetchHandler({
                 }
             }
 
-            // Resolve the manifest context once per request — mode and verifyFile
             // share the single IndexedDB lookup done here.
-            const ctx = await manifestService.resolveManifest({ clientId, isNavigation });
+            // Resolve the manifest context once per request — mode and verifyFile
+            const ctx = await manifestService.resolveManifest();
             logger.log(`Client mode: ${clientId} ${ctx.mode}`);
 
             // Site-wide block gate only fires in protected mode. In other modes we
             // still let the request flow so the child SW's response is returned
             // untouched.
             if (ctx.mode === MODE.PROTECTED && (await activeBlocksStore.isBlocked())) {
-                return createBlockResponse(isNavigation, originalRequest.url, locationHref);
+                return createBlockResponse(originalRequest, locationHref);
             }
 
             // Add tracking markers to request BEFORE any handlers to see it
             const markedRequest = isFeatureEnabled('mark_request')
-                ? addMarkToRequest(event, originalRequest, isNavigation)
+                ? addMarkToRequest(event, originalRequest)
                 : originalRequest;
 
             // Delegate to child SW and capture its response
@@ -214,14 +214,14 @@ export function createSecurityFetchHandler({
                 return response;
             }
 
-            const mustBlock = await verifyAssetIntegrity(ctx, markedRequest, response);
+            const mustBlock = await verifyAssetIntegrity(ctx, markedRequest, response, clientId);
             if (ctx.mode === MODE.PROTECTED && mustBlock) {
                 // Navigation requests get the warning inline via createBlockResponse;
                 // so broadcasting to the client would double-notify.
-                if (!isNavigation) {
+                if (markedRequest.mode !== 'navigate') {
                     await onSecurityViolation();
                 }
-                return createBlockResponse(isNavigation, markedRequest.url, locationHref);
+                return createBlockResponse(markedRequest, locationHref);
             }
             return response;
         } catch (error) {
