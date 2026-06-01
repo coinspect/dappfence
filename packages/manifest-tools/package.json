@@ -1,0 +1,41 @@
+{
+    "name": "@dappfence/manifest-tools",
+    "version": "0.1.0",
+    "description": "Hashing, signing, and manifest generation tools for DappFence integrations",
+    "license": "MIT",
+    "type": "commonjs",
+    "main": "src/build.js",
+    "exports": {
+        ".": "./src/build.js",
+        "./crypto": "./src/crypto.js",
+        "./manifest": "./src/manifest.js"
+    },
+    "bin": {
+        "dappfence-manifest": "./src/cli.js"
+    },
+    "files": [
+        "src",
+        "!src/__tests__"
+    ],
+    "scripts": {
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/coinspect/dappfence.git",
+        "directory": "packages/manifest-tools"
+    },
+    "keywords": [
+        "security",
+        "integrity",
+        "manifest",
+        "sha256",
+        "signing"
+    ],
+    "dependencies": {
+        "@noble/hashes": "2.0.1",
+        "@noble/secp256k1": "3.0.0"
+    }
+}

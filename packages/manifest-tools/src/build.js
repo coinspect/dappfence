@@ -3,7 +3,14 @@
  * Pure functions for hashing files and signing manifests.
  */
 const crypto = require('crypto');
-const { sign, ethereumAddress, getPublicKey, hexToBytes, keccak256 } = require('./crypto');
+const {
+    sign,
+    ethereumAddress,
+    getPublicKey,
+    hexToBytes,
+    keccak256,
+    recoverSigner,
+} = require('./crypto');
 
 /**
  * Calculate SHA-256 hash of a file buffer or path.
@@ -60,4 +67,30 @@ function deriveIdentity(secretKeyHex) {
     return ethereumAddress(pk);
 }
 
-module.exports = { calculateFileHash, calculateStringHash, signManifest, deriveIdentity };
+/**
+ * Verify a signed manifest file.
+ * @param {string} manifestPath - Path to the manifest JSON file
+ * @returns {{ identity: string }} the verified signer identity
+ * @throws if unsigned or signature does not match the embedded identity
+ */
+function verifyManifest(manifestPath) {
+    const { sig, pay, identity } = JSON.parse(require('fs').readFileSync(manifestPath, 'utf-8'));
+    if (!sig || !identity) {
+        throw new Error('manifest is unsigned');
+    }
+    const msg = new TextEncoder('utf-8').encode(JSON.stringify(pay, null, 2));
+    const msgHash = keccak256(msg);
+    const recovered = recoverSigner(msgHash, sig);
+    if (recovered.toLowerCase() !== identity.toLowerCase()) {
+        throw new Error(`signature mismatch — expected ${identity}, recovered ${recovered}`);
+    }
+    return { identity };
+}
+
+module.exports = {
+    calculateFileHash,
+    calculateStringHash,
+    signManifest,
+    verifyManifest,
+    deriveIdentity,
+};

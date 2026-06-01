@@ -19,7 +19,7 @@
     },
     "dependencies": {
         "@dappfence/core": "*",
-        "@dappfence/signer": "*"
+        "@dappfence/manifest-tools": "*"
     },
     "devDependencies": {
         "@playwright/test": "1.60.0",

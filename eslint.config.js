@@ -14,14 +14,10 @@ export default [
     },
     js.configs.recommended,
     prettier,
-    // Node scripts (CommonJS + ESM)
+    // All Node.js packages (everything except dappfence core source)
     {
-        files: [
-            'packages/test-app/src/**/*.js',
-            'packages/signer/src/**/*.js',
-            'packages/astro-integration/src/**/*.js',
-            'packages/dappfence/vite.config.js',
-        ],
+        files: ['packages/**/*.js'],
+        ignores: ['packages/dappfence/src/**/*.js'],
         languageOptions: {
             globals: globals.node,
         },

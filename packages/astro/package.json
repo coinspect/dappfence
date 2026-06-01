@@ -1,0 +1,41 @@
+{
+    "name": "@dappfence/astro",
+    "version": "0.1.0",
+    "description": "Astro integration for DappFence — script injection, manifest generation, dynamic content tagging",
+    "license": "MIT",
+    "type": "module",
+    "main": "./src/index.js",
+    "exports": {
+        ".": "./src/index.js"
+    },
+    "files": [
+        "src",
+        "!src/__tests__"
+    ],
+    "scripts": {
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/coinspect/dappfence.git",
+        "directory": "packages/astro"
+    },
+    "keywords": [
+        "astro",
+        "astro-integration",
+        "security",
+        "service-worker",
+        "integrity",
+        "dapp",
+        "web-security"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@dappfence/core": "*",
+        "@dappfence/manifest-tools": "*"
+    }
+}

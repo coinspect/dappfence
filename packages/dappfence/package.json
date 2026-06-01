@@ -39,16 +39,15 @@
         "build:watch": "vite build --mode development --watch & vite build --mode production --watch",
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm run build:prod && npm pack --pack-destination ../../dist"
     },
     "devDependencies": {
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0",
-        "@vitest/coverage-v8": "4.1.4",
         "javascript-obfuscator": "4.1.1",
         "terser": "5.24.0",
         "vite": "7.3.2",
-        "vite-plugin-bundle-obfuscator": "1.8.0",
-        "vitest": "4.1.4"
+        "vite-plugin-bundle-obfuscator": "1.8.0"
     }
 }

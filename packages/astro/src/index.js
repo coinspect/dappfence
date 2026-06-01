@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { generateManifest } from './manifest.js';
 
 const _require = createRequire(import.meta.url);
-const { deriveIdentity } = _require('@dappfence/signer');
+const { deriveIdentity } = _require('@dappfence/manifest-tools');
 const DAPPFENCE_JS_PATH = _require.resolve('@dappfence/core');
 
 const DEFAULTS = {

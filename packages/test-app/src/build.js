@@ -6,13 +6,13 @@
 const fs = require('fs');
 const readline = require('readline');
 const path = require('path');
-const { calculateFileHash, signManifest } = require('@dappfence/signer');
+const { calculateFileHash, signManifest } = require('@dappfence/manifest-tools');
 const {
     recoverPersonalSign,
     ethereumAddress,
     bytesToHex,
     keccak256,
-} = require('@dappfence/signer/crypto');
+} = require('@dappfence/manifest-tools/crypto');
 const {
     BUILD_TARGETS,
     OUT_DIR,

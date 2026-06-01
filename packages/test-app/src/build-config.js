@@ -1,5 +1,5 @@
 const path = require('path');
-const { getPublicKey, hexToBytes } = require('@dappfence/signer/crypto');
+const { getPublicKey, hexToBytes } = require('@dappfence/manifest-tools/crypto');
 const { MODE } = require('@dappfence/core/constants');
 
 const SECURITY_CONTENT_TYPES = {

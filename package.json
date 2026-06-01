@@ -13,17 +13,19 @@
         "lint": "eslint packages/ --fix",
         "check": "eslint packages/ && prettier --check packages/ *.md",
         "format": "prettier --write packages/ *.md",
-        "publish:local": "npm run build:prod -w @dappfence/core && npm pack -w @dappfence/core --pack-destination dist && npm pack -w @dappfence/signer --pack-destination dist && npm pack -w @dappfence/astro --pack-destination dist",
+        "publish:local": "npm run publish:local --ws --if-present",
         "publish:core": "npm run check && npm run build:prod && npm publish -w @dappfence/core --access public",
         "prepare": "npm run check && npm run build:prod",
         "ci:install": "npm ci --ignore-scripts && npx playwright install chromium",
         "ci:local": "npm run ci:install && npm run check && npm test"
     },
     "devDependencies": {
+        "@vitest/coverage-v8": "4.1.4",
         "eslint": "9.39.4",
         "eslint-config-prettier": "10.1.8",
         "prettier": "3.2.5",
-        "typescript-eslint": "8.58.2"
+        "typescript-eslint": "8.58.2",
+        "vitest": "4.1.4"
     },
     "workspaces": [
         "packages/*"
