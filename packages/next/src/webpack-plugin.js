@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { readDynamicRoutes } from './routes.js';
 
 const _require = createRequire(import.meta.url);
 const DAPPFENCE_JS_PATH = _require.resolve('@dappfence/core');
@@ -13,8 +14,12 @@ const logger = {
 
 export class DappfenceWebpackPlugin {
     constructor(opts, webpackOptions) {
-        this.opts = opts;
+        const { secretKey, ...publicOpts } = opts;
+        this.opts = publicOpts;
+        // Keep the signing key separate so it never ends up in serialized config files.
+        this._secretKey = secretKey || null;
         this.isServer = webpackOptions.isServer;
+        this.isDev = webpackOptions.dev || false;
         this.nextConfig = webpackOptions.config || {};
     }
 
@@ -22,14 +27,15 @@ export class DappfenceWebpackPlugin {
         // Only run once — after the client compilation.
         if (this.isServer) return;
 
+        this.projectRoot = compiler.context;
+
         compiler.hooks.done.tapPromise('DappfencePlugin', async (stats) => {
             if (stats.hasErrors()) return;
+            if (this.isDev) return;
 
             const isStaticExport = this.nextConfig.output === 'export';
 
             if (isStaticExport) {
-                // Static export: HTML files are not ready yet at webpack done time.
-                // Write config so the CLI (dappfence-next postbuild) can pick it up.
                 await this._writeConfig();
                 console.log(
                     'DappFence: static export detected — run `dappfence-next` as a postbuild step to generate the manifest.'
@@ -65,6 +71,8 @@ export class DappfenceWebpackPlugin {
             return;
         }
 
+        const dynamicRoutes = await readDynamicRoutes(projectRoot);
+
         await generateManifest({
             outDir: nextStaticDir,
             manifestPath: path.relative(
@@ -73,8 +81,9 @@ export class DappfenceWebpackPlugin {
             ),
             extensions: this.opts.extensions,
             exclude: this.opts.exclude,
-            secretKey: this.opts.secretKey,
+            secretKey: this._secretKey,
             mode: this.opts.mode,
+            dynamicRoutes,
             scriptAttrs: null,
             logger,
         });
@@ -82,8 +91,10 @@ export class DappfenceWebpackPlugin {
         logger.info(`DappFence: manifest written → public/${this.opts.manifestPath}`);
     }
 
+    // Write build config (no secret key) for the dappfence-next CLI (static export only).
+    // The CLI reads the signing key from DAPPFENCE_SECRET_KEY at runtime.
     async _writeConfig() {
-        const configPath = path.join(process.cwd(), '.next', 'dappfence-config.json');
+        const configPath = path.join(this.projectRoot, '.next', 'dappfence-config.json');
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify(this.opts, null, 2), 'utf8');
     }

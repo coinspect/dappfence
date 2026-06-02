@@ -1,8 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
+import { readDynamicRoutes } from '../routes.js';
+import { withDappfence, getDappfenceScriptAttrs, ATTRS_ENV_KEY } from '../index.js';
 
 const _require = createRequire(import.meta.url);
 const { buildScriptAttrs, buildScriptTag, injectScriptTag, generateManifest, DEFAULT_EXTENSIONS } =
@@ -150,5 +152,192 @@ describe('generateManifest', () => {
             await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
         );
         expect(manifest.pay.metadata.dynamicRoutes).toEqual(['/api/[id]', '/blog/[slug]']);
+    });
+});
+
+describe('readDynamicRoutes', () => {
+    it('returns empty array when routes-manifest.json is missing', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        await fs.mkdir(path.join(dir, '.next'), { recursive: true });
+        expect(await readDynamicRoutes(dir)).toEqual([]);
+    });
+
+    it('extracts patterns from object-form rewrites and dynamic routes', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        await fs.mkdir(path.join(dir, '.next'), { recursive: true });
+        await fs.writeFile(
+            path.join(dir, '.next', 'routes-manifest.json'),
+            JSON.stringify({
+                rewrites: {
+                    beforeFiles: [
+                        { source: '/api/:path*', destination: 'https://example.com/:path*' },
+                    ],
+                    afterFiles: [{ source: '/legacy/:slug', destination: '/new/:slug' }],
+                    fallback: [],
+                },
+                dynamicRoutes: [{ page: '/blog/[slug]' }, { page: '/docs/[...rest]' }],
+            }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes).toContain('/api/:path*');
+        expect(routes).toContain('/legacy/:slug');
+        expect(routes).toContain('/blog/[slug]');
+        expect(routes).toContain('/docs/[...rest]');
+    });
+
+    it('extracts patterns from flat-array rewrites (older Next.js)', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        await fs.mkdir(path.join(dir, '.next'), { recursive: true });
+        await fs.writeFile(
+            path.join(dir, '.next', 'routes-manifest.json'),
+            JSON.stringify({
+                rewrites: [
+                    { source: '/proxy/:path*', destination: 'https://api.example.com/:path*' },
+                ],
+                dynamicRoutes: [],
+            }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes).toContain('/proxy/:path*');
+    });
+
+    it('deduplicates patterns appearing in multiple sections', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        await fs.mkdir(path.join(dir, '.next'), { recursive: true });
+        await fs.writeFile(
+            path.join(dir, '.next', 'routes-manifest.json'),
+            JSON.stringify({
+                rewrites: {
+                    beforeFiles: [{ source: '/dupe' }],
+                    afterFiles: [{ source: '/dupe' }],
+                    fallback: [],
+                },
+                dynamicRoutes: [],
+            }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes.filter((r) => r === '/dupe')).toHaveLength(1);
+    });
+
+    it('detects SSR-only Pages Router pages not in prerender manifest', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        const nextDir = path.join(dir, '.next');
+        await fs.mkdir(path.join(nextDir, 'server'), { recursive: true });
+        await fs.writeFile(
+            path.join(nextDir, 'routes-manifest.json'),
+            JSON.stringify({ rewrites: [], dynamicRoutes: [] }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'prerender-manifest.json'),
+            JSON.stringify({ routes: { '/': {} }, dynamicRoutes: {} }),
+            'utf8'
+        );
+        // /dashboard is SSR-only (not prerendered), / is static (prerendered)
+        await fs.writeFile(
+            path.join(nextDir, 'server', 'pages-manifest.json'),
+            JSON.stringify({ '/': 'pages/index.js', '/dashboard': 'pages/dashboard.js' }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes).toContain('/dashboard');
+        expect(routes).not.toContain('/');
+    });
+
+    it('detects SSR-only App Router pages not in prerender manifest', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        const nextDir = path.join(dir, '.next');
+        await fs.mkdir(path.join(nextDir, 'server'), { recursive: true });
+        await fs.writeFile(
+            path.join(nextDir, 'routes-manifest.json'),
+            JSON.stringify({ rewrites: [], dynamicRoutes: [] }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'prerender-manifest.json'),
+            JSON.stringify({ routes: { '/about': {} }, dynamicRoutes: {} }),
+            'utf8'
+        );
+        // /page → / (SSR), /about/page → /about (prerendered, skip)
+        await fs.writeFile(
+            path.join(nextDir, 'server', 'app-paths-manifest.json'),
+            JSON.stringify({ '/page': 'app/page.js', '/about/page': 'app/about/page.js' }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes).toContain('/');
+        expect(routes).not.toContain('/about');
+    });
+
+    it('skips internal Next.js pages (/_app, /_error, etc.)', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        const nextDir = path.join(dir, '.next');
+        await fs.mkdir(path.join(nextDir, 'server'), { recursive: true });
+        await fs.writeFile(
+            path.join(nextDir, 'routes-manifest.json'),
+            JSON.stringify({ rewrites: [], dynamicRoutes: [] }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'prerender-manifest.json'),
+            JSON.stringify({ routes: {}, dynamicRoutes: {} }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'server', 'pages-manifest.json'),
+            JSON.stringify({ '/_app': 'pages/_app.js', '/_error': 'pages/_error.js' }),
+            'utf8'
+        );
+        const routes = await readDynamicRoutes(dir);
+        expect(routes).not.toContain('/_app');
+        expect(routes).not.toContain('/_error');
+    });
+});
+
+describe('withDappfence', () => {
+    let savedEnv;
+
+    beforeEach(() => {
+        savedEnv = process.env[ATTRS_ENV_KEY];
+        delete process.env[ATTRS_ENV_KEY];
+    });
+
+    afterEach(() => {
+        if (savedEnv === undefined) {
+            delete process.env[ATTRS_ENV_KEY];
+        } else {
+            process.env[ATTRS_ENV_KEY] = savedEnv;
+        }
+    });
+
+    it('sets process.env[ATTRS_ENV_KEY] immediately so getDappfenceScriptAttrs works from node_modules', () => {
+        expect(process.env[ATTRS_ENV_KEY]).toBeUndefined();
+        withDappfence({ scriptSrc: '/dappfence.js' })({});
+        expect(process.env[ATTRS_ENV_KEY]).toBeDefined();
+        const stored = JSON.parse(process.env[ATTRS_ENV_KEY]);
+        expect(stored.scriptSrc).toBe('/dappfence.js');
+    });
+
+    it('getDappfenceScriptAttrs returns attrs set by withDappfence', () => {
+        withDappfence({ scriptSrc: '/dappfence.js', appSW: '/app-sw.js' })({});
+        const attrs = getDappfenceScriptAttrs();
+        expect(attrs.src).toBe('/dappfence.js');
+        expect(attrs['data-app-sw']).toBe('/app-sw.js');
+    });
+
+    it('includes ATTRS_ENV_KEY in the returned Next.js env config (for DefinePlugin)', () => {
+        const wrapped = withDappfence({ scriptSrc: '/dappfence.js' })({});
+        expect(wrapped.env?.[ATTRS_ENV_KEY]).toBeDefined();
+        expect(JSON.parse(wrapped.env[ATTRS_ENV_KEY]).scriptSrc).toBe('/dappfence.js');
     });
 });

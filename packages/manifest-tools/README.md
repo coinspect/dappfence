@@ -1,8 +1,8 @@
 # @dappfence/manifest-tools
 
 Core build-time tooling for [DappFence](../../README.md) — file hashing, manifest signing, directory
-walking, and script tag injection. Used internally by framework integrations and
-available as a standalone CLI for custom integrations.
+walking, and script tag injection. Used internally by framework integrations and available as a
+standalone CLI for custom integrations.
 
 ## Installation
 

@@ -5,9 +5,12 @@
     "license": "MIT",
     "type": "module",
     "main": "./src/index.js",
+    "types": "./index.d.ts",
     "exports": {
-        ".": "./src/index.js",
-        "./next": "./src/index.js"
+        ".": {
+            "types": "./index.d.ts",
+            "default": "./src/index.js"
+        }
     },
     "bin": {
         "dappfence-next": "./bin/dappfence-next.js"
@@ -15,6 +18,7 @@
     "files": [
         "src",
         "bin",
+        "index.d.ts",
         "!src/__tests__"
     ],
     "scripts": {

@@ -26,23 +26,23 @@ export default withDappfence({
 })(nextConfig);
 ```
 
-Then add the script tag to your root layout. Use `buildScriptAttrs` from `@dappfence/manifest-tools`
-to get the correct attributes:
+Then add the script tag to your root layout. Use Next.js's built-in `<Script>` component with
+`strategy="beforeInteractive"` so DappFence loads before any other scripts on the page.
+`getDappfenceScriptAttrs` supplies all required attributes from the build-time config — no options
+or secrets are needed in the layout:
 
 ```jsx
 // app/layout.js
-import { buildScriptAttrs } from '@dappfence/manifest-tools/manifest';
+import Script from 'next/script';
+import { getDappfenceScriptAttrs } from '@dappfence/next';
 
-const dfAttrs = buildScriptAttrs({
-    scriptSrc: '/dappfence.js',
-    manifestUrl: '/integrity-manifest.json',
-});
+const { src, ...attrs } = getDappfenceScriptAttrs();
 
 export default function RootLayout({ children }) {
     return (
         <html>
             <head>
-                <script {...dfAttrs} />
+                <Script src={src} strategy="beforeInteractive" {...attrs} />
             </head>
             <body>{children}</body>
         </html>
@@ -50,40 +50,105 @@ export default function RootLayout({ children }) {
 }
 ```
 
+`strategy="beforeInteractive"` ensures DappFence is executed before any other JavaScript, which is
+required for the service worker registration and monkey-patching to take effect. The private key
+never appears here — `getDappfenceScriptAttrs` reads only the public signer address and URLs baked
+into the build by `withDappfence`.
+
 ### Static export (`output: 'export'`)
 
 Add a `postbuild` script — npm runs it automatically after `next build`:
 
-```json
+```jsonc
 // package.json
 {
     "scripts": {
         "build": "next build",
-        "postbuild": "dappfence-next"
-    }
+        "postbuild": "dappfence-next",
+    },
 }
 ```
 
 The `dappfence-next` CLI reads the config written by the webpack plugin during `next build`, then
 injects the script tag into every HTML file in `out/`, hashes all tracked files, and writes a signed
-manifest.
+manifest. See [Key Management](#key-management) below for how to generate and provide the signing
+key.
 
-Generate a key once and store it in your CI secrets / `.env` file:
+### Key resolution order
+
+1. `secretKey` option passed to `withDappfence({ secretKey: '…' })` — highest priority
+2. `DAPPFENCE_SECRET_KEY` environment variable
+
+## Key Management
+
+DappFence signs the integrity manifest with a secp256k1 private key. The signer's Ethereum address
+is derived from this key and embedded in the manifest; the service worker uses it to verify the
+signature at runtime. Anyone with the private key can produce a valid manifest, so treat it like a
+deploy secret.
+
+### Generating a key
+
+Run this once and save the output somewhere safe:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # → f0570667f495...
 ```
 
+### Local development
+
+Add the key to a `.env.local` file (never commit this):
+
 ```bash
-# .env (never commit this file)
+# .env.local
 DAPPFENCE_SECRET_KEY=f0570667f495...
 ```
 
-### Key resolution order
+Next.js automatically loads `.env.local`, so `process.env.DAPPFENCE_SECRET_KEY` will be set when you
+run `next build`.
 
-1. `secretKey` option passed to `withDappfence({ secretKey: '…' })` — highest priority
-2. `DAPPFENCE_SECRET_KEY` environment variable
+### CI / production
+
+Store the key as a repository secret (GitHub Actions, GitLab CI, etc.) and expose it as an
+environment variable in your build step:
+
+```yaml
+# .github/workflows/deploy.yml
+- name: Build
+  run: npm run build
+  env:
+      DAPPFENCE_SECRET_KEY: ${{ secrets.DAPPFENCE_SECRET_KEY }}
+```
+
+Because `withDappfence` falls back to `process.env.DAPPFENCE_SECRET_KEY` automatically, no change to
+`next.config.js` is needed between local and CI environments.
+
+### Where the key is used
+
+The private key is needed in one place only: the environment where `next build` runs.
+
+-   **`withDappfence` in `next.config.js`** reads the key, derives the public signer address, signs
+    the manifest, then discards the key.
+-   **`getDappfenceScriptAttrs()` in your layout** reads only the derived public address from
+    `.next/dappfence-attrs.json` — a file written by the webpack plugin that contains no secrets.
+    The key itself is never written to disk.
+
+For static exports the `dappfence-next` CLI also reads `DAPPFENCE_SECRET_KEY` directly from the
+environment at postbuild time — it is not stored in the build config file.
+
+### Key is never on disk
+
+DappFence intentionally avoids persisting the private key anywhere:
+
+-   `.next/dappfence-attrs.json` — public signer address and URLs only; safe if accidentally
+    committed
+-   `.next/dappfence-config.json` — build options for the static export CLI; no secret key
+-   `out/` / `public/` — served files; no secrets
+
+```bash
+# .gitignore — still good practice to exclude the .next directory
+.next/
+```
 
 ## Options
 

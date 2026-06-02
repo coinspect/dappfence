@@ -8,15 +8,22 @@ const { calculateFileHash, signManifest } = require('./build');
 
 const DEFAULT_EXTENSIONS = ['.js', '.mjs', '.css', '.html', '.htm', '.svg'];
 
-function buildScriptAttrs(opts) {
-    const attrs = { src: opts.scriptSrc };
-    if (opts.manifestUrl) attrs['data-manifest'] = opts.manifestUrl;
-    if (opts.manifestSignatureType)
-        attrs['data-manifest-signature-type'] = opts.manifestSignatureType;
-    if (opts.manifestSignatureIdentity)
-        attrs['data-manifest-signature-identity'] = opts.manifestSignatureIdentity;
-    if (opts.appSW) attrs['data-app-sw'] = opts.appSW;
-    if (opts.warningUrl) attrs['data-warning-url'] = opts.warningUrl;
+const SCRIPT_ATTRS_DEFAULTS = {
+    scriptSrc: '/dappfence.js',
+    manifestUrl: '/integrity-manifest.json',
+    manifestSignatureType: 'noble-secp256k1-recovered-eth',
+};
+
+function buildScriptAttrs(opts = {}) {
+    const resolved = { ...SCRIPT_ATTRS_DEFAULTS, ...opts };
+    const attrs = { src: resolved.scriptSrc };
+    if (resolved.manifestUrl) attrs['data-manifest'] = resolved.manifestUrl;
+    if (resolved.manifestSignatureType)
+        attrs['data-manifest-signature-type'] = resolved.manifestSignatureType;
+    if (resolved.manifestSignatureIdentity)
+        attrs['data-manifest-signature-identity'] = resolved.manifestSignatureIdentity;
+    if (resolved.appSW) attrs['data-app-sw'] = resolved.appSW;
+    if (resolved.warningUrl) attrs['data-warning-url'] = resolved.warningUrl;
     return attrs;
 }
 
@@ -145,6 +152,7 @@ async function generateManifest({
 
 module.exports = {
     DEFAULT_EXTENSIONS,
+    SCRIPT_ATTRS_DEFAULTS,
     buildScriptAttrs,
     buildScriptTag,
     injectScriptTag,

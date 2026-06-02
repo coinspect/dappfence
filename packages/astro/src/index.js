@@ -37,14 +37,16 @@ const DEFAULTS = {
 };
 
 export default function dappfence(options = {}) {
-    const opts = { ...DEFAULTS, ...options };
+    // Separate the signing key from public opts so it never contaminates
+    // serialised output or script attributes.
+    const { secretKey: explicitKey, ...publicOptions } = options;
+    const opts = { ...DEFAULTS, ...publicOptions };
 
-    // Resolve secretKey: explicit option takes precedence over env var.
-    opts.secretKey = opts.secretKey || process.env.DAPPFENCE_SECRET_KEY || null;
+    const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
 
     // Derive the signer identity from secretKey so users don't have to supply it.
-    if (opts.secretKey && !opts.manifestSignatureIdentity) {
-        opts.manifestSignatureIdentity = deriveIdentity(opts.secretKey);
+    if (secretKey && !opts.manifestSignatureIdentity) {
+        opts.manifestSignatureIdentity = deriveIdentity(secretKey);
     }
 
     // Captured in astro:routes:resolved (Astro 6 moved routes out of build:done).
@@ -54,7 +56,7 @@ export default function dappfence(options = {}) {
         name: '@dappfence/astro',
         hooks: {
             'astro:config:setup'({ logger }) {
-                if (!opts.secretKey) {
+                if (!secretKey) {
                     logger.error(
                         'DappFence: secretKey is required. ' +
                             'Pass it via the integration option or set the DAPPFENCE_SECRET_KEY environment variable.'
@@ -89,6 +91,7 @@ export default function dappfence(options = {}) {
 
                 await generateManifest({
                     ...opts,
+                    secretKey,
                     outDir,
                     pages,
                     routes: resolvedRoutes,

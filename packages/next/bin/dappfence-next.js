@@ -16,6 +16,7 @@
 import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { readDynamicRoutes } from '../src/routes.js';
 
 const _require = createRequire(import.meta.url);
 const { generateManifest } = _require('@dappfence/manifest-tools/manifest');
@@ -60,13 +61,19 @@ async function main() {
         error: (msg) => console.error(msg),
     };
 
+    // secretKey is never written to the config file; read it from the environment.
+    const secretKey = process.env.DAPPFENCE_SECRET_KEY || null;
+
+    const dynamicRoutes = await readDynamicRoutes(process.cwd());
+
     await generateManifest({
         outDir,
         manifestPath: opts.manifestPath,
         extensions: opts.extensions,
         exclude: opts.exclude,
-        secretKey: opts.secretKey,
+        secretKey,
         mode: opts.mode,
+        dynamicRoutes,
         scriptAttrs: opts,
         logger,
     });
