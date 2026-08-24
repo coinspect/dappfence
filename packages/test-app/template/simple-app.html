@@ -77,6 +77,7 @@
                 margin-bottom: var(--space-3);
                 border-bottom: 1px solid var(--color-border);
             }
+
             .site-header::before {
                 content: '';
                 position: absolute;
@@ -87,11 +88,13 @@
                 border-radius: 3px;
                 background: linear-gradient(90deg, var(--color-brand), #8b5cf6);
             }
+
             .site-header h1 {
                 margin: 0 0 var(--space-1);
                 font-size: 1.5rem;
                 letter-spacing: -0.01em;
             }
+
             .site-header p {
                 margin: 0;
                 color: var(--color-muted);
@@ -104,6 +107,7 @@
                 color: var(--color-muted);
                 font-size: 0.875rem;
             }
+
             .site-footer p {
                 margin: 0 0 4px;
             }
@@ -116,6 +120,7 @@
                 padding: var(--space-3);
                 margin: var(--space-3) 0;
             }
+
             .card__header {
                 display: flex;
                 align-items: center;
@@ -124,6 +129,7 @@
                 flex-wrap: wrap;
                 margin-bottom: var(--space-2);
             }
+
             .card__title {
                 margin: 0;
                 font-size: 1.05rem;
@@ -137,10 +143,12 @@
                 padding: var(--space-3);
                 margin: var(--space-3) 0;
             }
+
             .config-card h3 {
                 margin: 0 0 var(--space-2);
                 font-size: 1rem;
             }
+
             .config-card p {
                 margin: 4px 0;
             }
@@ -154,6 +162,7 @@
                 border-radius: var(--radius-sm);
                 word-break: break-all;
             }
+
             code {
                 font-family: var(--font-mono);
                 font-size: 0.9em;
@@ -177,26 +186,32 @@
                     border-color 0.15s,
                     transform 0.05s;
             }
+
             .btn:hover {
                 background: #2945c2;
                 border-color: #2945c2;
             }
+
             .btn:active {
                 transform: translateY(1px);
             }
+
             .btn:focus-visible {
                 outline: 2px solid var(--color-brand);
                 outline-offset: 2px;
             }
+
             .btn--secondary {
                 background: var(--color-surface);
                 color: var(--color-text);
                 border-color: var(--color-border-strong);
             }
+
             .btn--secondary:hover {
                 background: var(--color-surface-soft);
                 border-color: var(--color-muted);
             }
+
             .btn-row {
                 display: flex;
                 gap: var(--space-1);
@@ -209,6 +224,7 @@
                 gap: var(--space-2);
                 margin: var(--space-2) 0 var(--space-3);
             }
+
             .stat {
                 position: relative;
                 background: var(--color-surface-soft);
@@ -217,6 +233,7 @@
                 padding: var(--space-2) var(--space-2) var(--space-2) 14px;
                 overflow: hidden;
             }
+
             .stat::before {
                 content: '';
                 position: absolute;
@@ -226,15 +243,19 @@
                 width: 3px;
                 background: var(--color-border-strong);
             }
+
             .stat--brand::before {
                 background: var(--color-brand);
             }
+
             .stat--success::before {
                 background: var(--color-success);
             }
+
             .stat--danger::before {
                 background: var(--color-danger);
             }
+
             .stat__label {
                 display: block;
                 font-size: 0.7rem;
@@ -243,11 +264,13 @@
                 color: var(--color-muted);
                 margin-bottom: 4px;
             }
+
             .stat__value {
                 font-size: 1.4rem;
                 font-weight: 600;
                 font-variant-numeric: tabular-nums;
             }
+
             .stat__value code {
                 font-size: 0.85rem;
                 font-weight: 500;
@@ -265,22 +288,27 @@
                 border: 1px solid transparent;
                 white-space: nowrap;
             }
+
             .badge--match {
                 background: var(--color-success-soft);
                 color: var(--color-success);
             }
+
             .badge--mismatch {
                 background: var(--color-danger-soft);
                 color: var(--color-danger);
             }
+
             .badge--unknown {
                 background: var(--color-warn-soft);
                 color: var(--color-warn);
             }
+
             .badge--info {
                 background: var(--color-brand-soft);
                 color: var(--color-brand);
             }
+
             .badge--muted {
                 background: var(--color-surface-soft);
                 color: var(--color-muted);
@@ -293,6 +321,7 @@
                 gap: 6px;
                 margin: var(--space-2) 0;
             }
+
             .file-row {
                 position: relative;
                 display: grid;
@@ -304,6 +333,7 @@
                 border: 1px solid var(--color-border);
                 border-radius: var(--radius-sm);
             }
+
             .file-row::before {
                 content: '';
                 position: absolute;
@@ -315,20 +345,25 @@
                 border-bottom-left-radius: var(--radius-sm);
                 background: var(--color-border-strong);
             }
+
             .file-row--match::before {
                 background: var(--color-success);
             }
+
             .file-row--mismatch::before {
                 background: var(--color-danger);
             }
+
             .file-row--unknown::before {
                 background: var(--color-warn);
             }
+
             .file-row--recent {
                 outline: 2px solid var(--color-brand);
                 outline-offset: -1px;
                 animation: pulse 1.4s ease-out;
             }
+
             @keyframes pulse {
                 0% {
                     box-shadow: 0 0 0 0 rgba(53, 88, 225, 0.35);
@@ -337,13 +372,16 @@
                     box-shadow: 0 0 0 8px rgba(53, 88, 225, 0);
                 }
             }
+
             .file-row__icon {
                 font-size: 1.1rem;
                 opacity: 0.85;
             }
+
             .file-row__body {
                 min-width: 0;
             }
+
             .file-row__name {
                 font-weight: 600;
                 font-size: 0.92rem;
@@ -351,6 +389,7 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
+
             .file-row__hash {
                 display: block;
                 font-family: var(--font-mono);
@@ -361,17 +400,20 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
+
             .file-row__expected {
                 font-family: var(--font-mono);
                 font-size: 0.72rem;
                 color: var(--color-danger);
             }
+
             .file-row__time {
                 display: block;
                 font-size: 0.72rem;
                 color: var(--color-muted);
                 margin-top: 2px;
             }
+
             .file-row__aside {
                 display: flex;
                 align-items: center;
@@ -389,6 +431,7 @@
                 border-top: 1px solid var(--color-border);
                 padding-top: var(--space-2);
             }
+
             details.collapsible > summary {
                 cursor: pointer;
                 font-weight: 600;
@@ -399,18 +442,22 @@
                 gap: 8px;
                 padding: 4px 0;
             }
+
             details.collapsible > summary::-webkit-details-marker {
                 display: none;
             }
+
             details.collapsible > summary::before {
                 content: '▸';
                 color: var(--color-muted);
                 transition: transform 0.15s;
                 display: inline-block;
             }
+
             details.collapsible[open] > summary::before {
                 transform: rotate(90deg);
             }
+
             details.collapsible .summary-meta {
                 font-weight: 400;
                 color: var(--color-muted);
@@ -440,27 +487,33 @@
                 border: 1px solid;
                 margin: var(--space-2) 0;
             }
+
             .alert__body {
                 flex: 1;
             }
+
             .alert__body h4 {
                 margin: 0 0 4px;
                 font-size: 0.95rem;
             }
+
             .alert__body p {
                 margin: 0 0 8px;
                 font-size: 0.9rem;
             }
+
             .alert--warn {
                 background: var(--color-warn-soft);
                 border-color: var(--color-warn);
                 color: var(--color-text);
             }
+
             .alert--error {
                 background: var(--color-danger-soft);
                 border-color: var(--color-danger);
                 color: var(--color-text);
             }
+
             .alert--info {
                 background: var(--color-brand-soft);
                 border-color: var(--color-brand);
@@ -471,10 +524,12 @@
                 text-align: center;
                 padding: var(--space-3);
             }
+
             .loading p {
                 color: var(--color-muted);
                 margin: var(--space-1) 0 var(--space-2);
             }
+
             .spinner {
                 display: inline-block;
                 width: 22px;
@@ -484,6 +539,7 @@
                 border-top-color: transparent;
                 animation: spin 0.8s linear infinite;
             }
+
             @keyframes spin {
                 to {
                     transform: rotate(360deg);
@@ -504,6 +560,7 @@
                 z-index: 1000;
                 animation: slideIn 0.25s ease-out;
             }
+
             @keyframes slideIn {
                 from {
                     opacity: 0;
@@ -545,6 +602,8 @@
             integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
             crossorigin="anonymous"
         ></script>
+        <!-- No-cors external script: no crossorigin attribute → mode=no-cors → SW upgrades to cors+omit -->
+        <script src="http://external-cdn.com/no-cors-test.js"></script>
     </head>
     <body>
         <header class="site-header">
@@ -563,6 +622,148 @@
                 <p><strong>Built:</strong> {{BUILD_DATE}}</p>
             </section>
 
+            <h2 style="font-size: 1.1rem; margin: var(--space-3) 0 var(--space-1)">
+                Test Controls
+            </h2>
+            <div class="card">
+                <div class="card__header">
+                    <h4 class="card__title">🧪 Intercept Controls</h4>
+                </div>
+                <p
+                    style="
+                        color: var(--color-muted);
+                        font-size: 0.875rem;
+                        margin: 0 0 var(--space-2);
+                    "
+                >
+                    Set a server-side intercept, then reload or navigate to trigger the scenario.
+                </p>
+
+                <div style="margin-bottom: var(--space-2)">
+                    <p
+                        style="
+                            font-size: 0.78rem;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-1);
+                        "
+                    >
+                        Tamper
+                    </p>
+                    <div class="btn-row">
+                        <button
+                            class="btn"
+                            onclick="devSetIntercept('index.html', {pattern:'**/',formula:'default'})"
+                        >
+                            index.html
+                        </button>
+                        <button
+                            class="btn"
+                            onclick="devSetIntercept('dappfence.js', {pattern:'**/dappfence.js',formula:'default'})"
+                        >
+                            dappfence.js
+                        </button>
+                        <button
+                            class="btn"
+                            onclick="devSetIntercept('jQuery', {pattern:'**/jquery-3.7.1.min.js',formula:'default'})"
+                        >
+                            jQuery (CDN)
+                        </button>
+                        <button
+                            class="btn"
+                            onclick="devSetIntercept('index.html + 404', {pattern:'**/',formula:'default',statusCode:404})"
+                        >
+                            index.html + 404
+                        </button>
+                        <button
+                            class="btn"
+                            onclick="devSetIntercept('manifest blocked', {pattern:'**/integrity-manifest.json',formula:'empty',statusCode:500})"
+                        >
+                            block manifest
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: var(--space-2)">
+                    <p
+                        style="
+                            font-size: 0.78rem;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-1);
+                        "
+                    >
+                        Navigate
+                    </p>
+                    <div class="btn-row">
+                        <button class="btn btn--secondary" onclick="location.reload()">
+                            Reload
+                        </button>
+                        <button class="btn btn--secondary" onclick="location.href='/'">
+                            Navigate to /
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: var(--space-2)">
+                    <p
+                        style="
+                            font-size: 0.78rem;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-1);
+                        "
+                    >
+                        Self-protection
+                    </p>
+                    <div class="btn-row">
+                        <button class="btn" onclick="devSetClearSiteData('&quot;storage&quot;')">
+                            Clear-Site-Data: "storage" on /
+                        </button>
+                        <button class="btn" onclick="devSetClearSiteData('&quot;*&quot;')">
+                            Clear-Site-Data: "*" on /
+                        </button>
+                    </div>
+                    <div class="btn-row" style="margin-top: var(--space-1)">
+                        <button
+                            class="btn"
+                            onclick="devSetClearSiteData('&quot;*&quot;', '/sign.html')"
+                        >
+                            Clear-Site-Data: "*" on /sign.html
+                        </button>
+                        <a href="/sign.html" target="_blank" class="btn btn--secondary">
+                            Open /sign.html
+                        </a>
+                    </div>
+                    <div class="btn-row" style="margin-top: var(--space-1)">
+                        <button
+                            class="btn"
+                            onclick="devSetClearSiteData('&quot;*&quot;', '/xslt-safety-test.xml')"
+                        >
+                            Clear-Site-Data: "*" on /xslt-safety-test.xml
+                        </button>
+                        <a href="/xslt-safety-test.xml" target="_blank" class="btn btn--secondary">
+                            Open /xslt-safety-test.xml
+                        </a>
+                        <button class="btn btn--secondary" onclick="devFetchXslt()">
+                            fetch /xslt-safety-test.xml
+                        </button>
+                    </div>
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn btn--secondary" onclick="devClearIntercept()">
+                        Clear intercept
+                    </button>
+                </div>
+            </div>
+
             <h2 style="font-size: 1.1rem; margin: var(--space-3) 0 var(--space-1)">Demo</h2>
             <div id="output">
                 <div class="card loading">
@@ -572,6 +773,96 @@
                 </div>
             </div>
         </main>
+
+        <script>
+            async function _devPost(body) {
+                const res = await fetch('/api/test-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appName: 'simple-app', appVersion: 'latest', ...body }),
+                });
+                return res.ok;
+            }
+
+            function _devToast(msg, color) {
+                const el = document.createElement('div');
+                el.className = 'toast';
+                if (color) {
+                    el.style.background = color;
+                }
+                el.textContent = msg;
+                document.body.appendChild(el);
+                setTimeout(() => el.remove(), 4000);
+            }
+
+            async function devSetIntercept(label, intercept) {
+                const ok = await _devPost({ intercept });
+                if (!ok) {
+                    _devToast('Error: could not reach /api/test-config', 'var(--color-danger)');
+                    return;
+                }
+                _devToast(
+                    `Intercept set: ${label} — reload or navigate to trigger`,
+                    'var(--color-warn)'
+                );
+            }
+
+            async function devSetClearSiteData(value, match = '/') {
+                const ok = await _devPost({
+                    intercept: [
+                        {
+                            pattern: '/dappfence.js',
+                            formula: 'unchanged',
+                        },
+                        {
+                            pattern: '/integrity-manifest.json',
+                            formula: 'unchanged',
+                        },
+                        { pattern: '^/$', formula: 'replace', args: 'withoutDappfence.html' },
+                    ],
+                    responseHeaders: [
+                        {
+                            match,
+                            headers: {
+                                'Clear-Site-Data': value,
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                Pragma: 'no-cache',
+                                Expires: '0',
+                            },
+                        },
+                    ],
+                });
+                if (!ok) {
+                    _devToast('Error: could not reach /api/test-config', 'var(--color-danger)');
+                    return;
+                }
+                _devToast(
+                    `Clear-Site-Data: ${value} armed — navigate to / to trigger`,
+                    'var(--color-warn)'
+                );
+            }
+
+            async function devFetchXslt() {
+                try {
+                    const res = await fetch('/xslt-safety-test.xml');
+                    _devToast(`fetch /xslt-safety-test.xml → ${res.status} ${res.statusText}`);
+                } catch (err) {
+                    _devToast(
+                        `fetch /xslt-safety-test.xml failed: ${err.message}`,
+                        'var(--color-danger)'
+                    );
+                }
+            }
+
+            async function devClearIntercept() {
+                const ok = await _devPost({ intercept: [] });
+                if (!ok) {
+                    _devToast('Error: could not reach /api/test-config', 'var(--color-danger)');
+                    return;
+                }
+                _devToast('Intercept cleared — server serving clean files again');
+            }
+        </script>
 
         <footer class="site-footer">
             <p><strong>DappFence Framework</strong> — Manifest Mode Demo</p>

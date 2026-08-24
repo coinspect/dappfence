@@ -4,24 +4,34 @@
     "type": "module",
     "scripts": {
         "dev": "npm run build && npm run dev -w @dappfence/test-app",
-        "test": "npm run build && npm test --ws --if-present",
+        "dev:http": "npm run build && npm run dev:http -w @dappfence/test-app",
+        "test": "npm run build && node scripts/run-ws.js test",
+        "test:coverage": "npm run build && node scripts/run-ws.js test:coverage",
+        "test:unit": "npm test -w @dappfence/core",
+        "test:e2e": "npm run build && npm test -w @dappfence/test-app",
         "build": "npm run build --ws --if-present",
         "build:prod": "npm run build:prod -w @dappfence/core",
         "build:watch": "npm run build:watch -w @dappfence/core & npm run build:watch -w @dappfence/test-app",
         "clean": "npm run clean --ws --if-present",
-        "lint": "eslint packages/ --fix",
-        "check": "eslint packages/ && prettier --check packages/ *.md",
-        "format": "prettier --write packages/ *.md",
-        "publish:core": "npm run check && npm run build:prod && npm publish -w @dappfence/core --access public",
+        "lint": "eslint packages/ scripts/ --fix",
+        "check:lock": "node scripts/check-lock-integrity.js",
+        "check": "prettier --check \"*.md\" packages/ scripts/ docs/ && eslint packages/ scripts/ && node scripts/check-lock-integrity.js",
+        "format": "prettier --write packages/ scripts/ docs/ *.md",
+        "sync-versions": "node scripts/sync-versions.js",
+        "update-consumer": "node scripts/update-local-consumer.js",
+        "publish:local": "npm run publish:local --ws --if-present",
+        "publish:all": "npm run check && npm run build:prod && npm publish --ws --access public",
         "prepare": "npm run check && npm run build:prod",
         "ci:install": "npm ci --ignore-scripts && npx playwright install chromium",
         "ci:local": "npm run ci:install && npm run check && npm test"
     },
     "devDependencies": {
+        "@vitest/coverage-v8": "4.1.4",
         "eslint": "9.39.4",
         "eslint-config-prettier": "10.1.8",
         "prettier": "3.2.5",
-        "typescript-eslint": "8.58.2"
+        "typescript-eslint": "8.58.2",
+        "vitest": "4.1.4"
     },
     "workspaces": [
         "packages/*"

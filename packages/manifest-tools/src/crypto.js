@@ -27,6 +27,14 @@ function sign(msg, secretKey) {
     );
 }
 
+function recoverSigner(msgHash, signature) {
+    const sigBytes = secp.etc.hexToBytes(signature);
+    const compressedPubKey = secp.recoverPublicKey(sigBytes, msgHash, { prehash: false });
+    const point = secp.Point.fromBytes(compressedPubKey);
+    const keccak = keccak_256(point.toBytes(false).slice(1));
+    return '0x' + secp.etc.bytesToHex(keccak.slice(-20));
+}
+
 function recoverPersonalSign(msgHash, signature) {
     const sigBytes = secp.etc.hexToBytes(signature);
     const prefix = '\x19Ethereum Signed Message:\n';
@@ -51,6 +59,7 @@ const bytesToHex = secp.etc.bytesToHex;
 const keccak256 = keccak_256;
 
 module.exports = {
+    recoverSigner,
     recoverPersonalSign,
     sign,
     ethereumAddress,

@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => ({
     define: {
         __VERSION__: JSON.stringify(process.env.npm_package_version || '0.1.0'),
         __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
-        __DEV__: mode === 'development',
+        __DEV__: mode !== 'production',
     },
 
     // Vite cache (avoid node_modules inside this package)
@@ -78,6 +78,12 @@ export default defineConfig(({ mode }) => ({
         root: __dirname,
         include: ['src/**/*.test.js'],
         onConsoleLog: () => false, // Silence production logger output during tests
+        coverage: {
+            provider: 'v8',
+            all: true,
+            include: ['src/**/*.js'],
+            exclude: ['src/**/*.test.js'],
+        },
     },
 
     // Plugins (none needed - using built-in ?raw imports)

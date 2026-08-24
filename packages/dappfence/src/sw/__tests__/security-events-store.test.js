@@ -77,5 +77,17 @@ describe('createSecurityEventsStore', () => {
             const all = await s.getSecurityEvents(2000);
             expect(all.length).toBeLessThanOrEqual(1000);
         });
+
+        it('returns empty array when database.get rejects', async () => {
+            const brokenDb = {
+                get: async () => {
+                    throw new Error('db error');
+                },
+                set: async () => {},
+            };
+            const s = createSecurityEventsStore(brokenDb);
+            const result = await s.getSecurityEvents();
+            expect(result).toEqual([]);
+        });
     });
 });

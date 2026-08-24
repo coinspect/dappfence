@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
 
 function createInMemoryStorage() {
@@ -59,13 +59,18 @@ describe('createManifestStore', () => {
 
         it('addLatest stores a manifest retrievable by appVersion and via getLatest', async () => {
             const manifestData = { files: { '/app.js': 'abc123', '/style.css': 'def456' } };
+            const normalized = {
+                files: { '/app.js': ['abc123'], '/style.css': ['def456'] },
+                pathRules: [],
+                contentRules: [],
+                mode: 'reporting',
+            };
             const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
 
-            expect(await storage.trustedManifestStore.get(appVersion)).toEqual(manifestData);
-            expect(await storage.trustedManifestStore.getLatest()).toEqual({
-                appVersion,
-                manifest: manifestData,
-            });
+            expect(await storage.trustedManifestStore.get(appVersion)).toEqual(normalized);
+            expect(await storage.trustedManifestStore.getLatest()).toEqual(
+                expect.objectContaining({ appVersion, manifest: normalized })
+            );
         });
 
         it('preserves mode, metadata, and other top-level manifest fields', async () => {
@@ -75,10 +80,16 @@ describe('createManifestStore', () => {
                 metadata: { extensions: ['.js', '.wasm'] },
                 customField: { future: true },
             };
+            const normalized = {
+                ...manifestData,
+                files: { '/app.js': ['abc'] },
+                pathRules: [],
+                contentRules: [],
+            };
             const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
 
-            expect(await storage.trustedManifestStore.get(appVersion)).toEqual(manifestData);
-            expect((await storage.trustedManifestStore.getLatest()).manifest).toEqual(manifestData);
+            expect(await storage.trustedManifestStore.get(appVersion)).toEqual(normalized);
+            expect((await storage.trustedManifestStore.getLatest()).manifest).toEqual(normalized);
         });
 
         it('getLatest returns the most recently added manifest', async () => {
@@ -89,25 +100,31 @@ describe('createManifestStore', () => {
 
             const latest = await storage.trustedManifestStore.getLatest();
             expect(latest.appVersion).toBe(second.appVersion);
-            expect(latest.manifest).toEqual({ files: { '/b.js': 'y' } });
+            expect(latest.manifest).toEqual({
+                files: { '/b.js': ['y'] },
+                pathRules: [],
+                contentRules: [],
+                mode: 'reporting',
+            });
         });
 
-        it('addLatest evicts the oldest entry once length exceeds 5', async () => {
-            const versions = [];
-            for (let i = 1; i <= 6; i++) {
-                const { appVersion } = await storage.trustedManifestStore.addLatest({
-                    files: { [`/f${i}.js`]: `h${i}` },
-                });
-                versions.push(appVersion);
-            }
-            // First addition (oldest) should have been evicted.
-            expect(await storage.trustedManifestStore.get(versions[0])).toBeUndefined();
-            // Last addition (newest) should be the latest.
-            expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(versions[5]);
-            // Second-oldest still present.
-            expect(await storage.trustedManifestStore.get(versions[1])).toEqual({
-                files: { '/f2.js': 'h2' },
+        it('prunes entries older than 24h on addLatest', async () => {
+            vi.useFakeTimers();
+            const old = await storage.trustedManifestStore.addLatest({
+                files: { '/old.js': 'h-old' },
             });
+            vi.advanceTimersByTime(25 * 60 * 60 * 1000);
+            await storage.trustedManifestStore.addLatest({ files: { '/new.js': 'h-new' } });
+            expect(await storage.trustedManifestStore.get(old.appVersion)).toBeUndefined();
+            vi.useRealTimers();
+        });
+
+        it('caps at MAX_MANIFESTS entries when many are added rapidly', async () => {
+            for (let i = 1; i <= 25; i++) {
+                await storage.trustedManifestStore.addLatest({ files: { [`/f${i}.js`]: `h${i}` } });
+            }
+            const all = await storage.trustedManifestStore.getAll();
+            expect(all.length).toBeLessThanOrEqual(20);
         });
 
         it('re-adding an existing manifest dedups and promotes it to the front', async () => {
@@ -121,60 +138,14 @@ describe('createManifestStore', () => {
             expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(a.appVersion);
         });
 
-        it('findByHash returns the entry that owns a hash', async () => {
-            const a = await storage.trustedManifestStore.addLatest({
-                files: { '/a.js': 'hash-a', '/b.js': 'hash-b' },
-            });
-            const b = await storage.trustedManifestStore.addLatest({
-                files: { '/c.js': 'hash-c' },
-            });
-
-            expect(await storage.trustedManifestStore.findByHash('hash-a')).toEqual({
-                appVersion: a.appVersion,
-                manifest: a.manifest,
-            });
-            expect(await storage.trustedManifestStore.findByHash('hash-c')).toEqual({
-                appVersion: b.appVersion,
-                manifest: b.manifest,
-            });
-            expect(await storage.trustedManifestStore.findByHash('missing')).toBeNull();
-        });
-
-        it('findByHash prefers the newest manifest when a hash collides', async () => {
-            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'shared' } });
-            const newer = await storage.trustedManifestStore.addLatest({
-                files: { '/b.js': 'shared' },
-            });
-
-            const found = await storage.trustedManifestStore.findByHash('shared');
-            expect(found.appVersion).toBe(newer.appVersion);
-        });
-
-        it('findByHash drops hashes that were only in evicted manifests', async () => {
-            await storage.trustedManifestStore.addLatest({ files: { '/old.js': 'gone' } });
-            const survivors = [];
-            for (let i = 1; i <= 5; i++) {
-                const { appVersion } = await storage.trustedManifestStore.addLatest({
-                    files: { [`/f${i}.js`]: `h${i}` },
-                });
-                survivors.push(appVersion);
-            }
-            // The oldest entry has been evicted; its hashes should no longer resolve.
-            expect(await storage.trustedManifestStore.findByHash('gone')).toBeNull();
-            const found = await storage.trustedManifestStore.findByHash('h1');
-            expect(found.appVersion).toBe(survivors[0]);
-        });
-
-        it('findByHash rebuilds the in-memory index lazily after a fresh store is created', async () => {
-            // Populate via one store, then create a new one over the same backend
-            // — simulates SW restart where the in-memory index is empty.
-            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'hash-a' } });
-            const sameBackend = createInMemoryStorage();
-            // Copy persisted state
-            const persisted = { appVersion: 'v1', manifest: { files: { '/a.js': 'hash-a' } } };
-            await sameBackend.set('trusted-manifest', [persisted]);
-            const reopened = createManifestStore(sameBackend);
-            expect(await reopened.trustedManifestStore.findByHash('hash-a')).toEqual(persisted);
+        it('getAll returns all entries newest-first with storedAt', async () => {
+            const a = await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'ha' } });
+            const b = await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'hb' } });
+            const all = await storage.trustedManifestStore.getAll();
+            expect(all).toHaveLength(2);
+            expect(all[0].appVersion).toBe(b.appVersion);
+            expect(all[1].appVersion).toBe(a.appVersion);
+            expect(all[0]).toHaveProperty('storedAt');
         });
     });
 

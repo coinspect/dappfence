@@ -10,8 +10,9 @@
  * @param {string} env.userAgent
  * @param {string} env.origin
  */
+import { devAssert } from '../../core/utils.js';
 import { createLogger } from '../../core/logger.js';
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { ASSET_TYPE } from '../../core/constants.js';
 import { createManifestStore } from './manifest-store.js';
 import {
     createActiveBlocksStore,
@@ -20,6 +21,35 @@ import {
 } from './security-stores.js';
 
 const logger = createLogger();
+
+const STATUS_LOG = {
+    MATCH: (d) => [`SW file verification passed: ${d.fileKey}`],
+    SKIPPED: (d) => [`SW file verification skipped: ${d.fileKey}`],
+    REWRITE: (d) => [`SW file response rewritten: ${d.fileKey}`],
+    MISMATCH: (d) => [
+        `SECURITY ALERT: Service Worker file integrity violation!`,
+        `File: ${d.url}\nExpected: ${d.expectedHashes?.join(', ')}`,
+        `Actual: ${d.actualHash}`,
+    ],
+    NOT_FOUND_IN_MANIFEST: (d) => [
+        `SECURITY ALERT: Unknown file not in trusted manifest!`,
+        `File: ${d.fileKey}`,
+        `Hash: ${d.actualHash}`,
+    ],
+    DENIED_BY_RULE: (d) => [`SECURITY ALERT: File denied by security rule!`, `File: ${d.fileKey}`],
+    UNSUPPORTED_SIGNATURE: (d) => [
+        `SECURITY ALERT: Manifest signature algorithm not supported!`,
+        `File: ${d.fileKey}`,
+    ],
+    VERIFICATION_ERROR: (d) => [
+        `SECURITY ALERT: Verification error!`,
+        `File: ${d.fileKey ?? 'N/A'}`,
+    ],
+    CONFIG_ERROR: (d) => [
+        `SECURITY ALERT: Security configuration error!`,
+        `File: ${d.fileKey ?? 'N/A'}`,
+    ],
+};
 
 export function createAppStore(db, { userAgent, origin } = {}) {
     const activeBlocksStore = createActiveBlocksStore(db);
@@ -30,36 +60,28 @@ export function createAppStore(db, { userAgent, origin } = {}) {
      * Returns whether the caller must block the current request. Recurrences of
      * already-known blocks (including previously cleared ones) are still logged
      * and counted, but return false. Storage failures fail-safe and return true.
-     * @param {object} details - Violation details (status, fileKey, url, expectedHash, actualHash, assetType)
+     * @param {object} details - Violation details (status, fileKey, url, expectedHashes, actualHash, assetType)
      * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
      */
     async function recordSecurityViolation(details) {
+        devAssert(details.status && typeof details.status.description === 'string');
+        devAssert(Object.values(ASSET_TYPE).includes(details.assetType));
+        devAssert(details.url);
+        devAssert(details.fileKey);
         try {
             // status is the runtime verdict object; persistence + log lines want
             // the description string. Normalize once and use it everywhere below.
             const statusName = details.status.description;
             const persistedDetails = { ...details, status: statusName };
-            if (details.status === VERIFICATION_STATUS.MATCH) {
-                logger.log(`SW file verification passed: ${details.fileKey}`);
-            } else if (details.status === VERIFICATION_STATUS.MISMATCH) {
-                logger.error(
-                    `SECURITY ALERT: Service Worker file integrity violation!`,
-                    `File: ${details.url}\nExpected: ${details.expectedHash}`,
-                    `Actual: ${details.actualHash}`
-                );
-            } else if (details.status === VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST) {
-                logger.error(
-                    `SECURITY ALERT: Unknown file not in trusted manifest!`,
-                    `File: ${details.fileKey}`,
-                    `Hash: ${details.actualHash}`
-                );
-            } else {
-                logger.error(
+            const method = details.status.isViolation ? 'error' : 'log';
+            const logArgs =
+                STATUS_LOG[statusName] ??
+                ((d) => [
                     `SECURITY ALERT: {${statusName}}`,
-                    `URL: ${details.url ?? 'N/A'}`,
-                    `File: ${details.fileKey ?? 'N/A'}`
-                );
-            }
+                    `URL: ${d.url ?? 'N/A'}`,
+                    `File: ${d.fileKey ?? 'N/A'}`,
+                ]);
+            logger[method](...logArgs(details));
 
             try {
                 await securityEventsStore.logSecurityEvent({
@@ -69,8 +91,9 @@ export function createAppStore(db, { userAgent, origin } = {}) {
                     timestamp: new Date().toISOString(),
                     url: details.url,
                     fileKey: details.fileKey,
-                    expectedHash: details.expectedHash,
+                    expectedHashes: details.expectedHashes,
                     actualHash: details.actualHash,
+                    httpStatus: details.httpStatus,
                     userAgent,
                     origin,
                 });
@@ -78,6 +101,10 @@ export function createAppStore(db, { userAgent, origin } = {}) {
                 logger.error('Failed to store security log:', error);
             }
 
+            if (!details.status.isViolation) {
+                logger.log(`Security violation skipped: ${statusName} - ${details.fileKey}`);
+                return false;
+            }
             const mustBlock = await activeBlocksStore.recordSecurityBlock(persistedDetails);
             if (mustBlock) {
                 logger.log(`Security violation handled: ${statusName} - ${details.fileKey}`);

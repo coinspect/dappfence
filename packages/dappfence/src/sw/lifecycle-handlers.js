@@ -44,10 +44,7 @@ export function createInstallHandler({
             logger.log('Initializing manifest system');
             const manifestVerificationResult = await manifestService.fetchAndStoreManifest();
             if (manifestVerificationResult.status.isViolation) {
-                await appStore.recordSecurityViolation({
-                    ...manifestVerificationResult,
-                    url: config.manifestUrl,
-                });
+                await appStore.recordSecurityViolation(manifestVerificationResult);
                 logger.error('❌ error during initialization: Failed to load manifest');
             } else {
                 logger.log(

@@ -1,10 +1,13 @@
 {
     "name": "@dappfence/test-app",
-    "version": "0.1.0",
-    "private": true,
+    "version": "0.1.2",
     "description": "Development server and e2e tests for DappFence",
     "type": "commonjs",
     "main": "src/dev-server.js",
+    "exports": {
+        ".": "./src/dev-server.js",
+        "./server": "./src/dev-server.js"
+    },
     "scripts": {
         "clean": "rm -rf dist test-results",
         "build": "node src/build.js --quiet",
@@ -15,11 +18,15 @@
         "build:watch": "node src/watch.js",
         "test": "playwright test --config playwright.config.ts",
         "test:headed": "playwright test --config playwright.config.ts --headed",
-        "test:debug": "playwright test --config playwright.config.ts --debug"
+        "test:debug": "playwright test --config playwright.config.ts --debug",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "publishConfig": {
+        "access": "public"
     },
     "dependencies": {
         "@dappfence/core": "*",
-        "@dappfence/signer": "*"
+        "@dappfence/manifest-tools": "*"
     },
     "devDependencies": {
         "@playwright/test": "1.60.0",

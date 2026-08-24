@@ -5,8 +5,9 @@ describe('generateBlockId', () => {
     const BLOCK_DATA = {
         status: 'MISMATCH',
         fileKey: '/app.js',
-        expectedHash: 'expected123',
+        expectedHashes: ['expected123'],
         actualHash: 'actual456',
+        assetType: 'ASSET',
     };
 
     it('returns a block_ prefixed hex string', async () => {
@@ -35,25 +36,31 @@ describe('generateBlockId', () => {
         expect(id1).not.toBe(id2);
     });
 
-    it('handles missing expectedHash gracefully', async () => {
+    it('handles missing expectedHashes gracefully', async () => {
         const id = await generateBlockId({
             status: 'MISMATCH',
             fileKey: '/app.js',
             actualHash: 'hash',
+            assetType: 'ASSET',
         });
         expect(id).toMatch(/^block_[0-9a-f]{16}$/);
     });
 
     it('throws when status is missing', async () => {
-        await expect(generateBlockId({ fileKey: '/app.js' })).rejects.toThrow(
-            'Missing required parameters'
-        );
+        await expect(generateBlockId({ fileKey: '/app.js', assetType: 'ASSET' })).rejects.toThrow();
     });
 
-    it('produces a stable id when only status is set (manifest-load errors)', async () => {
-        const id = await generateBlockId({ status: 'CONFIG_ERROR' });
-        expect(id).toMatch(/^block_[0-9a-f]{16}$/);
-        const id2 = await generateBlockId({ status: 'CONFIG_ERROR' });
-        expect(id2).toBe(id);
+    it('throws when assetType is missing', async () => {
+        await expect(generateBlockId({ status: 'MISMATCH', fileKey: '/app.js' })).rejects.toThrow();
+    });
+
+    it('throws when fileKey is missing', async () => {
+        await expect(generateBlockId({ status: 'MISMATCH', assetType: 'ASSET' })).rejects.toThrow();
+    });
+
+    it('produces different ids for different asset types', async () => {
+        const id1 = await generateBlockId({ ...BLOCK_DATA, assetType: 'ASSET' });
+        const id2 = await generateBlockId({ ...BLOCK_DATA, assetType: 'MANIFEST' });
+        expect(id1).not.toBe(id2);
     });
 });

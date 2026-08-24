@@ -7,15 +7,66 @@
  */
 
 import { calculateHash } from '../../core/crypto.js';
-import { normalizeManifestData } from '../manifest/operations.js';
+import { MODE } from '../../core/constants.js';
+
+/**
+ * Normalize manifest data from external sources (pure function).
+ * Handles both enhanced format ({ files: {...}, metadata, mode, ... }) and
+ * legacy flat format. Hashes are stored as-is in SRI form (the same format
+ * the signer emits and HTML's Subresource Integrity uses), so no encoding
+ * conversion happens here. Top-level fields other than `files` (mode,
+ * metadata, and any future fields) are preserved as-is so consumers can
+ * read them.
+ *
+ * Each entry in `files` may be a single hash string or an array of hash
+ * strings. Arrays are used for CDN-served assets (e.g. analytics scripts)
+ * whose content is not a build artifact and may vary across CDN regions or
+ * provider releases — listing all known-good hashes lets any current version
+ * pass verification while still blocking unexpected content.
+ * @param {object} manifestData - Raw manifest data
+ * @returns {object} Normalized manifest: files (fileKey -> hash[]), pathRules ([]),
+ *   contentRules ([]), mode (MODE.REPORTING default)
+ */
+export const normalizeManifestData = (manifestData) => {
+    const toArray = (entry) => {
+        if (Array.isArray(entry)) return entry;
+        if (typeof entry === 'string') return [entry];
+        if (entry?.hash) return [entry.hash];
+        return [];
+    };
+
+    const normalizedFiles = {};
+    if (typeof manifestData === 'object') {
+        // Enhanced format: { "files": { "/path/file.js": "sha256-..." }, "metadata": {...} }
+        if (manifestData.files && typeof manifestData.files === 'object') {
+            for (const [filePath, entry] of Object.entries(manifestData.files)) {
+                normalizedFiles[filePath] = toArray(entry);
+            }
+        } else {
+            // Legacy flat format: { "/path/file.js": "sha256-..." | { hash: "sha256-..." } }
+            for (const [filePath, entry] of Object.entries(manifestData)) {
+                normalizedFiles[filePath] = toArray(entry);
+            }
+        }
+    }
+    return {
+        ...manifestData,
+        files: normalizedFiles,
+        pathRules: Array.isArray(manifestData?.pathRules) ? manifestData.pathRules : [],
+        contentRules: Array.isArray(manifestData?.contentRules) ? manifestData.contentRules : [],
+        mode: manifestData?.mode ?? MODE.REPORTING,
+    };
+};
 
 // Trusted Manifest System constants
 const TRUSTED_MANIFEST_KEY = 'trusted-manifest';
 const VERIFICATION_RESULTS_KEY = 'verification-results';
 
-// Trusted-manifest priority queue: newest-first, capped to MAX_MANIFESTS so
-// the working set stays bounded across upgrades.
-const MAX_MANIFESTS = 5;
+// Trusted-manifest priority queue: newest-first.
+// Primary cleanup: entries older than MAX_AGE_MS are pruned on each addLatest.
+// Safety cap: MAX_MANIFESTS prevents unbounded growth if deployments are very frequent.
+const MAX_MANIFESTS = 20;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Synthesize a deterministic appVersion from manifest content. Strips the
@@ -38,47 +89,20 @@ export function createManifestStore(database) {
     /**
      * Trusted Manifest database Operations
      *
-     * Stored as a flat array `[{appVersion, manifest}]`, newest first. The
-     * full manifest object is retained so consumers can read `mode`,
+     * Stored as a flat array `[{appVersion, manifest, storedAt}]`, newest first.
+     * The full manifest object is retained so consumers can read `mode`,
      * `metadata`, and any future top-level fields.
      *
-     * Two in-memory caches sit in front of IndexedDB, both per-store-instance
-     * (i.e. per SW lifetime, since one createManifestStore call serves the
-     * whole SW): `cachedList` mirrors the persisted array and `hashIndex`
-     * indexes hashes -> appVersion. Both are populated lazily on first read
-     * and kept in sync by addLatest after its tx commits. Persisting them
-     * would duplicate state that's cheap to derive from <=5 manifests.
+     * `cachedList` mirrors the persisted array and is populated lazily on the first
+     * read, kept in sync by addLatest after its tx commits.
      */
     let cachedList = null;
-    let hashIndex = null;
 
     const readList = async () => {
         if (cachedList === null) {
             cachedList = (await database.get(TRUSTED_MANIFEST_KEY)) || [];
         }
         return cachedList;
-    };
-
-    const buildHashIndex = (list) => {
-        const index = {};
-        // Iterate oldest -> newest so newer entries overwrite, matching
-        // priority-queue semantics. Index points to the entry itself, so
-        // findByHash can return both appVersion and manifest in one lookup.
-        for (let i = list.length - 1; i >= 0; i--) {
-            const entry = list[i];
-            for (const hash of Object.values(entry.manifest.files || {})) {
-                index[hash] = entry;
-            }
-        }
-        return index;
-    };
-
-    const ensureHashIndex = async () => {
-        if (hashIndex !== null) {
-            return hashIndex;
-        }
-        hashIndex = buildHashIndex(await readList());
-        return hashIndex;
     };
 
     const trustedManifestStore = {
@@ -99,15 +123,14 @@ export function createManifestStore(database) {
                 const list = (await tx.get(TRUSTED_MANIFEST_KEY)) || [];
                 // Drop any existing entry for this appVersion — re-adding
                 // bumps it to the front rather than producing a duplicate.
+                const now = Date.now();
                 const deduped = list.filter((m) => m.appVersion !== appVersion);
-                deduped.unshift({ appVersion, manifest });
-                newList = deduped.slice(0, MAX_MANIFESTS);
+                deduped.unshift({ appVersion, manifest, storedAt: now });
+                const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
+                newList = pruned.slice(0, MAX_MANIFESTS);
                 await tx.set(TRUSTED_MANIFEST_KEY, newList);
             });
-            // Refresh cache from the just-committed state; invalidate the
-            // hash index so the next findByHash rebuilds.
             cachedList = newList;
-            hashIndex = null;
             return { appVersion, manifest };
         },
 
@@ -125,14 +148,8 @@ export function createManifestStore(database) {
             return entry?.manifest;
         },
 
-        /**
-         * Look up a stored manifest by any file's content hash.
-         * @param {string} fileHash - hex SHA-256 of file content
-         * @returns {Promise<{appVersion: string, manifest: object} | null>}
-         */
-        async findByHash(fileHash) {
-            const index = await ensureHashIndex();
-            return index[fileHash] ?? null;
+        async getAll() {
+            return readList();
         },
     };
 

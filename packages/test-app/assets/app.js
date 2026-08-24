@@ -260,7 +260,7 @@ window.checkManifestStatus = async function () {
                     const hash = result.actualHash ? result.actualHash : 'No hash';
                     const expected =
                         result.status === 'MISMATCH'
-                            ? `<span class="file-row__expected">expected ${result.expectedHash}</span>`
+                            ? `<span class="file-row__expected">expected ${result.expectedHashes?.join(', ')}</span>`
                             : '';
 
                     html += `

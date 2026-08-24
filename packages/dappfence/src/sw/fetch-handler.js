@@ -3,10 +3,9 @@
  * Orchestrates security checks and app service worker integration
  */
 
-import { createBlockResponse } from './response.js';
+import { createBlockResponse, createRewriteResponse } from './response.js';
 import { createLogger } from '../core/logger.js';
-import { API_PREFIX, ASSET_TYPE, MODE } from '../core/constants.js';
-import { isFeatureEnabled } from '../core/utils.js';
+import { API_PREFIX, MODE, VERIFICATION_STATUS } from '../core/constants.js';
 
 const logger = createLogger();
 
@@ -26,82 +25,8 @@ export function createSecurityFetchHandler({
     handleApiEndpoint,
 }) {
     const { activeBlocksStore } = appStore;
-    const locationOrigin = swContext.getLocationOrigin();
     const locationHref = swContext.getLocationHref();
 
-    /**
-     * Add DappFence tracking markers to the request.
-     * Pure function — takes originUrl as a string so it can be tested without swContext.
-     */
-    function addMarkToRequest(event, request, isNavigation, originUrl = locationOrigin) {
-        const requestUrl = new URL(request.url);
-        const isSameOrigin = requestUrl.origin === originUrl;
-
-        if (!isSameOrigin) {
-            logger.log(`[SW-X-ORIGIN] Cross-origin (no tracking): ${request.url}`);
-            return request; // Can't modify cross-origin requests
-        }
-
-        try {
-            // Create URL with SW tracking parameter
-            const modifiedUrl = new URL(request.url);
-            // modifiedUrl.searchParams.set('sw', '1');
-
-            let modifiedRequest;
-
-            // Handle navigation requests differently (they can't be fully cloned)
-            if (isNavigation) {
-                logger.log(
-                    `[DFSW-NAVIGATE] Navigation request (URL tracking only): ${request.url}`
-                );
-                modifiedRequest = new Request(modifiedUrl.href, {
-                    method: request.method,
-                    headers: new Headers({
-                        ...Object.fromEntries(request.headers),
-                        'x-dappfence': 'processed',
-                    }),
-                    credentials: request.credentials,
-                    redirect: request.redirect,
-                    referrer: request.referrer,
-                    referrerPolicy: request.referrerPolicy,
-                    cache: request.cache,
-                    integrity: request.integrity,
-                });
-            } else {
-                // For non-navigation requests, add both URL param and header
-                modifiedRequest = new Request(modifiedUrl.href, {
-                    headers: new Headers({
-                        ...Object.fromEntries(request.headers),
-                        'x-dappfence': 'processed',
-                    }),
-                    method: request.method,
-                    mode: request.mode,
-                    credentials: request.credentials,
-                    redirect: request.redirect,
-                    referrer: request.referrer,
-                    referrerPolicy: request.referrerPolicy,
-                    cache: request.cache,
-                    integrity: request.integrity,
-                    keepalive: request.keepalive,
-                    signal: request.signal,
-                    body: request.body,
-                });
-                logger.log(`[DFSW-HEADER+URL] Added header to: ${modifiedUrl.href}`);
-            }
-
-            // IMPORTANT: Replace the request in the event so ALL handlers see the modified version
-            Object.defineProperty(event, 'request', {
-                value: modifiedRequest,
-                writable: false,
-                configurable: false,
-            });
-
-            return modifiedRequest;
-        } catch (error) {
-            logger.warn(`Failed to modify request: ${request.url}`, error);
-            return request; // Fallback to the original
-        }
-    }
     /**
      * Handle app service worker fetch event delegation
      */
@@ -139,101 +64,113 @@ export function createSecurityFetchHandler({
         return await swContext.fetch(request);
     }
 
-    /**
-     * Run the manifest-aware verification for an asset response. `verifyFile`
-     * decides whether to actually verify (returns SKIPPED for non-applicable
-     * assets) or hashes and compares. Only true violations reach
-     * recordSecurityViolation; SKIPPED and MATCH pass through.
-     */
-    async function verifyAssetIntegrity(ctx, request, response) {
+    async function applyIntegrityPolicy(ctx, request, response, clientId) {
         logger.log('Verifying security-critical asset:', request.url);
-
-        // Clone so the original body is still available to forward to the page;
-        // verifyFile consumes the clone via arrayBuffer().
-        const verificationResult = await ctx.verifyFile(request.url, response.clone());
-        if (verificationResult.status.isViolation) {
-            return await appStore.recordSecurityViolation({
+        const verificationResult = await ctx.verifyResponse(request, response, clientId);
+        let mustBlock = false;
+        if (
+            verificationResult.status !== VERIFICATION_STATUS.MATCH &&
+            verificationResult.status !== VERIFICATION_STATUS.SKIPPED
+        ) {
+            mustBlock = await appStore.recordSecurityViolation({
                 ...verificationResult,
-                assetType: ASSET_TYPE.ASSET,
                 url: request.url,
+                httpStatus: response.status,
             });
         }
-        return false;
+
+        if (verificationResult.status === VERIFICATION_STATUS.REWRITE) {
+            return createRewriteResponse(response);
+        }
+        if (ctx.mode === MODE.PROTECTED && mustBlock) {
+            // Navigation requests get the warning inline via createBlockResponse;
+            // so broadcasting to the client would double-notify.
+            if (request.mode !== 'navigate') {
+                await onSecurityViolation();
+            }
+            return createBlockResponse(request, locationHref);
+        }
+        return response;
+    }
+
+    async function handleRequest(event, callChildHandlers) {
+        const request = event.request;
+        const url = new URL(request.url);
+        const clientId = request.mode === 'navigate' ? event.resultingClientId : event.clientId;
+
+        logger.log(
+            `%cRequest: ${request.url} method:${request.method} mode:${request.mode} destination:${request.destination === '' ? 'empty' : request.destination} clientId:${clientId} credentials:${request.credentials}`,
+            'color:cyan'
+        );
+
+        // Handle internal API endpoints. Served in every mode so client-side
+        // dappfence.js can always talk to the SW. If the handler declines
+        // (undefined), fall through to the normal child-SW pipeline — API
+        // probes behave like any other asset request and don't reveal
+        // DappFence via the warning redirect.
+        if (url.pathname.startsWith(API_PREFIX)) {
+            logger.log('Handling API endpoint:', url.pathname);
+            const response = await handleApiEndpoint(url.pathname, request);
+            if (response) {
+                return response;
+            }
+        }
+
+        // Resolve the manifest context once per request — mode and verifyResponse
+        // share the single IndexedDB lookup done here.
+        const ctx = await manifestService.resolveManifest();
+        logger.log(`Client mode: ${clientId} ${ctx.mode}`);
+
+        // Site-wide block gate only fires in protected mode. In other modes we
+        // still let the request flow so the child SW's response is returned
+        // untouched.
+        if (ctx.mode === MODE.PROTECTED && (await activeBlocksStore.isBlocked())) {
+            return createBlockResponse(request, locationHref);
+        }
+
+        // Prepare request: upgrade no-cors executables to cors+omit and add
+        // tracking markers (same-origin, when mark_request feature is enabled).
+        // contentRules allow-by-destination checking before any CORS upgrade.
+        const preparedRequest = ctx.prepareRequest(request);
+        if (preparedRequest !== request) {
+            // Replace event.request so ALL child handlers see the prepared version.
+            Object.defineProperty(event, 'request', {
+                value: preparedRequest,
+                writable: false,
+                configurable: false,
+            });
+        }
+
+        // Try the child SW first; if its delegation or internal fetch fails,
+        // fall back to a direct fetch so applyIntegrityPolicy still runs.
+        let response;
+        try {
+            response = await handleAppServiceWorkerFetch(event, callChildHandlers, preparedRequest);
+        } catch (error) {
+            logger.warn('Child SW fetch failed, retrying direct:', request.url, error);
+            response = await swContext.fetch(preparedRequest);
+        }
+        logger.log(
+            `%cResponse ${request.url} ${response?.url} status:${response?.status} type:${response?.type ?? 'empty'} ${response?.redirected ? 'redirected' : ''}`,
+            'color:cyan'
+        );
+        return await applyIntegrityPolicy(ctx, preparedRequest, response, clientId);
     }
 
     return async (event, callChildHandlers) => {
-        const originalRequest = event.request;
         try {
-            const url = new URL(originalRequest.url);
-            const isNavigation = originalRequest.mode === 'navigate';
-            const clientId = isNavigation ? event.resultingClientId : event.clientId;
-
-            // Log all fetch requests for debugging
-            logger.log(
-                `%cFetch: ${originalRequest.method} ${originalRequest.url} ${isNavigation ? 'isNavigation' : ''} clientId: ${clientId} `,
-                'color:cyan'
-            );
-
-            // Handle internal API endpoints. Served in every mode so client-side
-            // dappfence.js can always talk to the SW. If the handler declines
-            // (undefined), fall through to the normal child-SW pipeline — API
-            // probes behave like any other asset request and don't reveal
-            // DappFence via the warning redirect.
-            if (url.pathname.startsWith(API_PREFIX)) {
-                logger.log('Handling API endpoint:', url.pathname);
-                const response = await handleApiEndpoint(url.pathname, originalRequest);
-                if (response) {
-                    return response;
-                }
-            }
-
-            // Resolve the manifest context once per request — mode and verifyFile
-            // share the single IndexedDB lookup done here.
-            const ctx = await manifestService.resolveManifest({ clientId, isNavigation });
-            logger.log(`Client mode: ${clientId} ${ctx.mode}`);
-
-            // Site-wide block gate only fires in protected mode. In other modes we
-            // still let the request flow so the child SW's response is returned
-            // untouched.
-            if (ctx.mode === MODE.PROTECTED && (await activeBlocksStore.isBlocked())) {
-                return createBlockResponse(isNavigation, originalRequest.url, locationHref);
-            }
-
-            // Add tracking markers to request BEFORE any handlers to see it
-            const markedRequest = isFeatureEnabled('mark_request')
-                ? addMarkToRequest(event, originalRequest, isNavigation)
-                : originalRequest;
-
-            // Delegate to child SW and capture its response
-            const response = await handleAppServiceWorkerFetch(
-                event,
-                callChildHandlers,
-                markedRequest
-            );
-            if (!response || !response.ok) {
-                return response;
-            }
-
-            const mustBlock = await verifyAssetIntegrity(ctx, markedRequest, response);
-            if (ctx.mode === MODE.PROTECTED && mustBlock) {
-                // Navigation requests get the warning inline via createBlockResponse;
-                // so broadcasting to the client would double-notify.
-                if (!isNavigation) {
-                    await onSecurityViolation();
-                }
-                return createBlockResponse(isNavigation, markedRequest.url, locationHref);
-            }
-            return response;
+            return await handleRequest(event, callChildHandlers);
         } catch (error) {
-            logger.error('Error processing:', originalRequest.url, error);
+            logger.error('Fatal error processing request:', event.request.url, error);
+            // Rethrow fetch()-level errors (TypeError = network/CORS, AbortError = aborted)
+            // so the browser sees the real failure
+            if (
+                error instanceof TypeError ||
+                (error instanceof DOMException && error.name === 'AbortError')
+            ) {
+                throw error;
+            }
+            return new Response('Service unavailable', { status: 503 });
         }
-        // On error, fallback to regular fetch to avoid breaking the app
-        try {
-            return await swContext.fetch(originalRequest);
-        } catch (fetchError) {
-            logger.error('Fallback fetch also failed:', originalRequest.url, fetchError);
-        }
-        // Return undefined to let the browser handle the error
-        return undefined;
     };
 }

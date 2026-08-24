@@ -215,7 +215,7 @@ describe('createApiHandler', () => {
                     timestamp: '2025-01-01T00:00:00.000Z',
                     status: 'MISMATCH',
                     fileKey: '/app.js',
-                    expectedHash: 'aaa',
+                    expectedHashes: ['aaa'],
                     actualHash: 'bbb',
                     occurrenceCount: 3,
                 },
@@ -235,7 +235,7 @@ describe('createApiHandler', () => {
             expect(config.activeBlocks[0]).toMatchObject({
                 id: 'block_abc',
                 fileKey: '/app.js',
-                expectedHash: 'aaa',
+                expectedHashes: ['aaa'],
                 occurrenceCount: 3,
             });
             expect(config.activeBlocks[0].formattedTimestamp).toBeDefined();
@@ -258,7 +258,7 @@ describe('createApiHandler', () => {
             );
             const { activeBlocks } = decodeInlinedConfig(await res.text());
 
-            expect(activeBlocks[0].expectedHash).toBe('N/A');
+            expect(activeBlocks[0].expectedHashes).toEqual([]);
             expect(activeBlocks[0].actualHash).toBe('N/A');
             expect(activeBlocks[0].occurrenceCount).toBe(1);
         });

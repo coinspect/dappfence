@@ -1,0 +1,50 @@
+{
+    "name": "@dappfence/next",
+    "version": "0.1.2",
+    "description": "Next.js integration for DappFence — webpack plugin, manifest generation, script injection",
+    "license": "MIT",
+    "type": "module",
+    "main": "./src/index.js",
+    "types": "./index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "default": "./src/index.js"
+        }
+    },
+    "bin": {
+        "dappfence-next": "./bin/dappfence-next.js"
+    },
+    "files": [
+        "src",
+        "bin",
+        "index.d.ts",
+        "!src/__tests__"
+    ],
+    "scripts": {
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/coinspect/dappfence.git",
+        "directory": "packages/next"
+    },
+    "keywords": [
+        "next",
+        "nextjs",
+        "security",
+        "service-worker",
+        "integrity",
+        "dapp",
+        "web-security"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@dappfence/core": "*",
+        "@dappfence/manifest-tools": "*"
+    }
+}
