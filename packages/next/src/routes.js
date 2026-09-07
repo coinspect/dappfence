@@ -17,8 +17,19 @@ async function readJson(filePath) {
  *  - Dynamic route pages (e.g. /blog/[slug]) — rendered per-request
  *  - SSR-only pages — rendered per-request (not in the prerender manifest)
  *
+ * Returns an object with four lists:
+ *  - allRoutes: all dynamic URL patterns (superset)
+ *  - fixedRoutes: SSR-only pages with no URL params — can be fetched and hashed
+ *  - probedPatterns: parameterised routes (contain '[') — probe with a sentinel value
+ *  - isrRoutes: prerendered routes with initialRevalidateSeconds > 0 — body hash
+ *    becomes stale after the first revalidation cycle and must be excluded from
+ *    manifest.files
+ *
+ * Rewrite patterns (contain ':') proxy to external origins and are excluded from
+ * both fixedRoutes and probedPatterns — they can never be fetched at build time.
+ *
  * @param {string} projectRoot - Absolute path to the Next.js project root.
- * @returns {Promise<string[]>}
+ * @returns {Promise<{ allRoutes: string[], fixedRoutes: string[], probedPatterns: string[], isrRoutes: string[] }>}
  */
 export async function readDynamicRoutes(projectRoot) {
     const nextDir = path.join(projectRoot, '.next');
@@ -30,7 +41,8 @@ export async function readDynamicRoutes(projectRoot) {
         readJson(path.join(nextDir, 'server', 'app-paths-manifest.json')),
     ]);
 
-    if (!routesManifest) return [];
+    if (!routesManifest)
+        return { allRoutes: [], fixedRoutes: [], probedPatterns: [], isrRoutes: [] };
 
     const patterns = new Set();
 
@@ -84,5 +96,51 @@ export async function readDynamicRoutes(projectRoot) {
         patterns.add(urlPath);
     }
 
-    return [...patterns];
+    const allRoutes = [...patterns];
+
+    // ISR routes: prerendered at build time but regenerated periodically.
+    // Their body hash is valid only until the first revalidation cycle; after that
+    // the on-disk HTML diverges from what the server serves. Callers should drop
+    // body hashes for these routes to avoid false-positive tamper alerts.
+    const isrRoutes = Object.entries(prerenderManifest?.routes ?? {})
+        .filter(([, meta]) => meta.initialRevalidateSeconds !== false)
+        .map(([path]) => path);
+
+    const fixedRoutes = [];
+    const probedPatterns = [];
+    for (const route of allRoutes) {
+        if (route.includes('[')) {
+            probedPatterns.push(route);
+        } else if (!route.includes(':')) {
+            // Rewrites use ':param' syntax and proxy to external origins — don't fetch them.
+            fixedRoutes.push(route);
+        }
+    }
+
+    return { allRoutes, fixedRoutes, probedPatterns, isrRoutes };
+}
+
+/**
+ * Read Next's prerender-manifest.json and return the list of prerendered
+ * concrete URLs — pages and force-static route handlers whose response bytes
+ * are deterministic across requests. ISR routes (initialRevalidateSeconds > 0)
+ * are excluded because their body hash goes stale after the first revalidation
+ * cycle.
+ *
+ * These URLs feed the unified fetch-based hashing pipeline. The programmatic
+ * Next server serves them with the same bytes as the on-disk .html/.body
+ * files, so fetching is equivalent to walking .next/server/ but robust to
+ * Next's internal layout changes.
+ *
+ * @param {string} projectRoot
+ * @returns {Promise<string[]>}
+ */
+export async function readPrerenderedRoutes(projectRoot) {
+    const prerenderManifest = await readJson(
+        path.join(projectRoot, '.next', 'prerender-manifest.json')
+    );
+    if (!prerenderManifest) return [];
+    return Object.entries(prerenderManifest.routes ?? {})
+        .filter(([, meta]) => meta.initialRevalidateSeconds === false)
+        .map(([urlPath]) => urlPath);
 }

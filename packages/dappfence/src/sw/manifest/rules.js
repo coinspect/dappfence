@@ -5,6 +5,8 @@
 
 // ── contentRules ─────────────────────────────────────────────────────────────
 
+import { decodePathname } from './verification.js';
+
 /**
  * @param {object|undefined} condition
  * @param {string} fileKey
@@ -72,17 +74,19 @@ const applyPathRule = (rule, pathname, files) => {
     return null;
 };
 
-// Predicate: rule participates in normal key resolution (not a not-found fallback rule).
+// Predicate: rule participates in normal key resolution (not an error-page fallback rule).
 const isApplicableRule = (pathname) => (r) =>
-    r.type !== 'not-found' &&
+    r.type !== 'error-page' &&
     (!r.condition?.urlFilter || pathname.startsWith(r.condition.urlFilter));
 
-// Predicate: rule is a not-found fallback whose fallback key exists in files and whose
-// condition matches the current request. Used as pathRules.find(isNotFoundRule(...)).
-const isNotFoundRule = (pathname, destination, files) => (r) =>
-    r.type === 'not-found' &&
-    r.fallback &&
-    files[r.fallback] !== undefined &&
+// Predicate: rule is an error-page fallback matching the response status and request
+// condition. The mapped `url` is used as the manifest key downstream — the verifier's
+// existing contentRule / files lookup decides byte-hash vs CSP-only vs unknown-key,
+// exactly like any normal navigation. Used as pathRules.find(isErrorPageRule(...)).
+const isErrorPageRule = (pathname, destination, status) => (r) =>
+    r.type === 'error-page' &&
+    r.status === status &&
+    r.url &&
     matchesCondition(r.condition, pathname, destination);
 
 /**
@@ -93,14 +97,14 @@ const isNotFoundRule = (pathname, destination, files) => (r) =>
  *
  * A named-type rule succeeds when the resolved candidate exists in `files`.
  * A match/resolveAs rule always succeeds (terminal).
- * When `response` is supplied and non-OK, a `not-found` pathRule can map the
- * pathname to a fallback key (last-resort, regardless of rule position).
+ * When `response` is supplied and non-OK, an `error-page` pathRule can map the
+ * pathname to a status-specific URL (last-resort, regardless of rule position).
  * Falls back to pathname if no rule matches.
  *
  * @param {{ url: string, destination: string }} req
  * @param {string} base - SW location href
  * @param {object} manifest - manifest object with pathRules and files
- * @param {{ ok: boolean }|null} [response] - supply to enable not-found fallback
+ * @param {{ ok: boolean, status: number }|null} [response] - supply to enable error-page fallback
  * @returns {string}
  */
 export const resolveManifestKey = (req, base, manifest = {}, response = null) => {
@@ -118,9 +122,7 @@ export const resolveManifestKey = (req, base, manifest = {}, response = null) =>
     if (fileUrl.origin !== originUrl.origin) {
         return fileUrl.href;
     }
-
-    const { pathname } = fileUrl;
-
+    const pathname = decodePathname(fileUrl.pathname);
     const fileKey = pathRules
         .filter(isApplicableRule(pathname))
         .map((r) => applyPathRule(r, pathname, files))
@@ -129,10 +131,14 @@ export const resolveManifestKey = (req, base, manifest = {}, response = null) =>
         return fileKey;
     }
 
-    // not-found is last resort regardless of its position in pathRules
+    // error-page is last resort regardless of its position in pathRules.
+    // The mapped `url` may or may not exist in `files` — the verifier's
+    // downstream contentRule + files lookup handles both cases uniformly
+    // (byte-verify if hashed, CSP-only if a matching contentRule exists,
+    // unknown-key if neither).
     if (response && !response.ok && files[pathname] === undefined) {
-        const rule = pathRules.find(isNotFoundRule(pathname, req.destination, files));
-        if (rule) return rule.fallback;
+        const rule = pathRules.find(isErrorPageRule(pathname, req.destination, response.status));
+        if (rule) return rule.url;
     }
 
     return pathname;

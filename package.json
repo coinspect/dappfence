@@ -5,10 +5,10 @@
     "scripts": {
         "dev": "npm run build && npm run dev -w @dappfence/test-app",
         "dev:http": "npm run build && npm run dev:http -w @dappfence/test-app",
-        "test": "npm run build && node scripts/run-ws.js test",
-        "test:coverage": "npm run build && node scripts/run-ws.js test:coverage",
+        "test": "TEST=1 npm run build && node scripts/run-ws.js test",
+        "test:coverage": "TEST=1 npm run build && node scripts/run-ws.js test:coverage",
         "test:unit": "npm test -w @dappfence/core",
-        "test:e2e": "npm run build && npm test -w @dappfence/test-app",
+        "test:e2e": "TEST=1 npm run build && npm test -w @dappfence/test-app",
         "build": "npm run build --ws --if-present",
         "build:prod": "npm run build:prod -w @dappfence/core",
         "build:watch": "npm run build:watch -w @dappfence/core & npm run build:watch -w @dappfence/test-app",

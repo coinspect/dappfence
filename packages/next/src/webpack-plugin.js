@@ -1,9 +1,6 @@
-import { createRequire } from 'node:module';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-
-const _require = createRequire(import.meta.url);
-const { buildNetlifyContentRules } = _require('@dappfence/manifest-tools/manifest');
+import { promises as fs } from 'fs';
+import path from 'path';
+import { buildNetlifyContentRules } from '@dappfence/manifest-tools/manifest';
 
 const DEFAULT_PATH_RULES = [{ type: 'directory-index' }, { type: 'html-extension' }];
 
@@ -65,7 +62,12 @@ export class DappfenceWebpackPlugin {
     }
 
     async _copyDappfenceJs(projectRoot) {
-        const dappfenceJsPath = _require.resolve('@dappfence/core');
+        const { createRequire } = await import(/* webpackIgnore: true */ 'module');
+        const _require = createRequire(import.meta.url);
+        const isDevBuild = this.opts.scriptSrc.endsWith('.dev.js');
+        const dappfenceJsPath = isDevBuild
+            ? _require.resolve('@dappfence/core/dev')
+            : _require.resolve('@dappfence/core');
         const publicDir = path.join(projectRoot, 'public');
         await fs.mkdir(publicDir, { recursive: true });
         const destRel = this.opts.scriptSrc.replace(/^\//, '');

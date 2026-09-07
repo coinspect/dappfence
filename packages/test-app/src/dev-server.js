@@ -227,6 +227,30 @@ function startServer({
         },
     };
 
+    // { file?, inject: content | [content, target] }
+    function applyIntercept(data, testParams, { file, inject: injectArgs } = {}) {
+        let html = data.toString('utf8');
+        if (file) {
+            const filePath = path.join(PROJECT_ROOT, testParams.app, file);
+            if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+                console.log(
+                    `[${getTimestamp()}]  \x1b[31m[INTERCEPT] file not found ${filePath}\x1b[0m`
+                );
+                return html;
+            }
+            html = fs.readFileSync(filePath, 'utf8');
+        }
+        if (injectArgs) {
+            const [content, target] = Array.isArray(injectArgs) ? injectArgs : [injectArgs];
+            if (target && html.includes(target)) {
+                html = html.replace(target, content + target);
+            } else {
+                html = html + content;
+            }
+        }
+        return html;
+    }
+
     const INTERCEPT_FORMULAS = {
         default: (data, testParams, filePath) => {
             const p = filePath.trim().toLowerCase();
@@ -243,24 +267,12 @@ function startServer({
         },
         unchanged: (data) => data,
         empty: () => '',
-        inject: (data, _testParams, _filePath, _pattern, args) => {
-            const html = data.toString('utf8');
+        inject: (data, testParams, _filePath, _pattern, args) => {
             const [content, target] = Array.isArray(args) ? args : [args];
-            if (target && html.includes(target)) {
-                return html.replace(target, content + target);
-            }
-            return html + content;
+            return applyIntercept(data, testParams, { inject: [content, target] });
         },
-        replace: (data, testParams, filePath, pattern, args) => {
-            const replacement = path.join(PROJECT_ROOT, testParams.app, args);
-            if (fs.existsSync(replacement) && fs.statSync(replacement).isFile()) {
-                return fs.readFileSync(replacement, 'utf8');
-            }
-            console.log(
-                `[${getTimestamp()}]  \x1b[31m[REPLACE] skipping, file not found ${replacement}\x1b[0m`
-            );
-            return data;
-        },
+        remap: (data, testParams, _filePath, _pattern, args) =>
+            applyIntercept(data, testParams, args),
     };
 
     function getExtraResponseHeaders(testParams) {
@@ -388,41 +400,84 @@ function startServer({
                 res.end('File not found');
                 return;
             }
+            serveBuffer(filePath, data, res, req, testParams);
+        });
+    }
 
-            const sriHash = calculateSRIHash(data);
-            const mimeType = getMimeType(filePath);
-            const extraHeaders = getExtraResponseHeaders(testParams);
-            const relativeFilePath = path.relative(PROJECT_ROOT, filePath);
+    function serveBuffer(filePath, data, res, req, testParams) {
+        const sriHash = calculateSRIHash(data);
+        const mimeType = getMimeType(filePath || testParams.requestPath);
+        const extraHeaders = getExtraResponseHeaders(testParams);
+        const label = filePath ? path.relative(PROJECT_ROOT, filePath) : testParams.requestPath;
 
-            const params = testParameters[testParams.testKey];
-            const intercept =
-                params &&
-                params.intercept &&
-                params.intercept.find(
-                    (i) => i.pattern && checkPattern(i.pattern, testParams.requestPath)
-                );
-            const resData = intercept
-                ? INTERCEPT_FORMULAS[intercept.formula](
-                      data,
-                      testParams,
-                      filePath,
-                      intercept.pattern,
-                      intercept.args
-                  )
-                : data;
-
-            saveTestResponse(testParams, 'ok', filePath, extraHeaders, intercept);
-            logRequestToConsole(
-                req,
-                testParams,
-                `🔑 ${relativeFilePath}: ${sriHash} (${data.length} bytes) ${extraHeaders['Cache-Control'] || 'no-cache-header'}${intercept ? ` applied ${intercept.formula}` : ''}`
+        const params = testParameters[testParams.testKey];
+        const intercept =
+            params &&
+            params.intercept &&
+            params.intercept.find(
+                (i) => i.pattern && checkPattern(i.pattern, testParams.requestPath)
             );
-            res.sendDate = false;
-            res.writeHead(intercept?.statusCode ?? 200, {
-                'Content-Type': (intercept && intercept.contentType) || mimeType,
-                ...extraHeaders,
-            });
-            res.end(resData);
+        const resData = intercept
+            ? INTERCEPT_FORMULAS[intercept.formula](
+                  data,
+                  testParams,
+                  filePath,
+                  intercept.pattern,
+                  intercept.args
+              )
+            : data;
+
+        saveTestResponse(testParams, 'ok', filePath, extraHeaders, intercept);
+        logRequestToConsole(
+            req,
+            testParams,
+            `🔑 ${label}: ${sriHash} (${data.length} bytes) ${extraHeaders['Cache-Control'] || 'no-cache-header'}${intercept ? ` applied ${intercept.formula}` : ''}`
+        );
+        res.sendDate = false;
+        streamResponse(
+            res,
+            resData,
+            intercept?.args?.steps ? intercept.args : null,
+            intercept?.statusCode ?? 200,
+            (intercept && intercept.contentType) || mimeType || 'application/octet-stream',
+            extraHeaders
+        );
+    }
+
+    function streamResponse(res, data, args, statusCode, mimeType, extraHeaders) {
+        const steps = args?.steps ?? [];
+        const splitAt = args?.splitAt || null;
+
+        let head = Buffer.isBuffer(data) ? data.toString('utf8') : data;
+        let tail = '';
+        if (splitAt) {
+            const idx = head.indexOf(splitAt);
+            if (idx !== -1) {
+                tail = head.slice(idx);
+                head = head.slice(0, idx);
+            }
+        }
+
+        res.writeHead(statusCode, { 'Content-Type': mimeType, ...extraHeaders });
+        res.write(head);
+
+        let elapsed;
+        for (const step of steps) {
+            const content = step.inject || step.content || '';
+            const schedule =
+                typeof step.delay === 'number'
+                    ? (fn) => setTimeout(fn, (elapsed = (elapsed ?? 0) + step.delay))
+                    : (fn) => fn();
+            schedule(() => res.write(content));
+        }
+
+        const scheduleEnd =
+            elapsed !== undefined ? (fn) => setTimeout(fn, elapsed + 10) : (fn) => fn();
+        scheduleEnd(() => {
+            if (tail) {
+                res.write(tail);
+            }
+            res.end();
         });
     }
 
@@ -529,40 +584,24 @@ function startServer({
             }
         }
 
-        // Synthetic intercept: apply a matching formula with empty input so formulas
-        // like 'replace' and 'empty' can serve responses for paths with no base file
-        // (e.g. extensionless CDN URLs declared explicitly in a test's intercept list).
+        // Intercept with a target file (replace/remap): resolve and serve it.
+        // Intercept with no base file (empty, inject, stream, ...): serve from an empty buffer.
+        // Both fall through to not-found if no intercept matches or target file is missing.
         const testState = testParameters[testParams.testKey];
         const synthIntercept =
             testState?.intercept?.find(
                 (i) => i.pattern && checkPattern(i.pattern, testParams.requestPath)
             ) ?? null;
         if (synthIntercept) {
-            const resData = INTERCEPT_FORMULAS[synthIntercept.formula](
-                Buffer.alloc(0),
-                testParams,
-                '',
-                synthIntercept.pattern,
-                synthIntercept.args
-            );
-            const mimeType =
-                synthIntercept.contentType ||
-                getMimeType(synthIntercept.args || testParams.requestPath) ||
-                'application/octet-stream';
-            const extraHeaders = getExtraResponseHeaders(testParams);
-            saveTestResponse(testParams, 'synthetic', '', extraHeaders, synthIntercept);
-            logRequestToConsole(
-                req,
-                testParams,
-                `🔧 synthetic ${synthIntercept.formula} for ${testParams.requestPath}`
-            );
-            res.sendDate = false;
-            res.writeHead(synthIntercept?.statusCode ?? 200, {
-                'Content-Type': mimeType,
-                ...extraHeaders,
-            });
-            res.end(resData);
-            return;
+            const targetFile = synthIntercept.args?.file ?? null;
+            if (targetFile) {
+                const targetPath = path.join(PROJECT_ROOT, testParams.app, targetFile);
+                if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
+                    return serveFile(targetPath, res, req, testParams);
+                }
+            } else {
+                return serveBuffer('', Buffer.alloc(0), res, req, testParams);
+            }
         }
 
         saveTestResponse(testParams, 'file not found');

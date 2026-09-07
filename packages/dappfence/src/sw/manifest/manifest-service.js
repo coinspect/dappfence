@@ -13,7 +13,7 @@ const logger = createLogger();
 
 const getEffectiveMode = (manifest) =>
     manifest?.mode ||
-    (isFeatureEnabled('default-to-protected-mode') ? MODE.PROTECTED : MODE.REPORTING);
+    (isFeatureEnabled('default_to_protected_mode') ? MODE.PROTECTED : MODE.REPORTING);
 
 /**
  * @param {object} deps

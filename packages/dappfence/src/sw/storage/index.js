@@ -18,6 +18,7 @@ import {
     createActiveBlocksStore,
     createSecurityEventsStore,
     createApiTokenStore,
+    createCspViolationsStore,
 } from './security-stores.js';
 
 const logger = createLogger();
@@ -71,8 +72,18 @@ export function createAppStore(db, { userAgent, origin } = {}) {
         try {
             // status is the runtime verdict object; persistence + log lines want
             // the description string. Normalize once and use it everywhere below.
+            // Explicit allowlist avoids storing non-cloneable objects (Headers)
+            // or per-response ephemera (nonce).
             const statusName = details.status.description;
-            const persistedDetails = { ...details, status: statusName };
+            const persistedDetails = {
+                status: statusName,
+                fileKey: details.fileKey,
+                url: details.url,
+                assetType: details.assetType,
+                expectedHashes: details.expectedHashes,
+                actualHash: details.actualHash,
+                httpStatus: details.httpStatus,
+            };
             const method = details.status.isViolation ? 'error' : 'log';
             const logArgs =
                 STATUS_LOG[statusName] ??
@@ -127,6 +138,7 @@ export function createAppStore(db, { userAgent, origin } = {}) {
         activeBlocksStore,
         securityEventsStore,
         apiTokenStore: createApiTokenStore(db),
+        cspViolationsStore: createCspViolationsStore(db),
         recordSecurityViolation,
     };
 }

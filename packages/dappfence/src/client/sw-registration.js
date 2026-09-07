@@ -5,6 +5,7 @@
 import { createLogger } from '../core/logger.js';
 import { monkeyPatch, secureMonkeyPatch, verifyPatchIntegrity } from '../core/monkey-patch.js';
 import { notifyServiceWorkerReady, setupSecurityMessageListener } from './security-handler.js';
+import { setupCspViolationListener } from './csp-violation-handler.js';
 import { hasConfigManifest } from '../core/utils.js';
 import { MSG } from '../core/constants.js';
 import { createEmergencyPanel } from '../core/emergency-panel.js';
@@ -280,6 +281,7 @@ export async function initializeClient(clientScriptUrl) {
 
     // Set up a security message listener for intercepting violations early, even before SW claims control
     setupSecurityMessageListener();
+    setupCspViolationListener();
 
     // PHASE 0: Check for existing SW and claim control immediately if found
     await attemptEarlyControlClaim();

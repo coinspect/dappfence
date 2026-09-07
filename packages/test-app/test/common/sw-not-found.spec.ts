@@ -48,8 +48,8 @@ test.describe('not-found page verification', () => {
     }) => {
         await swHelper.interceptAndModifyPageContent({
             pattern: '**/sw-not-found-valid',
-            formula: 'replace',
-            args: '404.html',
+            formula: 'remap',
+            args: { file: '404.html' },
             statusCode: 404,
         });
         await page.goto('/sw-not-found-valid');
@@ -117,8 +117,8 @@ test.describe('not-found behavior without not-found pathRule', () => {
         // fallback key to compare against, so the SW cannot verify and must block.
         await swHelper.interceptAndModifyPageContent({
             pattern: '**/sw-no-rule-valid-body',
-            formula: 'replace',
-            args: '404.html',
+            formula: 'remap',
+            args: { file: '404.html' },
             statusCode: 404,
         });
         await expect(page.goto('/sw-no-rule-valid-body')).rejects.toThrow(

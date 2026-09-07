@@ -8,7 +8,8 @@
     "exports": {
         ".": "./src/build.js",
         "./crypto": "./src/crypto.js",
-        "./manifest": "./src/manifest.js"
+        "./manifest": "./src/manifest.js",
+        "./inline-scripts": "./src/inline-scripts.js"
     },
     "bin": {
         "dappfence-manifest": "./src/cli.js"

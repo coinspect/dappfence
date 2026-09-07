@@ -1,184 +1,205 @@
 # SSR / On-demand Route Verification
 
-## Current behavior
+This document describes how DappFence verifies server-rendered responses. The canonical case catalog
+and trust-model derivation live in `docs/verification-cases.md`; this doc is the SSR-specific slice:
+what the SW does with an SSR navigation or an SSR-fetched partial, why the earlier extraction-based
+designs were retired, and where the current implementation stands.
 
-DappFence verifies responses by comparing their SHA-256 hash against the signed manifest. This works
-perfectly for static files produced at build time. For server-rendered (SSR) routes the manifest
-records the route patterns under `dynamicRoutes` as metadata, but the service worker does not
-currently use that list to adapt its verification — an SSR response would be flagged as
-`NOT_FOUND_IN_MANIFEST` and treated as a violation.
+## What we're verifying
 
-## Why this matters
+SSR responses come in two consumption shapes:
 
-An attacker who controls the server can inject a `<script>` tag, an `onerror` attribute, a
-`javascript:` href, or a remapped importmap into any SSR response. Without extraction-based
-verification, DappFence's integrity guarantee does not extend to on-demand pages.
+-   **Navigation** (`destination: "document"`) — the browser parses the response as a document and
+    executes `<script>` elements according to the document's CSP. Cases 6, 7, 9, 19, 20, 21.
+-   **Fetched partial** (`destination: ""`) — a host page fetches HTML and injects it via
+    `innerHTML` / `dangerouslySetInnerHTML`. `<script>` elements inserted this way _do not execute_
+    (HTML parser rule). Runtime containment of the injected DOM is governed by the _host document's_
+    CSP, not the partial response's CSP (which is inert for this pattern). Cases 3, 4, 8, 10, 13,
+    14, 15, 18.
 
-## Proposed approaches
+The security question for each shape:
 
-### Option 1 — Marker-based skeleton hashing
+-   For navigation: prevent any attacker-controlled `<script>` from executing.
+-   For fetched partial: detect structural tampering in the fragment; execution containment is the
+    host document's CSP job.
 
-Developers annotate dynamic regions in their templates:
+## Trust model recap
 
-```html
-<h1><!-- df:dynamic -->Hello, Juan<!-- /df:dynamic --></h1>
-<script src="/app.js"></script>
-```
+Per `docs/verification-cases.md` § "The trust model": the origin is assumed compromised. Any header,
+nonce, inline script, or CSP directive the origin emits is untrusted. The signed manifest is the
+sole runtime source of truth. Everything below must derive from it.
 
-**Build time** (integration): strip every `<!-- df:dynamic -->…<!-- /df:dynamic -->` region, hash
-the remaining skeleton, record it in the manifest against the route pattern.
+## Current mechanism (first-step, ships today)
 
-**Runtime** (service worker): strip the same markers from the SSR response body, hash the result,
-compare against the manifest.
+For navigation responses:
 
-Stripping is a plain regex — no DOM parser is needed, and it works on raw bytes before the response
-reaches the page.
+1. SW verifies the response body:
+    - **staticPages** (SSG, static export) — full-body SHA-256 match against `manifest.files`.
+    - **stableInlineScripts** (SSR with build-time-stable inline scripts) — no full-body hash;
+      `manifest.csp.pages[pageKey]` lists SHA-256 hashes of each stable inline `<script>` body and
+      `on*` attribute value, emitted in the SW's CSP header.
+2. SW emits its own `Content-Security-Policy` header derived entirely from the manifest, replacing
+   any origin-emitted CSP wholesale (see `docs/csp-injection-strategy.md`).
 
-| Pros                                        | Cons                                         |
-| ------------------------------------------- | -------------------------------------------- |
-| Simple to implement                         | Developer must annotate every dynamic region |
-| Full skeleton is verified                   | Easy to forget a region                      |
-| Extends naturally to partial HTML fragments | Annotation drift over time                   |
+For fetched HTML partials:
 
-### Option 2 — DOMParser extraction (primary mechanism)
+1. SW hashes the response body (static partials — Cases 1, 2, 16) and compares against
+   `manifest.files`.
+2. Dynamic partials (Cases 3, 4, 8, 10, 13, 14, 15) are not currently verified at the response level
+   — see § What breaks in the first step below.
 
-Instead of hashing the whole page, the SW parses the HTML response with `DOMParser` and extracts the
-security-critical content into three independently verified manifest entries:
+### What breaks in the first-step
 
-| Manifest entry         | What is extracted                                                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `pageKey + #scripts`   | Text content of all `<script>` elements (excluding `type="importmap"` and data islands)                                            |
-| `pageKey + #handlers`  | All `on*` attribute values on any element; `href`, `action`, `formaction`, `src` (iframe/frame) values starting with `javascript:` |
-| `pageKey + #importmap` | Text content of `<script type="importmap">` elements                                                                               |
+Under this CSP posture, any `<script>` whose body is not byte-stable across requests is blocked.
+This includes:
 
-Each entry is verified as a set-membership check — every extracted item must have a matching hash in
-the manifest set. An injected element or attribute not present at build time produces a hash not in
-the set, triggering a violation. Manifest entries with no matching extracted item are silently
-ignored — they represent other known-good versions, not required content.
+-   Next.js RSC `<script>self.__next_f.push(…)</script>` chunks — bodies contain per-request RSC
+    wire-format payloads. Blocking these breaks hydration and unmounts the server-rendered tree; the
+    page appears blank. Accepted as a first-step regression; the fix requires the streaming rewriter
+    (below).
+-   Astro server-island init scripts (Case 10) — per-request URL / prop-hash values in the init
+    call.
+-   `<script>window.__STATE__ = {…}</script>` per-request state assignments (Case 14).
 
-**`DOMParser` availability in SW**: `DOMParser` is available in service worker context in Chrome
-119+ (October 2023) and Firefox.
+The forcing-function guidance for developers hitting these: move per-request data to
+`<script type="application/json">` data islands (Case 20 Pattern B). Islands are non-executable (CSP
+`script-src` does not apply) and readable via `document.getElementById(id).textContent`.
 
-**Build time**: for each route pattern, render the page once and run the same three extractions to
-populate the manifest entries.
+## Direction — CSP + JSON islands (first step) + targeted RSC parser (next)
 
-**Runtime**: the SW receives the HTML response, parses it with `DOMParser`, runs all three
-extractions in a single DOM walk, then checks each result against its manifest entry.
+**First step (skeleton hashing / general-shape parser retired 2026-06-25).** The SW emits
+`script-src-elem 'nonce-N' *` with a fresh N per response, tags only its own bootstrap script with
+N, and strips the origin CSP. Every other inline `<script>` reaches the browser un-nonced and is
+blocked. Per-request state that today ships as inline `<script>` (RSC push chunks,
+`window.__STATE__ = …`, framework hydration payloads) must be refactored by the app into inert
+`<script type="application/json">` data islands, read via `JSON.parse(el.textContent)`. Data blocks
+are not scripts; CSP doesn't gate them, and the SW byte-hashes their bodies when the manifest
+declares them. External scripts pass CSP via `*` and are hash-verified by the SW at fetch time.
 
-| Pros                                                          | Cons                                                      |
-| ------------------------------------------------------------- | --------------------------------------------------------- |
-| Zero annotation burden                                        | Requires per-route manifest entries                       |
-| Covers scripts, event handlers, javascript: hrefs, importmaps | Inline scripts must be static at build time (see caveats) |
-| Single DOM walk for all three extractions                     |                                                           |
-| Correct HTML semantics — no regex fragility                   |                                                           |
+This closes both "attacker injects new `<script>`" and "attacker tampers with existing `<script>`"
+uniformly, without any per-shape response-body parser. It also closes the composition gap for
+fetched partials: every navigation response gets an SW-emitted CSP, so pages that later inject
+fetched partial HTML via innerHTML have real containment guarantees (parser inertness for `<script>`
 
-## Recommended path
+-   host-document CSP for other execution vectors).
 
-Implement **Option 2** (DOMParser extraction) as the primary mechanism — it requires no changes to
-application templates and directly addresses all known SSR injection vectors in one pass. Layer
-**Option 1** on top for teams that want full skeleton coverage or need to protect page content
-beyond the extracted elements.
+**Next step (planned) — a targeted RSC wire-format parser.** Aimed at the single per-request-inline
+shape that Next.js RSC apps depend on. The SW streams the response, identifies
+`<script>self.__next_f.push(…)</script>` boundaries, hands each body to the RSC parser, verifies the
+wire-format payload against the route's manifest entry, and applies `nonce=N` iff verified. Once
+shipped, Cases 6/7/20-Pattern-C/21 become compatible. Only the RSC format is in scope; other
+per-request inline shapes (Pattern A `window.__STATE__ = …`, Astro island init, dynamic-nonce
+scripts) stay in the "refactor to a data island or external script" bucket.
 
-Both options require:
+### What was retired — general-shape parser
 
--   Manifest schema additions (`#scripts`, `#handlers`, `#importmap` entries per route key,
-    alongside the existing `dynamicRoutes` array).
--   SW fetch handler: match the request path against known dynamic route patterns and route to the
-    extraction-based verification path instead of the standard hash check.
--   Integration: a build step to render each SSR route once and capture the three manifest entries.
+Retained as historical rationale for anyone re-opening the "let's verify every per-request body"
+question. The retired design was:
 
----
+1. SW generates a fresh unpredictable nonce N per navigation response.
+2. SW emits CSP with `script-src 'nonce-N'` in the header, before body streams.
+3. SW streams the body through an HTML tokenizer, identifies `<script>` element boundaries.
+4. For each `<script>`:
+    - Verify the body against the manifest's skeleton for this route.
+    - Build-time-stable body → byte-exact match against a listed hash.
+    - Per-request body → structural skeleton and dynamic-leaf heuristics **for every framework
+      shape** — RSC Flight tree, `window.<name> = <literal>`, Astro island init, JSON island
+      position, importmap validation, and so on.
+5. Verified → SW writes `nonce=N` on the element. Unverified → no nonce → browser blocks.
 
-## Implementation design
+Rejected because the SW-side cost (streaming HTML tokenizer + per-shape parsers for every framework
+inline shape + manifest schema for skeletons + variant enumeration for bounded conditionals) was
+judged higher than the developer-side cost of refactoring per-request state into data islands. The
+forcing function is the point: apps that can't refactor aren't compatible with DappFence's
+guarantees, which is a load-bearing property, not a limitation.
 
-### Single-pass buffering with deferred response delivery
+The planned RSC parser is deliberately _not_ the retired general-shape parser. It handles one wire
+format (the highest-value framework target), has a narrow interface (in: script body; out:
+verified/rejected), and doesn't grow the manifest schema beyond a per-route RSC skeleton entry.
 
-The SW cannot start sending the HTML response to the browser before verification completes — if a
-violation is detected after partial delivery, the browser has already received and begun rendering
-injected content, and a redirect to the block page is no longer possible via HTTP headers.
+## Why the earlier extraction designs were retired
 
-Instead, the SW reads the full response body, parses it with `DOMParser`, and runs all three
-extractions in a single DOM walk before returning the response:
+Earlier drafts of this doc proposed two designs to verify SSR responses. Both were dropped when the
+trust model was tightened and the streaming-rewriter design landed.
 
-```js
-const body = await response.text();
-const bodyHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
-const doc = new DOMParser().parseFromString(body, 'text/html');
-const scripts = extractInlineScripts(doc); // #scripts
-const handlers = extractHandlers(doc); // #handlers
-const importmaps = extractImportmaps(doc); // #importmap
-// verify each set against manifest entries
-// if ok:
-return new Response(body, { status: response.status, headers: response.headers });
-```
+### Option 1 — Marker-based skeleton hashing (retired)
 
-Memory cost: O(document size) for the text buffer, plus the DOM tree built by `DOMParser` —
-unavoidable for pre-delivery verification with correct HTML semantics.
+Developers annotated dynamic regions with HTML comments
+(`<!-- df:dynamic -->…<!-- /df:dynamic -->`); the SW stripped markers and hashed the remaining
+skeleton.
 
-### Stream-to-browser with postMessage violation redirect
+Failure modes:
 
-An alternative that avoids delivery latency: the SW tees the response and streams one branch
-immediately to the browser while the other branch is buffered. Once buffering is complete,
-`DOMParser` extracts inline content and the body hash is computed. If a violation is detected, the
-SW sends a violation postMessage to the page client.
+-   Developer must annotate every dynamic region; missing one produces a runtime violation.
+-   Annotation drifts over time as templates evolve.
+-   Doesn't cover per-request inline scripts (RSC push, per-request state assignments) — those
+    aren't a "region", they're script bodies that need their own parse.
 
-This works because:
+### Option 2 — DOMParser extraction with set-membership manifest entries (retired)
 
-1. `dappfence.js` is loaded as a synchronous `<script>` in `<head>`, so it is always running before
-   any `on*` handler or other event can be dispatched (all `on*` handlers fire asynchronously — none
-   execute during parsing).
-2. The SW uses `event.resultingClientId` from the navigation fetch event to target the postMessage
-   at the new page's client.
-3. The existing `CLIENT_READY` / message-broker infrastructure queues the violation message and
-   delivers it when `dappfence.js` sends `CLIENT_READY` on load.
-4. `dappfence.js` calls `location.replace(warningUrl)` on receipt — this triggers a navigation that
-   cancels pending tasks in the current document.
+The SW buffered the full response, parsed it with `DOMParser`, extracted three sets — inline
+scripts, `on*` handlers, importmaps — and did set-membership checks against manifest entries
+(`pageKey#scripts`, `pageKey#handlers`, `pageKey#importmap`).
 
-**Timing**: detection happens at EOF (set-membership requires the full document). By then the page
-is fully rendered but no `on*` handler has fired — user interaction events and image load failures
-are async and arrive after the redirect has been initiated. The brief render window is a known
-residual risk, not a silent bypass — the violation is recorded and the session is terminated.
+Failure modes:
 
-**Tradeoff summary**:
+-   **Set-membership over hashes can't cover per-request inline scripts.** RSC push bodies and
+    `window.__STATE__` assignments produce a new hash every request; no manifest set can list them
+    all. Any framework that emits per-request executable inline scripts breaks under this model.
+-   **Full buffering before delivery.** The set-membership result is only known at EOF; the SW can't
+    start streaming to the browser without giving up the ability to block on violation. This defeats
+    the entire streaming-hydration story for RSC / Suspense.
+-   **`DOMParser` is a full-document parser.** For streaming responses it forces buffer-then-parse
+    even where a token-boundary detector would suffice.
 
-| Approach             | Memory      | Delivery latency | Violation timing            |
-| -------------------- | ----------- | ---------------- | --------------------------- |
-| Buffer then verify   | O(document) | +parse time      | Block before render         |
-| Stream + postMessage | O(document) | None             | Redirect after render (EOF) |
+The streaming rewriter subsumes both: skeleton match and per-shape parsers handle per-request script
+bodies; token-boundary streaming avoids full buffering except where structural variant enumeration
+forces it (see below).
 
-Both approaches are valid. Buffer-then-verify is simpler and gives a clean block page with no render
-flash. Stream + postMessage has no delivery latency cost and leverages existing DappFence client
-infrastructure, at the cost of a brief render window before the violation redirect fires.
+## Verification tiers
 
----
+Cross-referenced from `docs/verification-cases.md` § "Verification limits":
 
-## Known limitations and caveats
+| Tier                              | Cases                      | Mechanism under current direction                                                                                       |
+| --------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Strong — static assets            | 1, 2, 16                   | Full SHA-256 of response body                                                                                           |
+| Strong — declared data islands    | 8, 14, 20 Pattern B        | Byte hash of `<script type="application/json">` body (inert data block; CSP does not gate)                              |
+| Execution-safe (fetched partials) | 3, 4, 13, 15, 18           | Allowlist route; execution safety from host-document CSP + `innerHTML` parser inertness. No content-integrity claim.    |
+| Execution-safe (SSR navigation)   | 9, 19, 20 Pattern A, 21    | Host-document CSP with SW-generated nonce; only nonced bootstrap runs. Per-request inline must be refactored to island. |
+| Fallback — code-layer             | any body not covered above | Verify the JS bundle + server templates producing the response, not the response itself                                 |
 
-### `on*`, `javascript:` attributes, and importmaps — planned, not yet implemented
+## Practical guidance for developers
 
-All three gaps are closed by Option 2's DOMParser extraction phase. Until the `#handlers` and
-`#importmap` manifest entries are implemented, operators of SSR routes should treat DappFence as
-providing **inline `<script>` protection only** — not full page integrity — and must deliver a
-strict CSP exclusively via HTTP headers (not via `<meta>` tag, which an attacker controlling the
-response body can override) to cover the remaining vectors.
+-   **Prefer JSON data islands over executable inline scripts** for per-request data delivery (Case
+    8, Case 20 Pattern B). Islands are non-executable, CSP-inert, framework-agnostic, and require no
+    wire-format parser in the SW.
+-   **Prefer `getStaticPaths` / `generateStaticParams`** where the ID set is enumerable. This
+    converts parameterized SSR into per-ID static hashes (Case 2 pattern), which is the strongest
+    guarantee available.
+-   **Bootstrapper inline scripts must be byte-stable across renders.** Theme detection, framework
+    init calls, etc. must not embed per-request data. When per-request data is needed, source it
+    from a JSON island the bootstrapper reads.
+-   **Case 15 (conditional elements) forces buffering under variant enumeration.** For high-traffic
+    routes where buffering latency matters, either list the variants deliberately (small bounded
+    set) or emit a server-side variant marker on the root element so the SW can identify the variant
+    from the first token and stream from there.
+-   **`force-dynamic` in Next.js App Router breaks under the first-step CSP.** RSC push bodies can't
+    be pre-hashed. If your app requires per-request RSC, either wait for the streaming rewriter or
+    convert `force-dynamic` routes to SSG + client-side fetches for the truly dynamic data.
 
-### `#scripts` requires inline scripts to be static at build time
+## Known limits and honest pushback
 
-The set-membership check in the `#scripts` manifest entry only works if the inline scripts in the
-SSR response are identical across requests. If a framework embeds any per-request state into a
-`<script type="text/javascript">` block — as opposed to a `type="application/json"` data island,
-which the extractor skips — the hash of that block changes per request, and every page load triggers
-a violation.
-
-This assumption must be validated against each framework's actual output during integration. It
-cannot be assumed — it must be confirmed by inspecting what the framework emits for each route type.
-Inline scripts that embed dynamic data must be converted to data islands (`type="application/json"`)
-or moved server-side before `#scripts` verification can be enabled for that route.
-
-### Stream + postMessage: detection at EOF, not mid-stream
-
-The `#handlers`, `#scripts`, and `#importmap` set-membership checks all require the complete
-document before producing a result. Neither approach (buffer or stream) provides earlier-than-EOF
-violation detection for these vectors. The security value is containment: the violation is recorded,
-the session is terminated, and subsequent requests are blocked by the SW. It is not prevention of
-the initial render.
+-   **Skeleton hashing assumes a fixed structure.** Most real SSR components have at least one
+    conditional element (auth state, feature flags, error banners). Case 15 is the common case, not
+    the exception — the "streaming SSR" narrative works cleanly only for the rare fixed-skeleton
+    route.
+-   **Dynamic-leaf heuristics are load-bearing but weak.** "Looks like an integer / ISO timestamp /
+    URL" won't survive an attacker who controls the leaf value. Content integrity of dynamic values
+    is out of scope, but heuristics must still prevent structural escape (e.g., text-node heuristics
+    must reject bytes that would break the parser state).
+-   **RSC Flight-protocol parser is a maintenance liability.** React does not document the wire
+    format, and it changes between versions. Supporting Next.js RSC means tracking upstream. Scope
+    per-framework parsers deliberately — the cost per framework is real.
+-   **Set-membership over per-request script hashes is fundamentally not viable** (retired Option
+    2's failure). Any design that reappears wanting to "hash the extracted scripts and check against
+    a manifest set" is walking back into this trap.

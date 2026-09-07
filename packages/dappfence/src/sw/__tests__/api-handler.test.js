@@ -34,6 +34,10 @@ function createMockAppStore() {
         verificationResultsStore: {
             get: vi.fn().mockResolvedValue([{ file: '/app.js', status: 'match' }]),
         },
+        cspViolationsStore: {
+            logViolation: vi.fn().mockResolvedValue(undefined),
+            getViolations: vi.fn().mockResolvedValue([]),
+        },
     };
 }
 

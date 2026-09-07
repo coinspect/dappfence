@@ -80,7 +80,7 @@ function createJavascriptRedirectResponse() {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': "default-src 'self'; object-src 'none'; base-uri 'self';",
+        'Content-Security-Policy': "default-src 'self'; object-src 'none'; base-uri 'none';",
     });
 }
 
@@ -126,7 +126,28 @@ export function createRewriteResponse(response) {
     const contentType =
         response.headers.get('content-type')?.split(';')[0].trim() || 'application/octet-stream';
     return new Response('/* replaced by dappfence */', {
-        headers: { 'content-type': contentType },
+        headers: { 'content-type': contentType, 'Cache-Control': 'no-store' },
+    });
+}
+
+/**
+ * Returns a new Response with the given headers applied wholesale.
+ *
+ * Callers (currently the verifier's CSP handler) are responsible for building
+ * the complete Headers instance — that's where the trust-model decisions live
+ * (which origin headers to strip, which to preserve, which SW-derived headers
+ * to set). See `manifest/csp.js` § `buildCspHeader` and
+ * `docs/csp-injection-strategy.md`.
+ *
+ * @param {Response} response
+ * @param {Headers | Record<string, string>} headers
+ * @returns {Response}
+ */
+export function injectResponseHeaders(response, headers) {
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
     });
 }
 
@@ -171,7 +192,7 @@ export function createSecurityPageResponse(apiToken, activeBlocks) {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'X-Frame-Options': 'DENY',
             'Content-Security-Policy':
-                "default-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'self';",
+                "default-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none';",
         },
     });
 }

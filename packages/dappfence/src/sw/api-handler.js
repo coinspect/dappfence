@@ -14,8 +14,13 @@ const logger = createLogger();
  * @param {object} deps.appStore
  */
 export function createApiHandler({ onSecurityViolation, appStore }) {
-    const { apiTokenStore, activeBlocksStore, trustedManifestStore, verificationResultsStore } =
-        appStore;
+    const {
+        apiTokenStore,
+        activeBlocksStore,
+        trustedManifestStore,
+        verificationResultsStore,
+        cspViolationsStore,
+    } = appStore;
 
     async function validateApiToken(request) {
         const token = await apiTokenStore.getApiToken();
@@ -33,18 +38,23 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
         const verificationResults = appVersion
             ? await verificationResultsStore.get(appVersion)
             : [];
-        const blockHistory = await activeBlocksStore.getAllBlocks();
+        const [blockHistory, cspViolations] = await Promise.all([
+            activeBlocksStore.getAllBlocks(),
+            cspViolationsStore.getViolations(),
+        ]);
         const status = {
             appVersion,
             timestamp: new Date().toISOString(),
             trustedManifest,
             verificationResults,
             blockHistory,
+            cspViolations,
             stats: {
                 trustedFiles: Object.keys(trustedManifest?.files ?? {}).length,
                 totalVerifications: verificationResults.length,
                 totalBlocks: blockHistory.length,
                 activeBlocks: blockHistory.filter((b) => b.active).length,
+                totalCspViolations: cspViolations.length,
             },
         };
         logger.log('Status report:', JSON.stringify(status.stats));
@@ -75,6 +85,29 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
         return createSecurityPageResponse(apiToken, activeBlocks);
     }
 
+    async function handleCspViolation(request) {
+        const contentType = request.headers.get('Content-Type') ?? '';
+        if (
+            !contentType.includes('application/csp-report') &&
+            !contentType.includes('application/reports+json')
+        ) {
+            return new Response('Unsupported Media Type', { status: 415 });
+        }
+        const body = await request.text();
+        if (body.length > 4096) {
+            return new Response('Payload Too Large', { status: 413 });
+        }
+        let report;
+        try {
+            report = JSON.parse(body);
+        } catch {
+            return new Response('Bad Request', { status: 400 });
+        }
+        logger.warn('[CSP] violation report:', JSON.stringify(report));
+        await cspViolationsStore.logViolation(report);
+        return new Response(null, { status: 204 });
+    }
+
     async function handleSiteUnblock(_request) {
         // Errors bubble to the outer catch and become a plain-text 500, matching
         // how the rest of this handler reports unexpected failures.
@@ -103,6 +136,7 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
         },
         POST: {
             [API.SITE_UNBLOCK]: { handler: handleSiteUnblock },
+            [API.CSP_VIOLATION]: { handler: handleCspViolation },
         },
     };
 

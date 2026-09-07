@@ -23,12 +23,9 @@
  *   // Next.js: <Script strategy="beforeInteractive" {...attrs} />
  *   // React:   <script {...attrs} />
  */
-import { createRequire } from 'node:module';
+import { deriveIdentity } from '@dappfence/manifest-tools';
+import { buildScriptAttrs } from '@dappfence/manifest-tools/manifest';
 import { DappfenceWebpackPlugin } from './webpack-plugin.js';
-
-const _require = createRequire(import.meta.url);
-const { deriveIdentity } = _require('@dappfence/manifest-tools');
-const { buildScriptAttrs } = _require('@dappfence/manifest-tools/manifest');
 
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
@@ -39,6 +36,7 @@ const DEFAULTS = {
     warningUrl: null,
     manifestPath: 'integrity-manifest.json',
     exclude: [],
+    patchRSC: true,
 };
 
 // Internal env var name used to pass script attrs through the Next.js build.
@@ -46,6 +44,12 @@ export const ATTRS_ENV_KEY = '_DAPPFENCE_SCRIPT_ATTRS';
 
 export function withDappfence(options = {}) {
     const opts = { ...DEFAULTS, ...options };
+
+    // Translate the config option into the env var the preload and
+    // instrumentation actually consult. Env var wins if already set.
+    if (opts.patchRSC === false && !('DAPPFENCE_PATCH_RSC' in process.env)) {
+        process.env.DAPPFENCE_PATCH_RSC = 'false';
+    }
 
     opts.secretKey = opts.secretKey || process.env.DAPPFENCE_SECRET_KEY || null;
 

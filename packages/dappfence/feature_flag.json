@@ -3,14 +3,21 @@
         "learning_mode": false,
         "auto_confirm_site_lock": true,
         "mark_request": false,
-        "default-to-protected-mode": false,
-        "force_cors_scripts": true
+        "default_to_protected_mode": false,
+        "force_cors_scripts": true,
+        "csp_upgrade_insecure_requests": false,
+        "csp_report_sample": true
     },
     "production": {
         "learning_mode": false,
         "auto_confirm_site_lock": false,
         "mark_request": false,
-        "default-to-protected-mode": false,
-        "force_cors_scripts": true
+        "default_to_protected_mode": false,
+        "force_cors_scripts": true,
+        "csp_upgrade_insecure_requests": true,
+        "csp_report_sample": false
+    },
+    "test": {
+        "csp_upgrade_insecure_requests": false
     }
 }

@@ -1,147 +1,104 @@
 # CSP Injection Strategy
 
-## Approach
+The canonical design for what DappFence verifies and how it composes with CSP lives in
+`docs/verification-cases.md`. This document is the CSP-specific slice: what header the SW emits, how
+it treats the origin's header, and why.
 
-The service worker injects a `Content-Security-Policy` header into navigation responses before they
-reach the browser. The policy is derived entirely from the signed manifest — no HTML parsing by
-DappFence is required. The browser enforces CSP with its own parser.
+## Trust model summary
 
-```js
-new Response(response.body, {
-    headers: { ...response.headers, 'Content-Security-Policy': buildPolicy(manifest, pageKey) },
-});
-```
+Per `docs/verification-cases.md` § "The trust model":
 
-The base policy blocks everything. Individual directives are relaxed only where the manifest
-provides explicit authorization.
+-   The signed manifest is the **sole runtime source of truth for CSP**.
+-   Any `Content-Security-Policy` (and `Content-Security-Policy-Report-Only`) header the origin
+    emits is **untrusted** — the attacker with server control writes it.
+-   Any nonce the origin emits is **untrusted** — the attacker mints matching ones.
+-   Any inline `<script>` the origin serves is **untrusted** unless the SW verifies its body against
+    a signed skeleton.
+
+Two rules follow directly:
+
+1. **The SW replaces the origin's CSP header wholesale.** Not filters, not appends. Anything from
+   the origin is discarded; the header the browser enforces is derived entirely from the signed
+   manifest.
+2. **Origin nonces never propagate into the SW's CSP.** Where a nonce is used, it is SW-generated
+   per response (see § Nonce-based delivery, planned).
+
+### Why "just strip nonces from the origin header" is not enough
+
+A tempting simpler rule: leave the origin CSP intact, strip only `'nonce-…'` tokens. This fails
+because:
+
+-   `'unsafe-inline'` / `'unsafe-eval'` / origin-listed hashes in `script-src` remain enforced.
+    Attacker adds these to allowlist their own inline payload.
+-   `report-uri` remains attacker-controlled — violation telemetry leaks to the attacker.
+-   Multiple CSP headers are enforced _independently_ (intersection per directive). For any
+    directive we don't emit (`frame-ancestors`, `form-action`, `base-uri`, `frame-src`), whatever
+    the origin sets binds. The delta is the bypass surface.
+-   The filter list would need to grow with every new CSP feature. Full replacement is one invariant
+    vs. an ever-growing filter.
+
+## Emitted policy
+
+The SW-emitted CSP is derived from the signed `manifest.csp` section only. Base directives, no
+manifest data required:
 
 ```
 default-src     'none';
-script-src-elem 'sha256-A' 'sha256-B' *;
-script-src-attr 'unsafe-hashes' 'sha256-C';
+script-src-attr 'none';
+object-src      'none';
+base-uri        'none';
+frame-ancestors 'none';
+worker-src      'self';       // required — DappFence registers its own SW
 style-src       'self' 'unsafe-inline';
 img-src         'self' data:;
 font-src        'self';
-connect-src     'self' https://api.example.com;
-worker-src      'self';
-object-src      'none';
-base-uri        'self';
-frame-ancestors 'none';
-report-uri      /sw-api/csp-violation?token=...;
 ```
 
-Key policy decisions:
+Manifest-driven directives:
 
--   `script-src-elem` uses `*` for external scripts — DappFence already verifies every external
-    script by content hash at the SW level, so restricting by origin adds no security benefit.
--   `'strict-dynamic'` is intentionally absent — it is incompatible with the `*` wildcard.
--   `script-src-attr` is only emitted when `on*` attribute hashes are declared in the manifest.
-    `'unsafe-hashes'` is required by the CSP spec for hashes to apply to event handlers; without it
-    hashes in this directive are silently ignored.
--   `style-src 'unsafe-inline'` is safe: all CSS JS-execution vectors (`expression()`, `behavior:`,
-    HTC) are IE-only and dead in modern browsers.
--   `worker-src 'self'` is required because DappFence registers its own service worker from the page
-    context (`navigator.serviceWorker.register()`). Without it, `default-src 'none'` blocks the
-    registration.
+```
+script-src-elem 'sha256-…' *;            // inline hashes from manifest.csp.pages, external via *
+connect-src     'self' <manifest.csp.connectOrigins>;
+report-uri      /sw-api/csp-violation?token=<api-token>;
+```
 
----
+Notes on individual directives:
 
-## Verification tiers
+-   **`script-src-elem`** uses `*` for external scripts because the SW already verifies every
+    external script by content hash at fetch time — restricting by origin in CSP adds no security
+    benefit. Inline scripts are gated by manifest-listed hashes (current implementation) or by
+    SW-generated nonce (planned; see § Nonce-based delivery).
+-   **`'strict-dynamic'`** is intentionally absent. It is incompatible with the `*` wildcard, and
+    the external-script trust it would otherwise propagate is already covered by SW-level
+    verification.
+-   **`style-src 'unsafe-inline'`** is safe: all CSS JS-execution vectors (`expression()`,
+    `behavior:`, HTC) are IE-only and dead in modern browsers — see `docs/js-execution-vectors.md`
+    § 11.
+-   **`worker-src 'self'`** cannot be tightened portably. The browser already enforces same-origin
+    for service workers regardless of CSP, so `'self'` adds no new trust.
+-   **`report-uri`** — the DappFence violation-report endpoint. `report-uri` is deprecated in favor
+    of `report-to` + `Reporting-Endpoints`, but the newer API's SW-interception behavior varies
+    across browsers; `report-uri` remains the load-bearing mechanism.
 
-CSP injection combines with the existing full-body hash check to produce two distinct verification
-tiers depending on whether the page body is static or dynamic.
+## Header replacement — implementation shape
 
-### staticPages — Static pages (SSG, static export)
+Current code (`packages/dappfence/src/sw/response.js`) treats CSP as **additive**: the SW appends
+its policy alongside the origin's. That was correct under the "defense in depth" framing but is
+wrong under the current trust model — it leaves origin directives we don't override enforceable.
 
-Both mechanisms are active:
+Direction: the SW's header injection path must **delete** any incoming `Content-Security-Policy` and
+`Content-Security-Policy-Report-Only` headers from the response before setting its own. Concretely,
+the `ADDITIVE_HEADERS` set is replaced with a **strip-then-set** rule for these two headers; other
+additive headers (`Permissions-Policy`, `Reporting-Endpoints`, `Report-To`) can keep append
+semantics for now — they will get the same treatment in a follow-up.
 
--   **Full body hash check** — the SW hashes the entire response and compares against the manifest.
-    Any modification to any byte in the response is detected and blocked.
--   **CSP** — second independent layer. If the SW is somehow bypassed, the browser still enforces
-    the policy against script execution.
+## Hash-based inline delivery (current implementation)
 
-### stableInlineScripts — SSR pages with static inline scripts
+For build-time-stable inline scripts, `manifest.csp.pages[pageKey]` lists SHA-256 hashes of the
+`<script>` body and `on*` attribute values. The SW emits them in `script-src-elem` /
+`script-src-attr`.
 
-Full body hash is not possible (the body changes per request). CSP is the primary protection:
-
--   The SW injects CSP with hashes for the page's static inline bootstrapper scripts (from
-    `manifest.csp.pages[pageKey]`).
--   An attacker who controls the server can modify HTML structure, text content, and data values —
-    but cannot inject a new executing script, because CSP blocks any inline script whose hash is not
-    in the manifest.
--   External script fetches are still SW-verified (unchanged).
-
-**The residual gap is honest:** non-script HTML is unverified under stableInlineScripts. Structural
-tampering, link manipulation, and data value changes are not caught. The guarantee is specifically
-about script execution integrity, not full page integrity.
-
-**`csp.pages` entries are mandatory for stableInlineScripts.** Without them the CSP `script-src`
-contains no hashes, and every inline script on the page is blocked — including legitimate
-bootstrappers. The integration layer must extract and record the static inline scripts at build time
-before a route can operate under stableInlineScripts.
-
-Hashes are extracted at build time by `extractInlineScriptHashes(htmlPath)` from
-`@dappfence/manifest-tools`. The function returns `sha256-<base64>` values; the SW wraps each in
-single quotes when building the `script-src-elem` directive.
-
-### dynamicRSC — `force-dynamic` RSC routes (opt-in, with residual)
-
-No full body hash. CSP blocks all inline scripts including RSC payload scripts. Rather than failing
-the page, `dappfence.js` re-executes RSC push scripts after pattern-validating them client-side.
-
-**Mechanism:**
-
-When CSP blocks a `<script>` element the browser fires a `securitypolicyviolation` event.
-`dappfence.js` listens for this event and scans all inline `<script>` elements currently in the DOM:
-
-1. For each inline `<script>` not in the known-good hash set: apply a strict regex that accepts only
-   `self.__next_f.push([...])` and the companion init expression — nothing else.
-2. If the script matches: extract the array argument, `JSON.parse` it (cannot execute code), call
-   `self.__next_f.push(parsedArray)` directly.
-3. If the script does not match: leave it blocked. The violation is logged and the SW warning page
-   pipeline fires.
-
-React's bootstrapper has already overridden `self.__next_f.push` by the time the scan runs, so
-re-pushed data is processed immediately by React.
-
-**Security residual:**
-
-An attacker who controls the server can inject additional `self.__next_f.push([{...}])` scripts that
-pass pattern validation. This is **data injection into the React component tree** — not code
-injection. No JavaScript executes that was not pre-approved. The residual threat is equivalent to
-HTML injection on a stableInlineScripts SSR page: displayed values and component props can be
-tampered with, but no new script runs.
-
-dynamicRSC RSC is an opt-in mode. `@dappfence/next` emits a build warning (not an error) for
-`force-dynamic` routes and explains the residual. The developer must explicitly enable dynamicRSC
-RSC support in their config.
-
----
-
-## What this closes (without any HTML parsing)
-
-| Vector                                             | CSP mechanism                                                                           | Source                     |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------- |
-| `on*` event handler attributes                     | Blocked by default (`default-src 'none'`); opt-in via `script-src-attr 'unsafe-hashes'` | Manifest `attrs` entries   |
-| `eval()` / `new Function()` / `setTimeout(string)` | `'unsafe-eval'` absent                                                                  | No manifest data needed    |
-| Static inline `<script>` blocks                    | Hashes from `manifest.csp.pages[pageKey].scripts` in `script-src-elem`                  | Manifest `scripts` entries |
-| External scripts                                   | Origins from allow rules + `files` keys in `script-src-elem`                            | Manifest allow rules       |
-| `<object>` / `<embed>`                             | `object-src 'none'`                                                                     | No manifest data needed    |
-| WebAssembly                                        | `'wasm-unsafe-eval'` absent                                                             | No manifest data needed    |
-| `data:` / `blob:` script src                       | Not listed in `script-src-elem`                                                         | No manifest data needed    |
-
----
-
-## `on*` event handler attributes
-
-By default `default-src 'none'` blocks all inline event handlers. Apps that cannot refactor away
-from `on*` attributes can declare their handler values in the manifest; the SW then emits
-`script-src-attr 'unsafe-hashes' <hashes>` for that page.
-
-### Manifest shape
-
-`csp.pages[pageKey]` accepts either a legacy array (scripts only) or an object with separate
-`scripts` and `attrs` arrays:
+**`csp.pages` shape:**
 
 ```json
 "csp": {
@@ -154,255 +111,266 @@ from `on*` attributes can declare their handler values in the manifest; the SW t
 }
 ```
 
-Each hash in `attrs` is the SHA-256 of the **raw attribute value text** exactly as it appears in the
-HTML source (between the quotes, before any HTML entity decoding). The `@dappfence/manifest-tools`
-`extractInlineAttrHashes(htmlPath)` function returns `{ attrs: [{name, value, hash}], warnings }`
-and can be used at build time to discover all `on*` attribute values in a built HTML file.
+Each hash in `attrs` is the SHA-256 of the raw attribute value text, exactly as it appears between
+the quotes in an HTML source, before any entity decoding. `@dappfence/manifest-tools`'
+`extractInlineScriptHashes(htmlPath)` and `extractInlineAttrHashes(htmlPath)` produce these at build
+time.
 
-When `extractFrom` is used in the build config, both script and attribute hashes are extracted
-automatically. The build step logs each found handler so the developer can review what was included.
+### `'unsafe-hashes'` is required for `script-src-attr`
 
-### `'unsafe-hashes'` is required
+Event-handler hashes only apply when `'unsafe-hashes'` is present in `script-src-attr`. Without it,
+the browser silently ignores the hashes and blocks all handlers. DappFence emits `'unsafe-hashes'`
+automatically whenever `attrs` is non-empty; it is never emitted without accompanying hashes.
 
-Unlike `<script>` elements where hash-based CSP works natively, event handler hashes **only apply
-when `'unsafe-hashes'` is present** in `script-src-attr`. Without it the browser silently ignores
-the hashes and blocks all handlers regardless. DappFence automatically includes `'unsafe-hashes'`
-whenever `attrs` is non-empty; it is never emitted without accompanying hashes.
+**Security caveat — prefer `addEventListener`.** `'unsafe-hashes'` lets the browser execute the
+handler on any element whose attribute value matches a declared hash — including one an attacker
+injected. If HTML injection is possible on a route (i.e., anywhere the body is not byte-hashed), the
+attacker can clone the attribute onto a decoy element and trigger execution on user click.
+`addEventListener` inside a hash-allowlisted `<script>` block is element-bound and not hijackable.
 
-### Security caveat — prefer `addEventListener` where possible
+## Nonce-based delivery — direction, next step, and abandoned alternative
 
-`'unsafe-hashes'` weakens the isolation guarantee in one specific way: the browser allows any
-element — including one injected by an attacker — to execute a handler if its attribute value
-byte-for-byte matches a declared hash. In contrast, code attached via `addEventListener` inside a
-hash-authorized `<script>` block is bound to a specific element and cannot be hijacked by
-HTML-injection.
+**First step.** SW generates a fresh nonce N per response, emits `script-src-elem 'nonce-N' *`, tags
+only its own bootstrap script with N. Every other inline that reaches the browser is un-nonced and
+blocked. Per-request state that today ships as inline `<script>` (RSC push chunks,
+`window.__STATE__ = …`, framework hydration payloads) has to be refactored by the app into inert
+`<script type="application/json">` data islands (read with `JSON.parse(el.textContent)` — see
+`docs/verification-cases.md` § "Client consumption patterns" pattern 3). Data blocks are not
+scripts, so CSP doesn't gate them; the SW only needs to byte-hash their bodies where the manifest
+declares them stable. External scripts pass CSP via `*` and are hash-verified by the SW at fetch
+time.
 
-Concretely: if an attacker can inject arbitrary HTML into a stableInlineScripts SSR page and trick a
-user into clicking an injected element, the handler runs. For staticPages static pages this is not a
-concern (the full body hash check already blocks any HTML injection before the browser parses the
-page).
+**Next step (planned) — targeted RSC parser.** The SW streams response bodies, identifies
+`<script>self.__next_f.push(…)</script>` boundaries, hands each body to a narrow RSC wire-format
+parser, verifies the payload against a per-route manifest entry, and applies `nonce=N` iff verified.
+Aimed at Next.js RSC apps whose per-request inline is the RSC push wire — the highest- value
+framework target — without generalising to "verify every framework shape." Once shipped,
+`docs/verification-cases.md` Cases 6/7/20-Pattern-C/21 become compatible.
 
-**Recommendation:** for any new code, attach handlers via `addEventListener` inside a
-hash-allowlisted `<script>` block. Use the `attrs` escape hatch only for legacy code where
-refactoring is not feasible.
+**Skeleton verification (general-shape parser) was considered and abandoned** (2026-06-25). Not to
+be confused with the planned RSC parser. The retired design covered per-shape verification for
+_every_ framework inline shape (RSC push, `window.<name>` assignments, Astro island init, JSON
+island position, importmap validation, and so on). The mechanism worked on paper; the cost of
+shipping a streaming HTML tokenizer plus per-shape parsers plus a manifest schema for skeletons plus
+variant enumeration for bounded conditionals was judged higher than the developer cost of the
+data-island refactor. The forcing function is the point: apps that can't refactor don't work with
+DappFence, which is a load-bearing property, not a limitation to paper over. The design below is
+retained for historical context — the same problem statement (per-request inline can't be
+pre-hashed) will resurface if anyone re-opens the question.
 
----
+### Skeleton verification (retired design)
 
-## The dynamic inline script gap
+The hash approach only works for build-time-stable inline scripts. Per-request scripts (RSC push
+chunks, per-request `window.__STATE__` assignments, framework hydration payloads) cannot be
+pre-hashed. The retired mechanism:
 
-Hash-based CSP requires the inline script content to be **identical on every request**. A hash must
-be computed at build time and embedded in both the manifest and the CSP header; per-request dynamic
-content produces a different hash every time and cannot be pre-committed.
+1. SW generates a fresh unpredictable nonce N per response, before body streams.
+2. SW commits CSP with `script-src 'nonce-N'` in the header.
+3. SW streams the response body through an HTML tokenizer, identifies `<script>` element boundaries.
+4. For each `<script>`, the SW verifies the body against the manifest's skeleton for the route:
+    - Build-time-stable body → byte-exact match against a listed hash.
+    - Per-request body → structural skeleton and dynamic-leaf heuristics
+      (`window.<name> = <literal>`, RSC Flight-protocol tree, Astro server-island init, JSON
+      island).
+5. Verified → SW writes `nonce=N` on the element. Unverified → no nonce → browser blocks.
 
-This is not a fixable gap within the hash-based approach. The alternatives are:
+Under this mechanism, CSP `script-src` **does not list hashes** for per-request scripts — the nonce
+is the gate; the SW's per-element verification is the trust root. Byte-hash listing of
+build-time-stable scripts stays available as a defense-in-depth option but is redundant with
+verification-then-nonce.
 
--   **Nonce injection** — requires HTML body rewriting (the complexity we are avoiding).
--   **Accept as a forcing function** — dynamic `<script>` content must be moved to
-    `<script type="application/json">` data islands (not executable, not subject to CSP script-src).
+### First-step scope
 
-The forcing-function outcome is the correct security posture: executing per-request dynamic data as
-JavaScript is inherently riskier than using a data island that a verified static script reads. The
-integration layer should emit a build-time warning for any route that would produce a dynamic
-executable inline script.
+Rolling out the current direction is straightforward — no tokenizer, no per-shape parsers, no
+skeleton schema:
 
----
+1. Add header-strip behavior for origin CSP.
+2. Emit `script-src-elem 'nonce-N' *` with a per-response SW-generated N; tag only the bootstrap
+   with N. Keep the manifest's `csp.pages` byte-hashes as an optional defense-in-depth allowlist for
+   build-time-stable inline scripts.
+3. Accept that per-request inline scripts stay blocked — including Next.js RSC's
+   `self.__next_f.push(…)` blocks — until the app refactors to JSON data islands.
 
-## Framework analysis
+**Next.js RSC (`force-dynamic`) will break** in this state. That is the intended outcome under the
+forcing-function principle: the fix is to refactor the app to serialize state into data islands, not
+to reintroduce per-request-body verification in the SW. The `dynamicRSC` re-execution mode described
+in earlier drafts of this doc is retired.
 
-### Astro — static routes (Cases 1, 2)
+## What CSP alone closes
 
-Full coverage. HTML is fixed at build time; inline scripts are static. All hashes are available at
-manifest generation time. Nothing changes per request.
+Even before the streaming rewriter lands, the SW's CSP closes several vectors without any HTML
+parsing:
 
-### Astro — SSR routes (Cases 3, 9, 10)
-
-Coverage if — and only if — the route emits no dynamic executable `<script>` blocks. Astro SSR
-routes typically emit one or more hydration bootstraps as inline scripts; these are static (same
-bytes every request) and can be hashed. Per-request data should be placed in
-`<script type="application/json">` islands (Case 8).
-
-**Integration requirement (`@dappfence/astro`):** at build time, render each SSR route and assert
-that every `<script>` without `type="application/json"` has identical content across multiple
-renders. Fail the build if any inline script content varies.
-
-### Next.js — Pages Router
-
-Full coverage. Pages Router delivers initial props as a non-executable JSON island:
-
-```html
-<script id="__NEXT_DATA__" type="application/json">
-    {"props":{...}}
-</script>
-```
-
-`type="application/json"` is not subject to `script-src`. DappFence's extractor already skips these
-as data islands. Any other inline scripts (hydration bootstraps) are static at build time and can be
-hashed normally.
-
-### Next.js — App Router, SSG / ISR routes
-
-Full coverage. For statically generated pages, the RSC payload is served as a separate `.rsc` file
-fetched on client-side navigation. The inline scripts embedded in the initial HTML are static
-bootstrappers — their bytes are identical for every request to the same build. These can be hashed
-into the manifest and listed in `script-src`.
-
-### Next.js — App Router, `force-dynamic` routes (Case 6a)
-
-Covered under dynamicRSC (opt-in). Next.js unconditionally embeds RSC payloads inline for
-`force-dynamic` hard navigations:
-
-```html
-<script>
-    self.__next_f.push([0, { timestamp: '2026-06-23T14:32:17.000Z' }]);
-</script>
-```
-
-These blocks contain per-request dynamic data. No stable hash exists. Hash-based CSP blocks them.
-`dappfence.js` re-pushes validated RSC payloads via the `securitypolicyviolation` event handler.
-`@dappfence/next` emits a build warning when dynamicRSC is enabled and explains the data-injection
-residual.
-
-**What happens without dynamicRSC:**
-
-Blocking RSC push scripts does not merely prevent the explicit Pattern A script from running — it
-causes the entire page to disappear. The cascade: blocked push scripts → `self.__next_f` stays empty
-→ `React.createFromReadableStream` throws `Connection closed` → React unmounts the root tree → the
-server-rendered HTML is removed from the DOM. The violation report shows `lineNumber: 1` (Next.js
-renders HTML as one long line) and `sample: ""` (no `'report-sample'` in the CSP), making it
-visually indistinguishable from Pattern A violations. See **Case 20 — Next.js App Router: the RSC
-cascade** in `docs/verification-cases.md` for the step-by-step sequence.
-
-**Why server-side nonces do not help under DappFence's threat model:**
-
-A CDN-level attacker (the primary threat DappFence addresses) sits between the origin server and the
-browser and can read the full HTTP response — headers included. The server emits:
-
-```
-Content-Security-Policy: script-src 'nonce-abc123'
-<script nonce="abc123">self.__next_f.push([...])</script>
-```
-
-The attacker reads `abc123` from the response header and injects
-`<script nonce="abc123">steal()</script>`. The browser sees the nonce matches and executes it.
-Server-side nonces are transparent to any MITM that can observe the response.
-
-**Why hash-based CSP is MITM-resistant:** hashes are pre-committed into the signed manifest at build
-time. A CDN attacker who injects `<script>steal()</script>` would need to produce content whose
-SHA-256 matches a listed hash — a preimage attack on SHA-256. The attacker can only inject content
-that passes CSP if it is byte-for-byte identical to one of the developer's own known-good scripts,
-which provides no attack value.
-
-**The only secure nonce option is SW-generated nonce + HTML body rewriting:** the SW generates a
-nonce after receiving the response, rewrites `<script>` attributes to inject `nonce="..."`, and sets
-the CSP header. The nonce is created inside the browser's trusted execution environment and is never
-visible to a CDN MITM. This is secure but requires HTML body parsing — the complexity the hash-based
-approach is designed to avoid.
-
-**The `force-dynamic` trade-off:**
-
-Removing `force-dynamic` (switching to SSG or ISR) restores full CSP coverage. What you give up:
-
--   **Per-request data freshness.** The page is rendered once at build time (SSG) or periodically
-    (ISR). Data visible in the initial HTML is as stale as the last build or revalidation.
-    Client-side fetches via verified API endpoints can supply real-time data after the page loads —
-    the initial shell is static, the data is dynamic.
--   **Per-request server context.** `cookies()`, `headers()`, and `searchParams` cannot be read at
-    render time without making the route dynamic. Auth-gated content, personalisation, and
-    locale-from-header patterns all require either a client-side fetch after load or a middleware
-    redirect to a static variant.
--   **SEO for truly dynamic content.** If the page content that must be in the initial HTML for SEO
-    changes per request (e.g. user-specific metadata), SSG is not a substitute. In practice, most
-    SEO-critical content is not user-specific.
-
-For financial and security-sensitive applications — DappFence's primary target — the preferred
-architecture is a static authenticated shell with client-side data fetching. `force-dynamic` is
-often used for convenience rather than necessity; auditing each `force-dynamic` route for whether
-SSG + client fetch is a viable substitute is a prerequisite for deploying DappFence with strict CSP.
-
-`@dappfence/next` should emit a build-time error for each `force-dynamic` page and list the
-alternatives, rather than silently downgrading to dynamicRSC.
-
-### Next.js — static export
-
-Full coverage. Behaves identically to Astro static routes.
-
-### Case 13 — server-emitted nonces
-
-Server-emitted nonces are insecure against CDN-level MITM (see above). DappFence should not
-propagate or merge server-emitted nonce tokens. If the upstream response has a
-`Content-Security-Policy` header, DappFence replaces it entirely with the manifest-derived policy
-rather than merging.
-
----
+| Vector                                             | Directive that closes it                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| `on*` inline event handler attributes              | `script-src-attr 'none'` (or hash-allowlist with `'unsafe-hashes'`) |
+| `eval()` / `new Function()` / `setTimeout(string)` | absence of `'unsafe-eval'`                                          |
+| Static inline `<script>` blocks not in manifest    | absence of `'unsafe-inline'` in `script-src-elem`                   |
+| `<object>` / `<embed>`                             | `object-src 'none'`                                                 |
+| WebAssembly compile from origin bytes              | absence of `'wasm-unsafe-eval'`                                     |
+| `data:` / `blob:` script `src`                     | not listed in `script-src-elem`                                     |
+| `<base href>` hijack (relative-URL redirection)    | `base-uri 'none'`                                                   |
+| `javascript:` URLs in `<a>`, `<iframe>`, etc.      | absence of `'unsafe-inline'` (falls back to `default-src 'none'`)   |
+| Framing / clickjacking                             | `frame-ancestors 'none'`                                            |
 
 ## CSP violation reporting
 
-### What the browser does when CSP blocks a script
-
-Execution is blocked synchronously. The browser then sends an async POST to the `report-uri`
-endpoint (if configured) with a JSON violation report:
-
-```json
-{
-    "csp-report": {
-        "document-uri": "https://app.example.com/dashboard",
-        "violated-directive": "script-src-elem",
-        "blocked-uri": "inline",
-        "script-sample": "self.__next_f.push([0, {\"timesta",
-        "source-file": "https://app.example.com/dashboard",
-        "line-number": 42
-    }
-}
-```
-
-`script-sample` is the first 40 characters of the blocked inline script. Useful for diagnosis; not
-enough to recompute the hash.
-
-### DappFence violation pipeline
-
-DappFence always injects `report-uri /sw-api/csp-violation` into the generated CSP. This endpoint is
-already within the SW's scope, so the violation report POST fires a SW fetch event with
-`event.clientId` set to the client that generated the violation.
-
-The SW handles it:
+The SW's CSP always sets `report-uri /sw-api/csp-violation?token=<api-token>`. The report endpoint
+is same-origin and within SW scope, so browser-generated violation POSTs fire an SW fetch event with
+`event.clientId` set to the violating page.
 
 ```
 CSP blocks script (browser, synchronous)
   → browser POSTs violation report to /sw-api/csp-violation
     → SW fetch event fires (event.clientId = violating page)
-      → SW logs and stores violation (telemetry — browser already blocked execution)
+      → SW validates api-token, logs and stores violation (telemetry only —
+        browser has already blocked execution)
 ```
 
-DappFence **appends** its CSP header rather than replacing the server's existing one. A server-side
-`Content-Security-Policy` with its own `report-uri` is preserved and the browser delivers to both
-endpoints independently — no proxying needed.
+The `?token=` parameter rejects unauthenticated POSTs. Without the token, a compromised origin could
+forge violation reports to poison DappFence's telemetry.
 
-### `report-uri` vs `report-to`
+`Content-Security-Policy-Report-Only` is available for staging rollouts but should be treated the
+same as the enforcing header: origin-emitted values are discarded; the SW emits its own if a
+report-only rollout is configured.
 
-`report-uri` is deprecated but has universal browser support and its reports reliably fire the SW
-fetch event. The newer Reporting API (`report-to` + `Reporting-Endpoints` header) has inconsistent
-SW interception across browsers. DappFence uses `report-uri` for now. `report-to` can be added as an
-additional directive once its SW interception behavior stabilises, but `report-uri` is the load-
-bearing mechanism.
+## Framework compatibility (current CSP posture — first step)
 
----
+| Framework mode                                  | Coverage under first-step CSP (hash-based, no nonce)                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| Astro static (`output: 'static'`)               | Full — inline scripts hashed at build time                                     |
+| Astro SSR without server islands                | Works if inline scripts are stable across renders; integration must assert     |
+| Astro server islands (Case 10)                  | Requires streaming rewriter — per-request init script cannot be hashed         |
+| Next.js Pages Router                            | Full — `__NEXT_DATA__` is `type="application/json"`, not subject to script-src |
+| Next.js App Router SSG / ISR                    | Works when RSC payload is served as a separate `.rsc` file (not inline)        |
+| Next.js App Router `force-dynamic` (RSC inline) | **Breaks** — waits for streaming rewriter                                      |
 
-## Integration layer requirements summary
+## First-load bootstrap — the CSP TOFU window
 
-| Framework                               | Build-time requirement                                                   | SW behavior                                     |
-| --------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------- |
-| `@dappfence/astro` (static)             | Extract inline script hashes into `manifest.csp.pages`                   | Inject manifest-derived CSP                     |
-| `@dappfence/astro` (SSR)                | Assert no dynamic inline scripts; extract static hashes into `csp.pages` | Same as static                                  |
-| `@dappfence/next` (static export)       | Hash inline scripts                                                      | Same as static                                  |
-| `@dappfence/next` (RSC `force-dynamic`) | Build warning — dynamicRSC opt-in required; residual explained           | RSC re-push via `securitypolicyviolation` event |
+On the very first visit ever to the origin (SW not yet installed for this origin in this browser
+profile), our SW is not registered. The browser fetches the HTML directly from the origin, and
+whatever CSP the origin emits — or nothing — is what the browser enforces for that document.
+DappFence cannot inject a CSP header for a response the SW does not intercept.
 
----
+Even once the first page's `<script src="/dappfence.js">` runs and calls
+`navigator.serviceWorker.register()`, the current document's CSP is already committed at parse time.
+CSP cannot be modified on a live document.
 
-## Remaining gaps
+This is the same TOFU (Trust On First Use) limit already accepted for the general bootstrap gap — it
+is a web-platform property of the service-worker model, not a design bug in DappFence.
 
-| Vector                                                | Status                                                                                   |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Dynamic inline scripts (Next.js RSC `force-dynamic`)  | dynamicRSC opt-in: RSC re-push after pattern validation; data injection residual remains |
-| `eval()` in verified scripts that legitimately use it | `'unsafe-eval'` must stay; cannot be removed without breaking those scripts              |
-| Blob URL workers/iframes from verified scripts        | `worker-src` without `blob:` would break legitimate patterns                             |
-| `postMessage` + `eval` (16b)                          | Requires static analysis; not addressable by CSP or SW                                   |
+### Scope of the window
+
+Service workers persist across sessions in the browser profile. Once installed, the SW controls all
+later origin visits — even across browser restarts. Exposure is therefore:
+
+-   **Very first visit ever** (SW not yet installed): the first document has origin's CSP.
+-   **All later visits** (SW persisted from a prior visit): SW intercepts the first navigation at
+    t=0; SW-emitted CSP applied. No gap.
+
+So the "no SW-emitted CSP" case is a one-shot-per-user, not a one-shot-per-session.
+
+### The initial document keeps the origin's CSP for its full lifetime
+
+Because CSP is frozen at document creation, `clients.claim()` after SW activation makes the page
+SW-controlled for **subresource fetches**, but does _not_ re-emit or replace the document's CSP. The
+document created at t=1 lives its entire life under whatever CSP the origin committed, no matter how
+much later the SW claims it.
+
+This has a specific consequence for SPAs. A single-page app that uses `history.pushState` for in-app
+"navigation" never creates a new document — the initial document _is_ the whole app for the lifetime
+of the session. For a user's very first visit to an SPA:
+
+-   The initial document's CSP is the origin's CSP.
+-   Every client-side "route change" the user performs is still within that same document, still
+    under that same CSP.
+-   The SW's CSP-emission path is never exercised — because there is no second navigation.
+
+For multipage apps the exposure is bounded by "how long the user stays on the first page before
+clicking a link". For SPAs on the first visit, it is the entire session.
+
+### What a CDN attacker can do in the window
+
+-   Inject arbitrary `<script>` into the first HTML response.
+-   Strip `<script src="/dappfence.js">` to prevent SW registration entirely, extending the window
+    across the whole session for that visit.
+-   Modify (or omit) the origin's `Content-Security-Policy` header to allow their injected script.
+
+### What still holds back the attacker
+
+-   **A strict origin CSP as a baseline.** If the developer configures a strict CSP on the actual
+    origin server, an attacker at a CDN-level tampering position must also control the CSP header
+    emission to weaken it. Not sufficient against a full CDN compromise, but it raises the bar
+    against weaker positions (edge cache poisoning, downstream MITM). This baseline should be
+    treated as a hardening layer, not a DappFence guarantee.
+-   **Subresource verification still runs.** Once the SW claims the initial page, every subresource
+    fetch (scripts, styles, images, HTML partials, JSON) goes through the SW and is byte-hashed
+    against the manifest. What the initial document's CSP fails to constrain, subresource
+    verification can still catch — for anything fetched after claim. Anything fetched _before_ claim
+    (early hydration, top-of-body inline scripts) is neither CSP-gated by us nor SW-verified.
+-   **Browser extension (planned).** The extension case installs the SW _before_ any origin response
+    is committed, which closes this window entirely. Not shipped yet; when it lands, TOFU stops
+    being a limit for installed users.
+
+### Reload-after-claim — the only in-band closer
+
+For non-SPA apps, the CSP gap is bounded: as soon as the user navigates (link click, form submit,
+reload), the SW-emitted CSP kicks in. For SPAs, the gap is unbounded within the session.
+
+The only mechanism that closes the SPA case is **forcing a reload once the SW has activated and
+claimed the current page**. The reload's navigation goes through the SW → SW-emitted CSP is applied
+to the new document → the SPA runs under it for the rest of the session.
+
+Trade-offs:
+
+-   **UX cost.** The user sees a visible reload on their very first visit. Acceptable for admin
+    dashboards, financial apps, DappFence's primary target market. Rough for marketing pages or
+    blog-style content where first-impression time matters.
+-   **State loss.** In-progress form input on the initial page is lost. Mitigable by triggering the
+    reload before the user has had time to interact — but the reload timing is nondeterministic
+    (depends on SW install speed).
+-   **Only fires on the very first visit.** All later visits get SW-emitted CSP from t=0 (SW
+    persisted). So the UX cost is one-shot per user.
+
+This mechanism is not implemented in the current codebase. Choosing to add it is a product decision
+— it's the difference between "SPA first-visit users are outside the CSP guarantee for their entire
+session" and "SPA first-visit users see a reload but are protected".
+
+### What this means for the CSP strategy — scoping statement
+
+Without reload-after-claim:
+
+> DappFence's CSP guarantee applies from the moment the SW-controlled document is created.
+> Multi-page apps get this at their second navigation. Single-page apps do not get it during the
+> very first visit — they only get it on the next session. Subresource verification still runs from
+> the moment of SW claim on all later fetches, even in the ungated document. Developers targeting
+> protection for the initial page load must configure a strict `Content-Security-Policy` at the
+> origin server.
+
+With reload-after-claim:
+
+> DappFence's CSP guarantee applies from the moment the SW-controlled document is created. On the
+> very first visit, this involves a one-time visible reload after SW activation; for all later
+> visits and navigations, SW-emitted CSP is in force from t=0.
+
+## Open pushback / known limits
+
+Documented for reviewers; some of these are honest weaknesses the design accepts.
+
+-   **`script-src-attr 'unsafe-hashes'` weakens element binding.** Any injected element with a
+    matching attribute value can trigger the handler. Only usable on staticPages (full-body-hashed)
+    routes; on anything with mutable body it is a real hole. Prefer `addEventListener`.
+-   **Case 15 (variant enumeration) forced buffering under the retired design.** The streaming
+    rewriter's fixed-skeleton verification broke on conditional structures (auth state, feature
+    flags, error banners), forcing full response buffering to identify the variant. This was one of
+    the concrete reasons the streaming rewriter was dropped: the "streaming" story didn't hold for
+    the common case. Under the current CSP-only direction, no body verification happens; the case
+    isn't a "streaming vs buffering" question anymore.
+-   **RSC Flight-protocol parser is a maintenance liability.** React does not document the wire
+    format, and it churns between React versions. Owning this parser means tracking upstream. The
+    cost per supported framework is high; scope this deliberately.
+-   **Dynamic-leaf heuristics are load-bearing but weak.** "Looks like an integer / ISO timestamp /
+    URL" won't survive an attacker who controls the leaf value. Content integrity of dynamic values
+    is out of scope, but heuristics must still prevent _structural_ escape (e.g., a text-node
+    heuristic must reject bytes that would break parser state, like `</script>` in the middle of a
+    leaf).

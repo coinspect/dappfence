@@ -227,6 +227,43 @@ export function createSecurityEventsStore(database) {
     return { logSecurityEvent, getSecurityEvents };
 }
 
+// --- CSP Violations Store ---
+
+const CSP_VIOLATIONS_KEY = 'csp-violations';
+
+/**
+ * @param {object} database - Storage backend with { get, set }
+ */
+export function createCspViolationsStore(database) {
+    async function logViolation(report) {
+        try {
+            const violations = (await database.get(CSP_VIOLATIONS_KEY)) || [];
+            violations.push({
+                report,
+                receivedAt: new Date().toISOString(),
+            });
+            if (violations.length > 100) {
+                violations.splice(0, violations.length - 100);
+            }
+            await database.set(CSP_VIOLATIONS_KEY, violations);
+        } catch (error) {
+            logger.error('Failed to log CSP violation:', error);
+        }
+    }
+
+    async function getViolations(limit = 50) {
+        try {
+            const violations = (await database.get(CSP_VIOLATIONS_KEY)) || [];
+            return violations.slice(-limit).reverse();
+        } catch (error) {
+            logger.error('Failed to get CSP violations:', error);
+            return [];
+        }
+    }
+
+    return { logViolation, getViolations };
+}
+
 // --- API Token Store ---
 
 const API_TOKEN_KEY = 'API_TOKEN_KEY';
@@ -235,23 +272,30 @@ const API_TOKEN_KEY = 'API_TOKEN_KEY';
  * @param {object} database - Store backend with { withTx }
  */
 export function createApiTokenStore(database) {
+    // The token is generated once and never rotates for the SW's lifetime, so
+    // we memoize the first getApiToken() promise: subsequent callers await the
+    // same resolved promise instead of hitting IndexedDB per request.
+    let cached = null;
     async function getApiToken() {
-        return await database.withTx(async (tx) => {
-            const key = await tx.get(API_TOKEN_KEY);
-            if (key) {
-                logger.log('Reusing API token for secure endpoints', key);
-                return key;
-            }
-            // put a new key if none exists
-            const array = new Uint8Array(32);
-            crypto.getRandomValues(array);
-            const tokenKey = Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join(
-                ''
-            );
-            logger.log('API token for secure endpoints', tokenKey);
-            await tx.set(API_TOKEN_KEY, tokenKey);
-            return tokenKey;
-        });
+        if (!cached) {
+            cached = database.withTx(async (tx) => {
+                const key = await tx.get(API_TOKEN_KEY);
+                if (key) {
+                    logger.log('Reusing API token for secure endpoints', key);
+                    return key;
+                }
+                // put a new key if none exists
+                const array = new Uint8Array(32);
+                crypto.getRandomValues(array);
+                const tokenKey = Array.from(array, (byte) =>
+                    byte.toString(16).padStart(2, '0')
+                ).join('');
+                logger.log('API token for secure endpoints', tokenKey);
+                await tx.set(API_TOKEN_KEY, tokenKey);
+                return tokenKey;
+            });
+        }
+        return cached;
     }
 
     return { getApiToken };

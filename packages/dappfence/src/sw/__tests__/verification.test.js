@@ -54,9 +54,26 @@ describe('normalizeManifestData', () => {
     });
 
     it('returns empty files for non-object input', () => {
-        const empty = { files: {}, pathRules: [], contentRules: [], mode: 'reporting' };
-        expect(normalizeManifestData(42)).toEqual(empty);
-        expect(normalizeManifestData(undefined)).toEqual(empty);
+        // The `csp` block is always emitted (see "always emits a fully-populated
+        // csp block" test) — so even a bogus input produces the same default shape.
+        expect(normalizeManifestData(42)).toEqual(
+            expect.objectContaining({
+                files: {},
+                pathRules: [],
+                contentRules: [],
+                mode: 'reporting',
+                csp: expect.objectContaining({ upgradeInsecureRequests: true }),
+            })
+        );
+        expect(normalizeManifestData(undefined)).toEqual(
+            expect.objectContaining({
+                files: {},
+                pathRules: [],
+                contentRules: [],
+                mode: 'reporting',
+                csp: expect.objectContaining({ upgradeInsecureRequests: true }),
+            })
+        );
     });
 
     it('stores empty array for unparseable entries', () => {
@@ -92,6 +109,120 @@ describe('normalizeManifestData', () => {
         expect(result.customField).toEqual({ future: true });
         expect(result.files['/app.js']).toEqual(['abc']);
     });
+
+    describe('csp normalization', () => {
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        it('always emits a fully-populated csp block, even when the raw manifest has no csp section', () => {
+            const result = normalizeManifestData({ files: {} });
+            expect(result.csp).toBeDefined();
+            expect(result.csp.scriptOrigins).toEqual([]);
+            expect(result.csp.connectOrigins).toEqual([]);
+            expect(result.csp.pages).toEqual({});
+            expect(result.csp.upgradeInsecureRequests).toBe(true);
+            expect(result.csp.reportSample).toBe(false);
+        });
+
+        it('normalizes a well-formed csp section, filling missing optional fields with defaults', () => {
+            const input = {
+                files: {},
+                csp: {
+                    scriptOrigins: ['https://cdn.example.com'],
+                    connectOrigins: ['https://api.example.com'],
+                    pages: { '/': ['abc123'] },
+                },
+            };
+            const result = normalizeManifestData(input);
+            // Fields present in the input survive verbatim…
+            expect(result.csp.scriptOrigins).toEqual(['https://cdn.example.com']);
+            expect(result.csp.connectOrigins).toEqual(['https://api.example.com']);
+            expect(result.csp.pages).toEqual({ '/': ['abc123'] });
+            // …every optional loosening knob defaults to a safe empty value…
+            expect(result.csp.formActionOrigins).toEqual([]);
+            expect(result.csp.frameOrigins).toEqual([]);
+            expect(result.csp.mediaOrigins).toEqual([]);
+            expect(result.csp.manifestSrcOrigins).toEqual([]);
+            expect(result.csp.imgOrigins).toEqual([]);
+            expect(result.csp.fontOrigins).toEqual([]);
+            expect(result.csp.styleOrigins).toEqual([]);
+            expect(result.csp.frameAncestors).toEqual([]);
+            expect(result.csp.upgradeInsecureRequests).toBe(true);
+            expect(result.csp.reportSample).toBe(false);
+        });
+
+        it('resolves reportSample: manifest boolean wins, non-boolean defers to the flag', () => {
+            expect(
+                normalizeManifestData({ files: {}, csp: { reportSample: true } }).csp.reportSample
+            ).toBe(true);
+            expect(
+                normalizeManifestData({ files: {}, csp: { reportSample: false } }).csp.reportSample
+            ).toBe(false);
+            vi.stubGlobal('__FEATURES__', { csp_report_sample: true });
+            expect(
+                normalizeManifestData({ files: {}, csp: { reportSample: 'yes' } }).csp.reportSample
+            ).toBe(true);
+        });
+
+        it('resolves upgradeInsecureRequests: manifest boolean wins, non-booleans defer to the flag', () => {
+            const on = normalizeManifestData({
+                files: {},
+                csp: { upgradeInsecureRequests: true },
+            });
+            expect(on.csp.upgradeInsecureRequests).toBe(true);
+
+            const off = normalizeManifestData({
+                files: {},
+                csp: { upgradeInsecureRequests: false },
+            });
+            expect(off.csp.upgradeInsecureRequests).toBe(false);
+
+            // Non-boolean → defer to feature flag. Force it off and confirm the
+            // resolved value follows, proving the fallback path is exercised.
+            vi.stubGlobal('__FEATURES__', { csp_upgrade_insecure_requests: false });
+            const bogus = normalizeManifestData({
+                files: {},
+                csp: { upgradeInsecureRequests: 'yes' },
+            });
+            expect(bogus.csp.upgradeInsecureRequests).toBe(false);
+        });
+
+        it('defaults scriptOrigins to [] when missing', () => {
+            const result = normalizeManifestData({ files: {}, csp: { pages: { '/': [] } } });
+            expect(result.csp.scriptOrigins).toEqual([]);
+        });
+
+        it('defaults connectOrigins to [] when missing', () => {
+            const result = normalizeManifestData({ files: {}, csp: {} });
+            expect(result.csp.connectOrigins).toEqual([]);
+        });
+
+        it('defaults pages to {} when missing', () => {
+            const result = normalizeManifestData({ files: {}, csp: {} });
+            expect(result.csp.pages).toEqual({});
+        });
+
+        it('defaults pages to {} when it is an array', () => {
+            const result = normalizeManifestData({ files: {}, csp: { pages: ['bad'] } });
+            expect(result.csp.pages).toEqual({});
+        });
+
+        it('defaults scriptOrigins to [] when it is not an array', () => {
+            const result = normalizeManifestData({ files: {}, csp: { scriptOrigins: 'bad' } });
+            expect(result.csp.scriptOrigins).toEqual([]);
+        });
+
+        it('ignores a non-object csp value and falls back to the default resolved shape', () => {
+            const result = normalizeManifestData({ files: {}, csp: 'bad' });
+            // Non-object input is treated as absent — every field gets its safe default.
+            expect(result.csp).toBeDefined();
+            expect(result.csp.scriptOrigins).toEqual([]);
+            expect(result.csp.connectOrigins).toEqual([]);
+            expect(result.csp.pages).toEqual({});
+            expect(result.csp.upgradeInsecureRequests).toBe(true);
+        });
+    });
 });
 
 // ── toPathname ────────────────────────────────────────────────────────────────
@@ -119,6 +250,23 @@ describe('toPathname', () => {
 
     it('returns absolute URL as-is on parse failure', () => {
         expect(toPathname('https://cdn.com/lib.js', 'bad-base')).toBe('https://cdn.com/lib.js');
+    });
+
+    it('percent-decodes same-origin pathnames so lookup matches manifest keys', () => {
+        // Next parameterized route chunks live at literal `[id]` on disk /
+        // in the manifest; the browser encodes them to `%5Bid%5D` on the wire.
+        expect(
+            toPathname(
+                'https://example.com/_next/static/chunks/app/partials/dynamic/%5Bid%5D/page-abc.js',
+                baseUrl
+            )
+        ).toBe('/_next/static/chunks/app/partials/dynamic/[id]/page-abc.js');
+    });
+
+    it('falls back to raw pathname on malformed percent-encoding', () => {
+        // A stray `%` sequence would throw in decodeURIComponent; fall through
+        // to the raw pathname (manifest lookup will miss — correct outcome).
+        expect(toPathname('https://example.com/bad%2', baseUrl)).toBe('/bad%2');
     });
 });
 
@@ -150,6 +298,17 @@ describe('resolveManifestKey', () => {
 
         it('returns pathname for relative path', () => {
             expect(resolveManifestKey(req('/style.css'), base)).toBe('/style.css');
+        });
+
+        it('percent-decodes same-origin pathname so lookup matches manifest keys', () => {
+            expect(
+                resolveManifestKey(
+                    req(
+                        'https://example.com/_next/static/chunks/app/partials/dynamic/%5Bid%5D/page.js'
+                    ),
+                    base
+                )
+            ).toBe('/_next/static/chunks/app/partials/dynamic/[id]/page.js');
         });
     });
 

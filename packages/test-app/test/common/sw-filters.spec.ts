@@ -45,8 +45,8 @@ test.describe('filter rules', () => {
             { pattern: '**/', formula: 'inject', args: [CDN_INJECT, '</body>'] },
             {
                 pattern: '/.netlify/scripts/cdp',
-                formula: 'replace',
-                args: '.netlify/scripts/cdp.js',
+                formula: 'remap',
+                args: { file: '.netlify/scripts/cdp.js' },
             },
         ]);
         await page.reload();
@@ -78,8 +78,8 @@ test.describe('filter rules', () => {
             { pattern: '**/', formula: 'inject', args: [CDN_INJECT, '</body>'] },
             {
                 pattern: '/.netlify/scripts/cdp',
-                formula: 'replace',
-                args: '.netlify/scripts/cdp-alt.js',
+                formula: 'remap',
+                args: { file: '.netlify/scripts/cdp-alt.js' },
             },
         ]);
         await page.reload();

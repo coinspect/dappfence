@@ -135,28 +135,26 @@ describe('generateManifest', () => {
         expect(manifest.pay).toBeDefined();
     });
 
-    it('records dynamicRoutes in metadata', async () => {
+    it('does not emit dynamicRoutes in metadata', async () => {
         const outDir = await setup();
         await generateManifest({
             outDir,
             manifestPath: 'integrity-manifest.json',
-
             exclude: [],
             mode: 'protected',
-            dynamicRoutes: ['/api/[id]', '/blog/[slug]'],
             logger: LOGGER,
             scriptAttrs: MINIMAL,
         });
         const manifest = JSON.parse(
             await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
         );
-        expect(manifest.pay.metadata.dynamicRoutes).toEqual(['/api/[id]', '/blog/[slug]']);
+        expect(manifest.pay.metadata.dynamicRoutes).toBeUndefined();
     });
 
-    it('emits pathRules and contentRules when provided', async () => {
+    it('emits pathRules and contentRules when provided (CSP document rules always prepended)', async () => {
         const outDir = await setup();
         const pathRules = [{ type: 'directory-index' }];
-        const contentRules = [
+        const extraContentRules = [
             {
                 condition: { resourceTypes: ['document'] },
                 action: { type: 'transform', transform: TRANSFORM.NETLIFY_CDP },
@@ -169,7 +167,7 @@ describe('generateManifest', () => {
             exclude: [],
             mode: 'protected',
             pathRules,
-            contentRules,
+            contentRules: extraContentRules,
             logger: LOGGER,
             scriptAttrs: MINIMAL,
         });
@@ -177,10 +175,14 @@ describe('generateManifest', () => {
             await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
         );
         expect(manifest.pay.pathRules).toEqual(pathRules);
-        expect(manifest.pay.contentRules).toEqual(contentRules);
+        // CSP headers are now layered on every document response by the SW
+        // regardless of contentRules — no implicit document-scoped rule is
+        // injected. Static documents fall through to the SW's default `verify`;
+        // SSR routes must declare `{ action: { type: 'csp' } }` themselves.
+        expect(manifest.pay.contentRules).toEqual(extraContentRules);
     });
 
-    it('emits empty pathRules and contentRules when not provided', async () => {
+    it('emits empty pathRules and empty contentRules when nothing is provided', async () => {
         const outDir = await setup();
         await generateManifest({
             outDir,

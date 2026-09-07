@@ -51,16 +51,21 @@ export type InterceptPattern =
           contentType?: string;
           statusCode?: number;
       }
-    | {
-          pattern: string;
-          formula: 'replace';
-          args: string;
-          contentType?: string;
-          statusCode?: number;
-      }
     | { pattern: string; formula: 'empty'; args?: never; contentType?: string; statusCode?: number }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | { pattern: string; formula: 'inject'; args: any; contentType?: string; statusCode?: number };
+    | { pattern: string; formula: 'inject'; args: any; contentType?: string; statusCode?: number }
+    | {
+          pattern: string;
+          formula: 'remap';
+          args: {
+              file?: string;
+              inject?: string | [string, string];
+              splitAt?: string;
+              steps?: { inject?: string; content?: string; delay?: number }[];
+          };
+          contentType?: string;
+          statusCode?: number;
+      };
 
 export type ServerTestParameters = {
     appName?: string;

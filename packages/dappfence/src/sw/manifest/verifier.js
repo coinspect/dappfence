@@ -14,10 +14,16 @@
  * page load, so any failure is a genuine violation.
  */
 
-import { ASSET_TYPE, isExecutableDestination, VERIFICATION_STATUS } from '../../core/constants.js';
+import {
+    ASSET_TYPE,
+    enforcesCsp,
+    isExecutableDestination,
+    VERIFICATION_STATUS,
+} from '../../core/constants.js';
 import { collectContentRuleActions, isRequestAllowed, resolveManifestKey } from './rules.js';
 import { isFeatureEnabled } from '../../core/utils.js';
 import { toPathname } from './verification.js';
+import { buildCspHeader } from './csp.js';
 import { createLogger } from '../../core/logger.js';
 import { calculateHash } from '../../core/crypto.js';
 import { makeResponseWrapper } from './html/response-wrapper.js';
@@ -138,6 +144,10 @@ export const createVerifier = ({ swContext, appStore, config }, manifestLoader) 
             return { status: VERIFICATION_STATUS.REWRITE };
         },
         transform: handleTransform,
+        csp: async (fileKey) => {
+            logger.log(`⏭️  CSP-only (skip verify): ${fileKey}`);
+            return { status: VERIFICATION_STATUS.CSP_PROTECTED };
+        },
         verify: async (fileKey, response, manifestInfo) => {
             const bytes = await response.getBodyBytes();
             if (bytes.status) {
@@ -164,6 +174,23 @@ export const createVerifier = ({ swContext, appStore, config }, manifestLoader) 
         },
     };
 
+    const withCspHeaders = async (req, fileKey, response, manifest, decision) => {
+        if (decision.status === VERIFICATION_STATUS.SKIPPED || !enforcesCsp(req.destination)) {
+            return { ...decision, fileKey };
+        }
+        const token = await appStore.apiTokenStore.getApiToken();
+        const nonce = crypto.randomUUID();
+        logger.log(
+            `Adding CSP headers to ${fileKey} destination=${req.destination} status=${decision.status.description} nonce=${nonce.slice(0, 8)}…`
+        );
+        return {
+            ...decision,
+            fileKey,
+            nonce,
+            headers: buildCspHeader(fileKey, response, manifest, token, nonce),
+        };
+    };
+
     const evaluateManifestRules = async (req, response, manifestInfo) => {
         const { manifest } = manifestInfo;
         const fileKey = resolveManifestKey(req, locationHref, manifest, response);
@@ -188,10 +215,10 @@ export const createVerifier = ({ swContext, appStore, config }, manifestLoader) 
                 continue;
             }
             logger.log(`❌ result: ${r.status.description}: ${fileKey}`);
-            return { ...r, fileKey };
+            return withCspHeaders(req, fileKey, response, manifest, r);
         }
         logger.log(`❌ lastResult: ${lastResult.status.description}: ${fileKey}`);
-        return { ...lastResult, fileKey };
+        return withCspHeaders(req, fileKey, response, manifest, lastResult);
     };
 
     // For unpinned clients, escalate from the latest manifest → historic manifests → network fetch

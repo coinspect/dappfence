@@ -10,6 +10,7 @@ export interface DappfenceOptions {
     manifestPath?: string;
     extensions?: string[] | null;
     exclude?: string[];
+    patchRSC?: boolean;
 }
 
 export const ATTRS_ENV_KEY: string;

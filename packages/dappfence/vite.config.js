@@ -94,12 +94,20 @@ export default defineConfig(({ mode }) => ({
                 this.addWatchFile(resolve(__dirname, 'feature_flag.json'));
             },
             renderChunk(code) {
-                if (!code.includes('__FEATURES__')) return null;
+                if (!code.includes('__FEATURES__')) {
+                    return null;
+                }
                 const flags = JSON.parse(
                     readFileSync(resolve(__dirname, 'feature_flag.json'), 'utf-8')
                 );
+                // e2e tests hit a plain-HTTP dev server; the `test` block overlays
+                // flags that would break under HTTP (e.g. upgrade-insecure-requests).
+                const modeFlags = { ...flags[mode] };
+                if (process.env.TEST === '1') {
+                    Object.assign(modeFlags, flags.test);
+                }
                 return {
-                    code: code.replace(/__FEATURES__/g, JSON.stringify(flags[mode])),
+                    code: code.replace(/__FEATURES__/g, JSON.stringify(modeFlags)),
                     map: null,
                 };
             },

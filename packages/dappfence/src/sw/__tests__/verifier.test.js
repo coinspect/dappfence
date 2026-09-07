@@ -38,6 +38,7 @@ function makeSwContext({ clients = [{ id: 'client-1' }] } = {}) {
 function makeAppStore() {
     return {
         verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
+        apiTokenStore: { getApiToken: vi.fn(() => Promise.resolve('test-token')) },
     };
 }
 
@@ -475,6 +476,90 @@ describe('pipeline action semantics', () => {
         const { verify } = makeVerifier({ latestManifest: transformManifest });
         const result = await verify(makeNav('/'), makeOkResponse());
         expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+    });
+});
+
+// ── csp action + layered CSP headers ─────────────────────────────────────────
+//
+// `csp` action is a per-route opt-out of hash-verify for SSR/dynamic routes:
+// the handler returns CSP_PROTECTED (distinct from SKIPPED, which means
+// "hands off entirely"). CSP headers are layered on document responses by
+// layerCsp when the manifest defines a `csp` section AND the decision is
+// not SKIPPED. See verifier.js § layerCsp.
+
+describe('csp action + layered CSP headers', () => {
+    const cspManifest = (cspSection = {}) => ({
+        appVersion: 'v-csp',
+        manifest: {
+            files: {},
+            contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
+            pathRules: [{ type: 'directory-index' }],
+            csp: cspSection,
+            mode: 'protected',
+        },
+    });
+
+    it('csp action returns CSP_PROTECTED (route opts out of hash-verify but keeps CSP)', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.status).toBe(VERIFICATION_STATUS.CSP_PROTECTED);
+    });
+
+    it('CSP_PROTECTED is non-violating', () => {
+        expect(VERIFICATION_STATUS.CSP_PROTECTED.isViolation).toBe(false);
+    });
+
+    it('csp action is terminal — result does not set keepTryingActions', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.keepTryingActions).toBeFalsy();
+    });
+
+    it('document result carries a Content-Security-Policy header (Headers instance)', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.headers).toBeInstanceOf(Headers);
+        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
+    });
+
+    it('layered CSP surfaces a per-response nonce', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.nonce).toEqual(expect.any(String));
+        expect(result.nonce.length).toBeGreaterThan(0);
+        expect(result.headers.get('Content-Security-Policy')).toContain(`'nonce-${result.nonce}'`);
+    });
+
+    it('CSP header uses script-src-elem with nonce + * for external scripts', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain('script-src-elem');
+        expect(csp).toContain(`'nonce-${result.nonce}'`);
+        expect(csp).toContain('*');
+        expect(csp).not.toContain('strict-dynamic');
+    });
+
+    it('CSP header includes inline hash and * when pages entry matches the page key', async () => {
+        const { verify } = makeVerifier({
+            latestManifest: cspManifest({
+                pages: { '/': ['sha256-abc123'] },
+            }),
+        });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain("'sha256-abc123'");
+        expect(csp).toContain('*');
+        expect(csp).not.toContain('strict-dynamic');
+    });
+
+    it('does not escalate to historic manifests — csp action is terminal', async () => {
+        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
+            latestManifest: cspManifest(),
+        });
+        await verify(makeNav('/'), makeOkResponse());
+        expect(getManifestHistory).not.toHaveBeenCalled();
+        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
     });
 });
 

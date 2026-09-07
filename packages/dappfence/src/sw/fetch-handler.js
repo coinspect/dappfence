@@ -3,7 +3,7 @@
  * Orchestrates security checks and app service worker integration
  */
 
-import { createBlockResponse, createRewriteResponse } from './response.js';
+import { createBlockResponse, createRewriteResponse, injectResponseHeaders } from './response.js';
 import { createLogger } from '../core/logger.js';
 import { API_PREFIX, MODE, VERIFICATION_STATUS } from '../core/constants.js';
 
@@ -89,6 +89,9 @@ export function createSecurityFetchHandler({
                 await onSecurityViolation();
             }
             return createBlockResponse(request, locationHref);
+        }
+        if (verificationResult.headers) {
+            return injectResponseHeaders(response, verificationResult.headers);
         }
         return response;
     }

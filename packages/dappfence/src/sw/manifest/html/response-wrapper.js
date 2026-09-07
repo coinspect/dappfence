@@ -13,7 +13,9 @@ export const makeResponseWrapper = (response) => {
     let bytesPromise = null;
     return {
         ok: response.ok,
+        status: response.status,
         type: response.type,
+        headers: response.headers,
         getBodyBytes() {
             if (!bytesPromise) {
                 bytesPromise = response

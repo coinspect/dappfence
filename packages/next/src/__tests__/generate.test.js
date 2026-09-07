@@ -5,7 +5,7 @@ import os from 'node:os';
 import { createRequire } from 'node:module';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { readDynamicRoutes } from '../routes.js';
-import { hashPrerenderedPages } from '../ssr.js';
+import { routePatternToProbeUrl, routePatternToPrefixKey } from '../ssr.js';
 import { withDappfence, getDappfenceScriptAttrs, ATTRS_ENV_KEY } from '../index.js';
 import { buildContentRules } from '../webpack-plugin.js';
 
@@ -140,28 +140,26 @@ describe('generateManifest', () => {
         expect(manifest.pay).toBeDefined();
     });
 
-    it('records dynamicRoutes in metadata', async () => {
+    it('does not emit dynamicRoutes in metadata', async () => {
         const outDir = await setup();
         await generateManifest({
             outDir,
             manifestPath: 'integrity-manifest.json',
-
             exclude: [],
             mode: 'protected',
-            dynamicRoutes: ['/api/[id]', '/blog/[slug]'],
             logger: LOGGER,
             scriptAttrs: MINIMAL,
         });
         const manifest = JSON.parse(
             await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
         );
-        expect(manifest.pay.metadata.dynamicRoutes).toEqual(['/api/[id]', '/blog/[slug]']);
+        expect(manifest.pay.metadata.dynamicRoutes).toBeUndefined();
     });
 
-    it('emits pathRules and contentRules when provided', async () => {
+    it('emits pathRules and contentRules when provided (CSP document rules always prepended)', async () => {
         const outDir = await setup();
         const pathRules = [{ type: 'directory-index' }, { type: 'html-extension' }];
-        const contentRules = [
+        const extraContentRules = [
             {
                 condition: { resourceTypes: ['document'] },
                 action: { type: 'transform', transform: TRANSFORM.NETLIFY_CDP },
@@ -174,7 +172,7 @@ describe('generateManifest', () => {
             exclude: [],
             mode: 'protected',
             pathRules,
-            contentRules,
+            contentRules: extraContentRules,
             logger: LOGGER,
             scriptAttrs: MINIMAL,
         });
@@ -182,7 +180,10 @@ describe('generateManifest', () => {
             await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
         );
         expect(manifest.pay.pathRules).toEqual(pathRules);
-        expect(manifest.pay.contentRules).toEqual(contentRules);
+        // CSP is layered on every document response by the SW; no implicit
+        // document-scoped rule is emitted. Static docs fall through to `verify`;
+        // SSR routes must declare `{ action: { type: 'csp' } }` themselves.
+        expect(manifest.pay.contentRules).toEqual(extraContentRules);
     });
 });
 
@@ -200,12 +201,83 @@ describe('buildContentRules', () => {
     });
 });
 
+describe('routePatternToProbeUrl', () => {
+    it('replaces a simple bracket param with __probe__', () => {
+        expect(routePatternToProbeUrl('/blog/[slug]')).toBe('/blog/__probe__');
+    });
+
+    it('replaces a catch-all bracket param with __probe__', () => {
+        expect(routePatternToProbeUrl('/docs/[...rest]')).toBe('/docs/__probe__');
+    });
+
+    it('replaces multiple params', () => {
+        expect(routePatternToProbeUrl('/a/[year]/[month]')).toBe('/a/__probe__/__probe__');
+    });
+
+    it('leaves exact paths unchanged', () => {
+        expect(routePatternToProbeUrl('/dashboard')).toBe('/dashboard');
+    });
+});
+
+describe('routePatternToPrefixKey', () => {
+    it('returns the path up to the last slash before the first param', () => {
+        expect(routePatternToPrefixKey('/blog/[slug]')).toBe('/blog/');
+    });
+
+    it('handles nested params', () => {
+        expect(routePatternToPrefixKey('/blog/[year]/[slug]')).toBe('/blog/');
+    });
+
+    it('returns the pattern unchanged when there are no params', () => {
+        expect(routePatternToPrefixKey('/dashboard')).toBe('/dashboard');
+    });
+
+    it('returns / when the param is at the root', () => {
+        expect(routePatternToPrefixKey('/[id]')).toBe('/');
+    });
+});
+
 describe('readDynamicRoutes', () => {
-    it('returns empty array when routes-manifest.json is missing', async () => {
+    it('returns empty lists when routes-manifest.json is missing', async () => {
         const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
         tmpDirs.push(dir);
         await fs.mkdir(path.join(dir, '.next'), { recursive: true });
-        expect(await readDynamicRoutes(dir)).toEqual([]);
+        const result = await readDynamicRoutes(dir);
+        expect(result.allRoutes).toEqual([]);
+        expect(result.fixedRoutes).toEqual([]);
+        expect(result.probedPatterns).toEqual([]);
+        expect(result.isrRoutes).toEqual([]);
+    });
+
+    it('identifies ISR routes (initialRevalidateSeconds > 0) and excludes fully-static ones', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        const nextDir = path.join(dir, '.next');
+        await fs.mkdir(nextDir, { recursive: true });
+        await fs.writeFile(
+            path.join(nextDir, 'routes-manifest.json'),
+            JSON.stringify({ rewrites: [], dynamicRoutes: [] }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'prerender-manifest.json'),
+            JSON.stringify({
+                routes: {
+                    '/news': { initialRevalidateSeconds: 60, srcRoute: '/news' },
+                    '/about': { initialRevalidateSeconds: false, srcRoute: '/about' },
+                    '/blog/getting-started': {
+                        initialRevalidateSeconds: 30,
+                        srcRoute: '/blog/[slug]',
+                    },
+                },
+                dynamicRoutes: {},
+            }),
+            'utf8'
+        );
+        const { isrRoutes } = await readDynamicRoutes(dir);
+        expect(isrRoutes).toContain('/news');
+        expect(isrRoutes).toContain('/blog/getting-started');
+        expect(isrRoutes).not.toContain('/about');
     });
 
     it('extracts patterns from object-form rewrites and dynamic routes', async () => {
@@ -226,11 +298,11 @@ describe('readDynamicRoutes', () => {
             }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes).toContain('/api/:path*');
-        expect(routes).toContain('/legacy/:slug');
-        expect(routes).toContain('/blog/[slug]');
-        expect(routes).toContain('/docs/[...rest]');
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes).toContain('/api/:path*');
+        expect(allRoutes).toContain('/legacy/:slug');
+        expect(allRoutes).toContain('/blog/[slug]');
+        expect(allRoutes).toContain('/docs/[...rest]');
     });
 
     it('extracts patterns from flat-array rewrites (older Next.js)', async () => {
@@ -247,8 +319,8 @@ describe('readDynamicRoutes', () => {
             }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes).toContain('/proxy/:path*');
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes).toContain('/proxy/:path*');
     });
 
     it('deduplicates patterns appearing in multiple sections', async () => {
@@ -267,8 +339,8 @@ describe('readDynamicRoutes', () => {
             }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes.filter((r) => r === '/dupe')).toHaveLength(1);
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes.filter((r) => r === '/dupe')).toHaveLength(1);
     });
 
     it('detects SSR-only Pages Router pages not in prerender manifest', async () => {
@@ -292,9 +364,9 @@ describe('readDynamicRoutes', () => {
             JSON.stringify({ '/': 'pages/index.js', '/dashboard': 'pages/dashboard.js' }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes).toContain('/dashboard');
-        expect(routes).not.toContain('/');
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes).toContain('/dashboard');
+        expect(allRoutes).not.toContain('/');
     });
 
     it('detects SSR-only App Router pages not in prerender manifest', async () => {
@@ -318,9 +390,9 @@ describe('readDynamicRoutes', () => {
             JSON.stringify({ '/page': 'app/page.js', '/about/page': 'app/about/page.js' }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes).toContain('/');
-        expect(routes).not.toContain('/about');
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes).toContain('/');
+        expect(allRoutes).not.toContain('/about');
     });
 
     it('skips internal Next.js pages (/_app, /_error, etc.)', async () => {
@@ -343,82 +415,58 @@ describe('readDynamicRoutes', () => {
             JSON.stringify({ '/_app': 'pages/_app.js', '/_error': 'pages/_error.js' }),
             'utf8'
         );
-        const routes = await readDynamicRoutes(dir);
-        expect(routes).not.toContain('/_app');
-        expect(routes).not.toContain('/_error');
+        const { allRoutes } = await readDynamicRoutes(dir);
+        expect(allRoutes).not.toContain('/_app');
+        expect(allRoutes).not.toContain('/_error');
     });
-});
 
-describe('hashPrerenderedPages', () => {
-    async function writeHtml(dir, relPath, content = '<html><body>test</body></html>') {
-        const abs = path.join(dir, relPath);
-        await fs.mkdir(path.dirname(abs), { recursive: true });
-        await fs.writeFile(abs, content, 'utf8');
-    }
+    it('classifies SSR-only fixed pages into fixedRoutes', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
+        tmpDirs.push(dir);
+        const nextDir = path.join(dir, '.next');
+        await fs.mkdir(path.join(nextDir, 'server'), { recursive: true });
+        await fs.writeFile(
+            path.join(nextDir, 'routes-manifest.json'),
+            JSON.stringify({ rewrites: [], dynamicRoutes: [] }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'prerender-manifest.json'),
+            JSON.stringify({ routes: {}, dynamicRoutes: {} }),
+            'utf8'
+        );
+        await fs.writeFile(
+            path.join(nextDir, 'server', 'pages-manifest.json'),
+            JSON.stringify({ '/dashboard': 'pages/dashboard.js', '/live': 'pages/live.js' }),
+            'utf8'
+        );
+        const { fixedRoutes, probedPatterns } = await readDynamicRoutes(dir);
+        expect(fixedRoutes).toContain('/dashboard');
+        expect(fixedRoutes).toContain('/live');
+        expect(probedPatterns).toHaveLength(0);
+    });
 
-    it('returns empty object when .next/server directories are absent', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
+    it('classifies dynamic route pages into probedPatterns and excludes rewrites from fetching', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-routes-'));
         tmpDirs.push(dir);
         await fs.mkdir(path.join(dir, '.next'), { recursive: true });
-        expect(await hashPrerenderedPages(dir, '', LOGGER)).toEqual({});
-    });
-
-    it('maps index.html to /', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/index.html');
-        const hashes = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(hashes['/']).toMatch(/^sha256-/);
-    });
-
-    it('maps nested html files to URL paths', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/about.html');
-        await writeHtml(dir, '.next/server/app/blog/getting-started.html');
-        const hashes = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(hashes['/about']).toMatch(/^sha256-/);
-        expect(hashes['/blog/getting-started']).toMatch(/^sha256-/);
-    });
-
-    it('skips internal Next.js pages (_not-found, _error, etc.)', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/_not-found.html');
-        await writeHtml(dir, '.next/server/pages/_error.html');
-        await writeHtml(dir, '.next/server/app/about.html');
-        const hashes = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(Object.keys(hashes)).toEqual(['/about']);
-    });
-
-    it('covers Pages Router html files', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/pages/404.html');
-        await writeHtml(dir, '.next/server/pages/500.html');
-        const hashes = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(hashes['/404']).toMatch(/^sha256-/);
-        expect(hashes['/500']).toMatch(/^sha256-/);
-    });
-
-    it('prefixes all paths with basePath when provided', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/index.html');
-        await writeHtml(dir, '.next/server/app/about.html');
-        const hashes = await hashPrerenderedPages(dir, '/myapp', LOGGER);
-        expect(hashes['/myapp/']).toMatch(/^sha256-/);
-        expect(hashes['/myapp/about']).toMatch(/^sha256-/);
-        expect(hashes['/']).toBeUndefined();
-    });
-
-    it('produces stable hashes — same content gives same hash', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/about.html', '<html>stable</html>');
-        const h1 = await hashPrerenderedPages(dir, '', LOGGER);
-        const h2 = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(h1['/about']).toBe(h2['/about']);
+        await fs.writeFile(
+            path.join(dir, '.next', 'routes-manifest.json'),
+            JSON.stringify({
+                rewrites: [
+                    { source: '/proxy/:path*', destination: 'https://api.example.com/:path*' },
+                ],
+                dynamicRoutes: [{ page: '/blog/[slug]' }, { page: '/docs/[...rest]' }],
+            }),
+            'utf8'
+        );
+        const { allRoutes, fixedRoutes, probedPatterns } = await readDynamicRoutes(dir);
+        expect(allRoutes).toContain('/proxy/:path*');
+        expect(probedPatterns).toContain('/blog/[slug]');
+        expect(probedPatterns).toContain('/docs/[...rest]');
+        // Rewrites must not appear in fixedRoutes or probedPatterns
+        expect(fixedRoutes).not.toContain('/proxy/:path*');
+        expect(probedPatterns).not.toContain('/proxy/:path*');
     });
 });
 

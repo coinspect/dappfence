@@ -55,6 +55,42 @@ required for the service worker registration and monkey-patching to take effect.
 never appears here — `getDappfenceScriptAttrs` reads only the public signer address and URLs baked
 into the build by `withDappfence`.
 
+### Runtime instrumentation (App Router with RSC)
+
+App Router pages emit per-request inline scripts of the form
+`<script>self.__next_f.push(...)</script>` for React Server Components hydration. The payload varies
+per request, so these scripts cannot be hashed into DappFence's build-time manifest. Runtime
+instrumentation rewrites them to inert `<script type="application/json">` payloads plus one static
+reader/init script, making the flight machinery hash-stable across every page.
+
+Create `instrumentation.ts` at your project root (or `src/instrumentation.ts` if your app router
+lives under `src/`):
+
+```ts
+export { register } from '@dappfence/next/instrumentation';
+```
+
+If you already have an `instrumentation.ts`, forward the register call:
+
+```ts
+import { register as dappfenceRegister } from '@dappfence/next/instrumentation';
+import { register as yourRegister } from './your-existing-code';
+
+export async function register() {
+    await dappfenceRegister();
+    await yourRegister();
+}
+```
+
+**Deploy matrix:** works on Vercel, Netlify, Docker, and self-hosted Node. Not applicable to
+Edge-runtime routes (which do not emit `__next_f.push` inline scripts).
+
+**Disabling:** set `patchRSC: false` on `withDappfence({...})`, or set the environment variable
+`DAPPFENCE_PATCH_RSC=false`. The env var takes precedence over the config option.
+
+**What it does not touch:** `node_modules` on disk, user-authored scripts, non-HTML responses, RSC
+prefetch responses, Edge-runtime routes.
+
 ### Static export (`output: 'export'`)
 
 Add a `postbuild` script — npm runs it automatically after `next build`:
@@ -165,6 +201,7 @@ DappFence intentionally avoids persisting the private key anywhere:
 | `warningUrl`                | `string`   | `null`                                                | URL shown on the security warning page for tamper alerts.                                                                                                                           |
 | `extensions`                | `string[]` | `['.js','.mjs','.css','.html','.htm','.json','.svg']` | File extensions included in the manifest.                                                                                                                                           |
 | `exclude`                   | `string[]` | `[]`                                                  | Web paths to exclude from the manifest (e.g. `['/admin']`).                                                                                                                         |
+| `patchRSC`                  | `boolean`  | `true`                                                | Rewrite Next's RSC `__next_f.push` inline scripts to inert JSON. See [Runtime instrumentation](#runtime-instrumentation-app-router-with-rsc). Env `DAPPFENCE_PATCH_RSC` overrides.  |
 
 ## What Happens at Build Time
 

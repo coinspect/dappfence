@@ -28,8 +28,15 @@ const keys = { publicKey, secretKey };
 
 const defaultManifest = {
     mode: MODE.PROTECTED,
-    pathRules: [{ type: 'directory-index' }, { type: 'not-found', fallback: '/404.html' }],
+    pathRules: [{ type: 'directory-index' }, { type: 'error-page', status: 404, url: '/404.html' }],
     contentRules: [
+        // CSP rule BEFORE the transform so it fires first for /csp-test* paths.
+        // The transform returns MATCH (terminal) on hash match and would prevent
+        // the CSP action from running if ordered after.
+        {
+            condition: { resourceTypes: ['document'], urlFilter: '/csp-test-' },
+            action: { type: 'csp' },
+        },
         {
             condition: { resourceTypes: ['document'] },
             action: { type: 'transform', transform: TRANSFORM.NETLIFY_CDP },
@@ -45,6 +52,12 @@ const defaultManifest = {
     ],
     additionalFiles: {
         '/.netlify/scripts/cdp': ['.netlify/scripts/cdp.js', '.netlify/scripts/cdp-alt.js'],
+    },
+    csp: {
+        pages: {
+            '/csp-test-allowed': { extractFrom: 'index.html' },
+            '/csp-test-denied': [],
+        },
     },
 };
 

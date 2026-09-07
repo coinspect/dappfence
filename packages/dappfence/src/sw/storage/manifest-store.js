@@ -9,6 +9,20 @@
 import { calculateHash } from '../../core/crypto.js';
 import { MODE } from '../../core/constants.js';
 
+// Reads a build-time flag with a caller-supplied default. Not `isFeatureEnabled`
+// because it collapses "missing" and "explicitly false" — the tri-state needs both.
+const flagOrDefault = (name, defaultValue) => {
+    if (typeof __FEATURES__ === 'undefined' || __FEATURES__ === null) {
+        return defaultValue;
+    }
+
+    const v = __FEATURES__[name];
+    if (v === undefined) {
+        return defaultValue;
+    }
+    return v === true;
+};
+
 /**
  * Normalize manifest data from external sources (pure function).
  * Handles both enhanced format ({ files: {...}, metadata, mode, ... }) and
@@ -49,12 +63,41 @@ export const normalizeManifestData = (manifestData) => {
             }
         }
     }
+    const rawCsp =
+        manifestData?.csp && typeof manifestData.csp === 'object' ? manifestData.csp : {};
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    const csp = {
+        scriptOrigins: arr(rawCsp.scriptOrigins),
+        connectOrigins: arr(rawCsp.connectOrigins),
+        formActionOrigins: arr(rawCsp.formActionOrigins),
+        frameOrigins: arr(rawCsp.frameOrigins),
+        mediaOrigins: arr(rawCsp.mediaOrigins),
+        manifestSrcOrigins: arr(rawCsp.manifestSrcOrigins),
+        imgOrigins: arr(rawCsp.imgOrigins),
+        fontOrigins: arr(rawCsp.fontOrigins),
+        styleOrigins: arr(rawCsp.styleOrigins),
+        frameAncestors: arr(rawCsp.frameAncestors),
+        upgradeInsecureRequests:
+            typeof rawCsp.upgradeInsecureRequests === 'boolean'
+                ? rawCsp.upgradeInsecureRequests
+                : flagOrDefault('csp_upgrade_insecure_requests', true),
+        reportSample:
+            typeof rawCsp.reportSample === 'boolean'
+                ? rawCsp.reportSample
+                : flagOrDefault('csp_report_sample', false),
+        pages:
+            rawCsp.pages && typeof rawCsp.pages === 'object' && !Array.isArray(rawCsp.pages)
+                ? rawCsp.pages
+                : {},
+    };
+
     return {
         ...manifestData,
         files: normalizedFiles,
         pathRules: Array.isArray(manifestData?.pathRules) ? manifestData.pathRules : [],
         contentRules: Array.isArray(manifestData?.contentRules) ? manifestData.contentRules : [],
         mode: manifestData?.mode ?? MODE.REPORTING,
+        csp,
     };
 };
 
@@ -162,13 +205,27 @@ export function createManifestStore(database) {
             return allResults[appVersion] || [];
         },
 
-        async add(appVersion, result) {
+        async add(
+            appVersion,
+            { status, timestamp, fileKey, url, assetType, expectedHashes, actualHash }
+        ) {
             const allResults = (await database.get(VERIFICATION_RESULTS_KEY)) || {};
             if (!allResults[appVersion]) {
                 allResults[appVersion] = [];
             }
 
-            allResults[appVersion].push(result);
+            // Named params act as the allowlist: extra fields passed by callers
+            // (Headers from CSP layering, per-response nonce, etc.) are dropped
+            // by destructuring — nothing non-cloneable can reach IndexedDB.
+            allResults[appVersion].push({
+                status,
+                timestamp,
+                fileKey,
+                url,
+                assetType,
+                expectedHashes,
+                actualHash,
+            });
 
             // Keep only last 100 results per app version to avoid unbounded growth
             if (allResults[appVersion].length > 100) {

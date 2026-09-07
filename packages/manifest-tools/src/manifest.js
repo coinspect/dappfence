@@ -6,6 +6,7 @@ const { promises: fs } = require('fs');
 const path = require('path');
 const { calculateFileHash, signManifest } = require('./build');
 const { TRANSFORM } = require('@dappfence/core/constants');
+const { extractInlineHashesFromHtml } = require('./inline-scripts');
 
 const CDP_SCRIPT_PATH = '/.netlify/scripts/cdp';
 
@@ -147,6 +148,30 @@ async function walk(base, dir, excludes, pathPrefix = '') {
  *                                           (e.g. SSR routes hashed by the integration at build time)
  * @param {string}   [opts.pathPrefix]      - URL prefix prepended to every hashed file's web path.
  *                                           Use when outDir maps to a URL sub-path (e.g. '/_next/static').
+ * @param {object}   [opts.csp]             - CSP configuration merged into the manifest.
+ *   Each *Origins field is additive to the SW's secure default (which already includes
+ *   `'self'` plus `data:` for img-src and `'unsafe-inline'` for style-src); the manifest
+ *   cannot introduce `'unsafe-*'` keywords or `*` wildcards. See sw/manifest/csp.js.
+ *   @param {string[]} [opts.csp.connectOrigins]      - Extra origins for connect-src.
+ *   @param {string[]} [opts.csp.formActionOrigins]   - Extra origins for form-action.
+ *   @param {string[]} [opts.csp.frameOrigins]        - Extra origins for frame-src (iframes).
+ *                                                      Only emitted when non-empty.
+ *   @param {string[]} [opts.csp.mediaOrigins]        - Extra origins for media-src (<audio>/<video>).
+ *                                                      Only emitted when non-empty.
+ *   @param {string[]} [opts.csp.manifestSrcOrigins]  - Extra origins for manifest-src (web app manifest).
+ *   @param {string[]} [opts.csp.imgOrigins]          - Extra origins for img-src.
+ *   @param {string[]} [opts.csp.fontOrigins]         - Extra origins for font-src.
+ *   @param {string[]} [opts.csp.styleOrigins]        - Extra origins for style-src (external stylesheets).
+ *   @param {string[]} [opts.csp.frameAncestors]      - Parents allowed to embed this page.
+ *                                                      When non-empty, emits `'self' + <values>` instead of `'none'`.
+ *   @param {boolean}  [opts.csp.upgradeInsecureRequests] - Tri-state: true forces the directive on,
+ *                                                          false forces it off, omit to defer to the
+ *                                                          SW's `csp_upgrade_insecure_requests` feature
+ *                                                          flag (defaults to true when absent).
+ *   @param {boolean}  [opts.csp.reportSample] - Tri-state: forces `'report-sample'` on/off, omit to
+ *                                               defer to the SW's `csp_report_sample` flag (dev=true, prod=false).
+ *   @param {object}   [opts.csp.pages]               - Pre-built { pageKey: {scripts,attrs} } map for SSR routes.
+ *                                                      Static HTML pages are extracted automatically during the walk.
  */
 async function generateManifest({
     outDir,
@@ -154,7 +179,6 @@ async function generateManifest({
     exclude,
     secretKey,
     mode,
-    dynamicRoutes,
     pathRules,
     contentRules,
     pageFilter,
@@ -162,18 +186,16 @@ async function generateManifest({
     logger,
     extraHashes,
     pathPrefix = '',
+    csp,
 }) {
     const excludes = [...(exclude || []), pathPrefix + '/' + manifestPath];
     const isPage = pageFilter || ((_webPath, ext) => ext === '.html' || ext === '.htm');
-
-    if (dynamicRoutes?.length) {
-        logger.info(`DappFence: ${dynamicRoutes.length} dynamic (SSR) routes captured`);
-    }
 
     const files = await walk(outDir, outDir, excludes, pathPrefix);
     logger.info(`DappFence: hashing ${files.length} files`);
 
     const fileHashes = {};
+    const cspBuiltPages = {};
     for (const { webPath, absPath, ext } of files) {
         let buf = await fs.readFile(absPath);
 
@@ -188,6 +210,24 @@ async function generateManifest({
         }
 
         fileHashes[webPath] = calculateFileHash(buf);
+
+        if (isPage(webPath, ext)) {
+            try {
+                const html = buf.toString('utf8');
+                const { scripts, attrs, warnings } = extractInlineHashesFromHtml(html);
+                for (const w of warnings) {
+                    logger.warn(`DappFence: ${webPath}: ${w}`);
+                }
+                if (scripts.length || attrs.length) {
+                    cspBuiltPages[webPath] = {
+                        ...(scripts.length && { scripts }),
+                        ...(attrs.length && { attrs }),
+                    };
+                }
+            } catch (err) {
+                logger.warn(`DappFence: CSP hash extraction failed for ${webPath}: ${err.message}`);
+            }
+        }
     }
 
     if (extraHashes) {
@@ -196,23 +236,38 @@ async function generateManifest({
         logger.info(`DappFence: merged ${count} pre-computed SSR route hash(es) into manifest`);
     }
 
-    const hashedPaths = extraHashes
-        ? new Set(Object.keys(extraHashes).map((p) => p.replace(/\/$/, '')))
-        : null;
-    const effectiveDynamicRoutes =
-        hashedPaths && dynamicRoutes?.length
-            ? dynamicRoutes.filter((r) => !hashedPaths.has(r.replace(/\/$/, '')))
-            : dynamicRoutes ?? [];
+    const cspPages = { ...cspBuiltPages, ...(csp?.pages ?? {}) };
+    // CSP headers are always layered on document responses by the SW (see
+    // verifier.js § layerCsp). Content-verification is orthogonal: static
+    // pages fall through to the SW's default `verify`; SSR routes must
+    // declare `{ action: { type: 'csp' } }` explicitly to opt out of verify.
+    // No implicit document-scoped rule is emitted here.
+    const effectiveContentRules = contentRules ?? [];
 
     const payload = {
         files: fileHashes,
         pathRules: pathRules ?? [],
-        contentRules: contentRules ?? [],
+        contentRules: effectiveContentRules,
         mode,
+        csp: {
+            connectOrigins: csp?.connectOrigins ?? [],
+            formActionOrigins: csp?.formActionOrigins ?? [],
+            frameOrigins: csp?.frameOrigins ?? [],
+            mediaOrigins: csp?.mediaOrigins ?? [],
+            manifestSrcOrigins: csp?.manifestSrcOrigins ?? [],
+            imgOrigins: csp?.imgOrigins ?? [],
+            fontOrigins: csp?.fontOrigins ?? [],
+            styleOrigins: csp?.styleOrigins ?? [],
+            frameAncestors: csp?.frameAncestors ?? [],
+            ...(typeof csp?.upgradeInsecureRequests === 'boolean'
+                ? { upgradeInsecureRequests: csp.upgradeInsecureRequests }
+                : {}),
+            ...(typeof csp?.reportSample === 'boolean' ? { reportSample: csp.reportSample } : {}),
+            pages: cspPages,
+        },
         metadata: {
             buildTime: new Date().toISOString(),
             version: 'latest',
-            ...(effectiveDynamicRoutes.length && { dynamicRoutes: effectiveDynamicRoutes }),
         },
     };
 

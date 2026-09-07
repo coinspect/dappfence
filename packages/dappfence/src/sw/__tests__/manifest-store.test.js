@@ -1,6 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
 
+const DEFAULT_CSP = {
+    scriptOrigins: [],
+    connectOrigins: [],
+    formActionOrigins: [],
+    frameOrigins: [],
+    mediaOrigins: [],
+    manifestSrcOrigins: [],
+    imgOrigins: [],
+    fontOrigins: [],
+    styleOrigins: [],
+    frameAncestors: [],
+    upgradeInsecureRequests: true,
+    reportSample: false,
+    pages: {},
+};
+
 function createInMemoryStorage() {
     const store = new Map();
     return {
@@ -64,6 +80,7 @@ describe('createManifestStore', () => {
                 pathRules: [],
                 contentRules: [],
                 mode: 'reporting',
+                csp: DEFAULT_CSP,
             };
             const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
 
@@ -85,6 +102,7 @@ describe('createManifestStore', () => {
                 files: { '/app.js': ['abc'] },
                 pathRules: [],
                 contentRules: [],
+                csp: DEFAULT_CSP,
             };
             const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
 
@@ -105,6 +123,7 @@ describe('createManifestStore', () => {
                 pathRules: [],
                 contentRules: [],
                 mode: 'reporting',
+                csp: DEFAULT_CSP,
             });
         });
 
@@ -189,14 +208,14 @@ describe('createManifestStore', () => {
 
         it('caps results at 100 per version', async () => {
             for (let i = 0; i < 110; i++) {
-                await storage.verificationResultsStore.add('v1', { index: i });
+                await storage.verificationResultsStore.add('v1', { fileKey: `/f${i}` });
             }
 
             const results = await storage.verificationResultsStore.get('v1');
             expect(results).toHaveLength(100);
-            // Should keep the last 100 (indices 10-109)
-            expect(results[0].index).toBe(10);
-            expect(results[99].index).toBe(109);
+            // Should keep the last 100 (fileKeys /f10 – /f109)
+            expect(results[0].fileKey).toBe('/f10');
+            expect(results[99].fileKey).toBe('/f109');
         });
     });
 });
