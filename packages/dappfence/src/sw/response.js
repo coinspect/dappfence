@@ -40,7 +40,7 @@ function renderConfigScript(config) {
 function enrichActiveBlocks(blocks) {
     return blocks.map((block) => ({
         ...block,
-        expectedHash: block.expectedHash || 'N/A',
+        expectedHashes: block.expectedHashes || [],
         actualHash: block.actualHash || 'N/A',
         occurrenceCount: block.occurrenceCount || 1,
         formattedTimestamp: new Date(block.timestamp).toLocaleString(),
@@ -80,7 +80,7 @@ function createJavascriptRedirectResponse() {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': "default-src 'self'; object-src 'none'; base-uri 'self';",
+        'Content-Security-Policy': "default-src 'self'; object-src 'none'; base-uri 'none';",
     });
 }
 
@@ -102,24 +102,53 @@ const isServiceWorkerPath = (requestUrl, locationHref) => {
 };
 
 /**
- * Creates an appropriate block response based on context
+ * Creates an appropriate block response based on context.
  *
- * Determines the correct type of security block response to return based on
- * whether the blocked asset is the service worker script itself, a navigation
- * request, or a regular subresource request.
- *
- * @param {boolean} isNavigation - Whether this is a navigation request
- * @param {string} requestUrl - The URL of the blocked request (absolute or relative)
+ * @param {Request} request - The blocked request
  * @param {string} locationHref - The service worker's location.href
  */
-export function createBlockResponse(isNavigation, requestUrl, locationHref) {
-    if (isNavigation) {
+export function createBlockResponse(request, locationHref) {
+    if (request.mode === 'navigate') {
         return createRedirectResponse(API.SECURITY_WARNING);
     }
-    if (isServiceWorkerPath(requestUrl, locationHref)) {
+    if (isServiceWorkerPath(request.url, locationHref)) {
         return createJavascriptRedirectResponse();
     }
     return createSecurityWarningResponse();
+}
+
+/**
+ * Creates a safe empty stub response for rewritten CDN sub resources.
+ * The body is a valid JS/CSS comment, so it parses without errors in any context.
+ * @param response
+ */
+export function createRewriteResponse(response) {
+    const contentType =
+        response.headers.get('content-type')?.split(';')[0].trim() || 'application/octet-stream';
+    return new Response('/* replaced by dappfence */', {
+        headers: { 'content-type': contentType, 'Cache-Control': 'no-store' },
+    });
+}
+
+/**
+ * Returns a new Response with the given headers applied wholesale.
+ *
+ * Callers (currently the verifier's CSP handler) are responsible for building
+ * the complete Headers instance — that's where the trust-model decisions live
+ * (which origin headers to strip, which to preserve, which SW-derived headers
+ * to set). See `manifest/csp.js` § `buildCspHeader` and
+ * `docs/csp-injection-strategy.md`.
+ *
+ * @param {Response} response
+ * @param {Headers | Record<string, string>} headers
+ * @returns {Response}
+ */
+export function injectResponseHeaders(response, headers) {
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+    });
 }
 
 /**
@@ -163,7 +192,7 @@ export function createSecurityPageResponse(apiToken, activeBlocks) {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'X-Frame-Options': 'DENY',
             'Content-Security-Policy':
-                "default-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'self';",
+                "default-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none';",
         },
     });
 }

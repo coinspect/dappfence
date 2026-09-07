@@ -5,8 +5,10 @@
 import { createLogger } from '../core/logger.js';
 import { monkeyPatch, secureMonkeyPatch, verifyPatchIntegrity } from '../core/monkey-patch.js';
 import { notifyServiceWorkerReady, setupSecurityMessageListener } from './security-handler.js';
+import { setupCspViolationListener } from './csp-violation-handler.js';
 import { hasConfigManifest } from '../core/utils.js';
 import { MSG } from '../core/constants.js';
+import { createEmergencyPanel } from '../core/emergency-panel.js';
 
 const logger = createLogger();
 
@@ -23,7 +25,7 @@ let integrityCheckInterval = null;
 /**
  * Get configuration from current script data attributes or global window config.
  */
-function getConfig() {
+function getConfig(clientScriptUrl) {
     let config = {
         manifestUrl: null,
         manifestSignatureType: null,
@@ -32,17 +34,15 @@ function getConfig() {
         blockingEnabled: true,
         securityMessage: 'Security verification failed. This content has been modified.',
         contactInfo: null,
+        baseUrl: clientScriptUrl,
     };
 
     // Try to get config from global window object first
     if (typeof window !== 'undefined' && window.DappFenceConfig) {
         config = { ...config, ...window.DappFenceConfig };
         console.log('[DappFence Config] Loaded from window.DappFenceConfig:', config);
-        return config;
-    }
-
-    // Try to get config from the current script or fallback element
-    if (typeof document !== 'undefined') {
+    } else if (typeof document !== 'undefined') {
+        // Try to get config from the current script or fallback element
         const script = document.currentScript || document.getElementById('dappfence-config');
         if (script) {
             config.manifestUrl = script.getAttribute('data-manifest');
@@ -54,19 +54,28 @@ function getConfig() {
             config.blockingEnabled = script.getAttribute('data-blocking-enabled') !== 'false';
             config.securityMessage = script.getAttribute('data-security-message');
             config.contactInfo = script.getAttribute('data-contact-info');
+            config.baseUrl = script.getAttribute('data-base-url') ?? config.baseUrl;
             console.log('[DappFence Config] Loaded from script data attributes:', config);
         }
+    }
+
+    // Precedence: explicit override (window/data-base-url) → currentScript.src → default.
+    // Needed because `document.currentScript` is null for `type="module"` scripts.
+    config.baseUrl = new URL(config.baseUrl ?? '/dappfence.js', location.origin);
+    if (config.baseUrl.pathname.lastIndexOf('/') !== 0) {
+        console.warn(
+            `[DappFence] not at site root (${config.baseUrl.pathname}) — SW scope limited`
+        );
     }
     return config;
 }
 
-function buildSwUrl(baseUrl = '/dappfence.js', appSW = null, config = null) {
-    const cfg = config || getConfig();
-    const url = new URL(baseUrl, window.location.origin);
+function buildSwUrl(cfg, appSW = null) {
+    const url = new URL(cfg.baseUrl, window.location.origin);
     if (appSW) {
         url.searchParams.set('appSW', appSW);
-    } else if (config.appSW) {
-        url.searchParams.set('appSW', config.appSW);
+    } else if (cfg.appSW) {
+        url.searchParams.set('appSW', cfg.appSW);
     } else if (navigator.serviceWorker.controller) {
         // We already auto-detected appSW, just add it to avoid loading the SW twice.
         const swUrl = new URL(navigator.serviceWorker.controller.scriptURL);
@@ -166,7 +175,7 @@ async function registerCombinedSW(appSwUrl, config) {
     }
     isReplacingSW = true;
 
-    const combinedUrl = buildSwUrl('/dappfence.js', appSwUrl, config);
+    const combinedUrl = buildSwUrl(config, appSwUrl);
     logger.log('Registering combined DappFence+App SW:', combinedUrl);
 
     try {
@@ -255,8 +264,8 @@ function startIntegrityMonitoring() {
     logger.log('🔒 Integrity monitoring started (5-second intervals)');
 }
 
-export async function initializeClient() {
-    const config = getConfig();
+export async function initializeClient(clientScriptUrl) {
+    const config = getConfig(clientScriptUrl);
     logger.log('Client initializing with config:', config);
 
     if (!('serviceWorker' in navigator)) {
@@ -272,12 +281,13 @@ export async function initializeClient() {
 
     // Set up a security message listener for intercepting violations early, even before SW claims control
     setupSecurityMessageListener();
+    setupCspViolationListener();
 
     // PHASE 0: Check for existing SW and claim control immediately if found
     await attemptEarlyControlClaim();
 
     // PHASE 1: Register Standalone SW (only if no existing compatible SW)
-    const standaloneUrl = buildSwUrl('/dappfence.js', null, config);
+    const standaloneUrl = buildSwUrl(config, null);
     logger.log('Registering standalone SW:', standaloneUrl);
 
     try {
@@ -286,6 +296,20 @@ export async function initializeClient() {
         logger.log('Standalone SW registration failed:', err);
     }
 
+    const request = indexedDB.open('AppSecurityWatchdog', 1);
+    request.onerror = () => console.error(request.error);
+    request.onsuccess = (event) => {
+        const db = event.target.result;
+        db.onclose = () => {
+            logger.warn('Watchdog database closed, EMERGENCY!!!');
+            // Re-registering may fail if the SW scope is already taken, but we still
+            // display the emergency panel to protect the user.
+            originalRegister(standaloneUrl, { updateViaCache: 'all' }).catch((err) =>
+                logger.error('Error trying to register dappfence during an EMERGENCY', err)
+            );
+            document.documentElement.innerHTML = createEmergencyPanel();
+        };
+    };
     // PHASE 2: Wait until SW claims control (or is already controlled)
     await waitForControllerClaim();
 

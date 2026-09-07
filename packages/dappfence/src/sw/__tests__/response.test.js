@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import securityWarningHtml from '../../templates/security-warning.html?raw';
-import { createBlockResponse, createRedirectResponse } from '../response.js';
+import { createBlockResponse, createRedirectResponse, injectResponseHeaders } from '../response.js';
 
 // `isFeatureEnabled` reads the Vite-injected `__FEATURES__` define, which
 // isn't populated in the vitest runtime — stub it so `response.js`'s
@@ -12,8 +12,7 @@ vi.mock('../../core/utils.js', () => ({
 describe('createBlockResponse', () => {
     it('returns JS redirect when request targets the SW script', () => {
         const response = createBlockResponse(
-            false,
-            'https://example.com/sw.js',
+            { mode: 'no-cors', url: 'https://example.com/sw.js' },
             'https://example.com/sw.js'
         );
         expect(response.headers.get('Content-Type')).toContain('javascript');
@@ -21,8 +20,7 @@ describe('createBlockResponse', () => {
 
     it('returns 302 redirect to the warning page for navigation requests', () => {
         const response = createBlockResponse(
-            true,
-            'https://example.com/app.js',
+            { mode: 'navigate', url: 'https://example.com/app.js' },
             'https://example.com/sw.js'
         );
         expect(response.status).toBe(302);
@@ -31,8 +29,7 @@ describe('createBlockResponse', () => {
 
     it('returns plain text warning for non-navigation subresource requests', () => {
         const response = createBlockResponse(
-            false,
-            'https://example.com/app.js',
+            { mode: 'no-cors', url: 'https://example.com/app.js' },
             'https://example.com/sw.js'
         );
         expect(response.headers.get('Content-Type')).toContain('text/plain');
@@ -41,8 +38,7 @@ describe('createBlockResponse', () => {
 
     it('does not treat a cross-origin same-pathname URL as the SW script', () => {
         const response = createBlockResponse(
-            false,
-            'https://evil.com/sw.js',
+            { mode: 'no-cors', url: 'https://evil.com/sw.js' },
             'https://example.com/sw.js'
         );
         expect(response.headers.get('Content-Type')).toContain('text/plain');
@@ -72,10 +68,59 @@ describe('security-warning template', () => {
 describe('createBlockResponse edge cases', () => {
     it('handles invalid locationHref gracefully in SW path check', () => {
         const response = createBlockResponse(
-            false,
-            'https://example.com/app.js',
+            { mode: 'no-cors', url: 'https://example.com/app.js' },
             'not-a-valid-url'
         );
         expect(response.status).toBe(403);
+    });
+});
+
+describe('injectResponseHeaders', () => {
+    // injectResponseHeaders is a simple applier now — it wraps the response
+    // with the given Headers wholesale. Trust-model decisions (which origin
+    // headers to strip / preserve, which SW-derived to set) live in the
+    // caller (currently manifest/csp.js § buildCspHeader). Tests here just
+    // verify the plumbing.
+    function makeResponse(headers = {}, status = 200) {
+        return new Response('body', { status, headers });
+    }
+
+    it('applies the given headers to the returned response', () => {
+        const base = makeResponse();
+        const result = injectResponseHeaders(base, { 'X-Custom': 'value' });
+        expect(result.headers.get('X-Custom')).toBe('value');
+    });
+
+    it('accepts a Headers instance as well as a plain object', () => {
+        const base = makeResponse();
+        const headers = new Headers({ 'X-Custom': 'via-headers' });
+        const result = injectResponseHeaders(base, headers);
+        expect(result.headers.get('X-Custom')).toBe('via-headers');
+    });
+
+    it('does not preserve origin headers unless caller included them', () => {
+        // Contract change from the earlier additive behavior: the caller is
+        // responsible for constructing the full desired Headers (e.g. by
+        // copying from response.headers first, as buildCspHeader does).
+        const base = makeResponse({ 'Content-Type': 'text/html' });
+        const result = injectResponseHeaders(base, { 'X-Custom': 'added' });
+        expect(result.headers.get('Content-Type')).toBeNull();
+        expect(result.headers.get('X-Custom')).toBe('added');
+    });
+
+    it('when caller copies origin headers into the Headers, they survive', () => {
+        const base = makeResponse({ 'Content-Type': 'text/html' });
+        const headers = new Headers(base.headers);
+        headers.set('X-Custom', 'added');
+        const result = injectResponseHeaders(base, headers);
+        expect(result.headers.get('Content-Type')).toBe('text/html');
+        expect(result.headers.get('X-Custom')).toBe('added');
+    });
+
+    it('preserves status and statusText from the original response', () => {
+        const base = new Response('body', { status: 404, statusText: 'Not Found' });
+        const result = injectResponseHeaders(base, { 'X-Custom': 'v' });
+        expect(result.status).toBe(404);
+        expect(result.statusText).toBe('Not Found');
     });
 });

@@ -139,6 +139,26 @@
                     }
                 });
 
+                function getBlockReason(block) {
+                    const s = block.status;
+                    const reasons = {
+                        MISMATCH: () =>
+                            'Content was modified — the file hash does not match the expected value.',
+                        NOT_FOUND_IN_MANIFEST: () =>
+                            block.httpStatus && block.httpStatus !== 200
+                                ? `HTTP ${block.httpStatus} response on an unregistered path. The CDN may have modified the error page, or an attacker may be exploiting the error response.`
+                                : 'Unknown content — this file was not found in the security manifest.',
+                        DENIED_BY_RULE: () =>
+                            'This resource was explicitly blocked by a security policy rule.',
+                        UNSUPPORTED_SIGNATURE: () =>
+                            'The manifest uses an unsupported signature algorithm.',
+                        VERIFICATION_ERROR: () => 'An error occurred during file verification.',
+                        CONFIG_ERROR: () =>
+                            'A security configuration error prevented verification.',
+                    };
+                    return (reasons[s] ?? (() => `Security violation: ${s || 'unknown'}.`))();
+                }
+
                 function renderBlocks(blocks) {
                     // Only show the Active Blocks section when we actually have
                     // blocks to show. In the normal flow there's always ≥1
@@ -181,9 +201,17 @@
 
                         const body = document.createElement('div');
                         body.className = 'block-body';
-                        body.appendChild(
-                            infoRow('Expected hash', block.expectedHash || 'Not available', 'hash')
-                        );
+                        body.appendChild(infoRow('Reason', getBlockReason(block)));
+                        const hashes = block.expectedHashes || [];
+                        if (hashes.length === 0) {
+                            body.appendChild(infoRow('Expected hash', 'Not available', 'hash'));
+                        } else if (hashes.length === 1) {
+                            body.appendChild(infoRow('Expected hash', hashes[0], 'hash'));
+                        } else {
+                            hashes.forEach((h, i) => {
+                                body.appendChild(infoRow(`Expected hash ${i + 1}`, h, 'hash'));
+                            });
+                        }
                         body.appendChild(
                             infoRow('Actual hash', block.actualHash || 'Not available', 'hash')
                         );

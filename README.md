@@ -94,10 +94,12 @@ npm run dev
 
 ## Repository Structure
 
-This is a monorepo with three packages. Each has its own README with detailed documentation:
+This is a monorepo with four packages. Each has its own README with detailed documentation:
 
 -   [`packages/dappfence`](packages/dappfence/README.md) — core framework architecture, module
     descriptions, manifest format, and design patterns
+-   [`packages/astro-integration`](packages/astro-integration/README.md) — Astro integration: script
+    injection, manifest generation, dynamic content tagging
 -   [`packages/test-app`](packages/test-app/README.md) — test scenarios, dev server configuration,
     and libfaketime setup for cache expiration testing
 -   [`packages/signer`](packages/signer/) — manifest signing library (`signManifest`,
@@ -138,6 +140,8 @@ dappfence/
 -   `npm run build:prod` - Production build of `@dappfence/core` (minified, obfuscated)
 -   `npm run build:watch` - Watch mode: auto-rebuild core + manifests on source changes
 -   `npm run clean` - Remove all build output from every package
+-   `npm run publish:local` - Build production bundle and pack `@dappfence/core` as a tarball to
+    `dist/` for use by local examples
 -   `npm run check` - Run linting and formatting checks
 -   `npm run lint` - Run ESLint with auto-fix
 -   `npm run format` - Format code with Prettier
@@ -151,6 +155,28 @@ npm run test:coverage -w @dappfence/core  # Unit tests with coverage
 npm run dev:http -w @dappfence/test-app   # Dev server without browser
 npm run test:headed -w @dappfence/test-app # E2e tests in headed browser
 npm run test:debug -w @dappfence/test-app  # Debug e2e tests
+```
+
+### Local Examples
+
+The `examples/` directory contains standalone apps. They reference monorepo packages via `file:`
+symlinks so changes are picked up immediately without a pack/install cycle.
+
+```bash
+# Install dependencies in the example (run from the example directory)
+cd examples/astro
+npm install
+
+# Build and preview
+npm run build
+npm run preview
+```
+
+If you change any `packages/*` source, rebuild the relevant package before re-running the example:
+
+```bash
+# From repo root — rebuild core (required when dappfence.js source changes)
+npm run build -w @dappfence/core
 ```
 
 ### Development Requirements

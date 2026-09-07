@@ -3,6 +3,16 @@
  */
 
 /**
+ * Assert a condition during development. No-op in production (dead code eliminated by Terser).
+ * @param {*} condition
+ */
+export function devAssert(condition) {
+    if (__DEV__) {
+        if (!condition) throw new Error('devAssert failed');
+    }
+}
+
+/**
  * Check if a feature flag is enabled.
  * @param {string} feature - The feature name
  * @returns {boolean} true if the feature is enabled

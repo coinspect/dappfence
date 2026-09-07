@@ -168,7 +168,7 @@ Ethereum-style secp256k1 key recovery.
 
 ### Manifest Lifecycle
 
-1. At build time, `@dappfence/signer` hashes all files and signs the manifest payload.
+1. At build time, `@dappfence/manifest-tools` hashes all files and signs the manifest payload.
 2. At runtime, `manifest-service.js` fetches the manifest, verifies the signature, normalizes hashes
    to hex, and stores it in IndexedDB.
 3. Subsequent file requests are verified against the stored manifest via `verifyFile`.

@@ -82,6 +82,31 @@ describe('createMessageBroker', () => {
             swContext.getClient = async () => undefined;
             await expect(broker.handleClientReady('c1')).resolves.not.toThrow();
         });
+
+        it('handles getClient rejecting without throwing', async () => {
+            swContext._addClient('c1');
+            await broker.broadcastSecurityViolation();
+
+            swContext.getClient = async () => {
+                throw new Error('clients.get() failed');
+            };
+            await expect(broker.handleClientReady('c1')).resolves.not.toThrow();
+        });
+    });
+
+    describe('broadcastSecurityViolation error paths', () => {
+        it('handles matchAllClients rejecting without throwing', async () => {
+            swContext.matchAllClients = async () => {
+                throw new Error('matchAllClients failed');
+            };
+            await expect(broker.broadcastSecurityViolation()).resolves.not.toThrow();
+        });
+
+        it('handles client.postMessage rejecting without throwing', async () => {
+            const client = swContext._addClient('c1');
+            client.postMessage.mockRejectedValue(new Error('postMessage failed'));
+            await expect(broker.broadcastSecurityViolation()).resolves.not.toThrow();
+        });
     });
 });
 

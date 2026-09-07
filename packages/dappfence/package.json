@@ -1,6 +1,6 @@
 {
     "name": "@dappfence/core",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "description": "Security framework for web applications using service worker content verification",
     "license": "MIT",
     "repository": {
@@ -39,16 +39,17 @@
         "build:watch": "vite build --mode development --watch & vite build --mode production --watch",
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm run build:prod && npm pack --pack-destination ../../dist"
+    },
+    "publishConfig": {
+        "access": "public"
     },
     "devDependencies": {
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0",
-        "@vitest/coverage-v8": "4.1.4",
-        "javascript-obfuscator": "4.1.1",
         "terser": "5.24.0",
-        "vite": "7.3.2",
-        "vite-plugin-bundle-obfuscator": "1.8.0",
-        "vitest": "4.1.4"
+        "vite": "8.0.16",
+        "vite-plugin-bundle-obfuscator": "1.12.0"
     }
 }

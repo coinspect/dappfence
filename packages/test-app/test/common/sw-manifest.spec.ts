@@ -36,3 +36,21 @@ test('should block navigation when integrity-manifest.json is tampered and empty
     await page.goto('');
     await page.waitForURL(/.*\/sw-api/);
 });
+
+test('the client app should be able to fetch the manifest', async ({ page, swHelper }) => {
+    // Exercises verifier.js: when fileKey === manifestFileKey the SW calls
+    // storeManifestFromResponse(response.clone()). The clone is consumed by
+    // storeManifestFromResponse; the original must remain readable so
+    // applyIntegrityPolicy can return it to the browser.
+    // If the clone is missing, the browser receives a "body already used" error.
+    await page.goto('');
+    await swHelper.waitForServiceWorkerActivation();
+
+    const manifest = await page.evaluate(async () => {
+        const response = await fetch('/integrity-manifest.json');
+        return response.json();
+    });
+
+    expect(manifest).toHaveProperty('pay');
+    expect(manifest).toHaveProperty('sig');
+});

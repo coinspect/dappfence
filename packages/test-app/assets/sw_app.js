@@ -35,7 +35,13 @@ self.addEventListener('activate', (event) => {
 
 // Simple caching strategy
 self.addEventListener('fetch', (event) => {
-    log('fetch listener', event.request.method, event.request.url);
+    log(
+        'DESTINATION_CHECK: fetch listener',
+        event.request.method,
+        event.request.url,
+        'destination:',
+        event.request.destination || '""'
+    );
     const originalRequest = event.request;
     const url = new URL(originalRequest.url);
     log('fetch listener', url.pathname);
