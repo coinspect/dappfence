@@ -5,7 +5,7 @@ import os from 'node:os';
 import { createRequire } from 'node:module';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { readDynamicRoutes } from '../routes.js';
-import { hashPrerenderedPages, routePatternToProbeUrl, routePatternToPrefixKey } from '../ssr.js';
+import { routePatternToProbeUrl, routePatternToPrefixKey } from '../ssr.js';
 import { withDappfence, getDappfenceScriptAttrs, ATTRS_ENV_KEY } from '../index.js';
 import { buildContentRules } from '../webpack-plugin.js';
 
@@ -467,84 +467,6 @@ describe('readDynamicRoutes', () => {
         // Rewrites must not appear in fixedRoutes or probedPatterns
         expect(fixedRoutes).not.toContain('/proxy/:path*');
         expect(probedPatterns).not.toContain('/proxy/:path*');
-    });
-});
-
-describe('hashPrerenderedPages', () => {
-    async function writeHtml(dir, relPath, content = '<html><body>test</body></html>') {
-        const abs = path.join(dir, relPath);
-        await fs.mkdir(path.dirname(abs), { recursive: true });
-        await fs.writeFile(abs, content, 'utf8');
-    }
-
-    it('returns empty bodyHashes when .next/server directories are absent', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await fs.mkdir(path.join(dir, '.next'), { recursive: true });
-        const { bodyHashes, cspPages } = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(bodyHashes).toEqual({});
-        expect(cspPages).toEqual({});
-    });
-
-    it('maps index.html to /', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/index.html');
-        const { bodyHashes } = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(bodyHashes['/']).toMatch(/^sha256-/);
-    });
-
-    it('maps nested html files to URL paths', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/about.html');
-        await writeHtml(dir, '.next/server/app/blog/getting-started.html');
-        const { bodyHashes } = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(bodyHashes['/about']).toMatch(/^sha256-/);
-        expect(bodyHashes['/blog/getting-started']).toMatch(/^sha256-/);
-    });
-
-    it('remaps _not-found.html to /404 and skips _error/_document/_app', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/_not-found.html');
-        await writeHtml(dir, '.next/server/pages/_error.html');
-        await writeHtml(dir, '.next/server/app/about.html');
-        const { bodyHashes } = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(bodyHashes['/404']).toMatch(/^sha256-/);
-        expect(bodyHashes['/about']).toMatch(/^sha256-/);
-        expect(bodyHashes['/_not-found']).toBeUndefined();
-        expect(bodyHashes['/_error']).toBeUndefined();
-    });
-
-    it('covers Pages Router html files', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/pages/404.html');
-        await writeHtml(dir, '.next/server/pages/500.html');
-        const { bodyHashes } = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(bodyHashes['/404']).toMatch(/^sha256-/);
-        expect(bodyHashes['/500']).toMatch(/^sha256-/);
-    });
-
-    it('prefixes all paths with basePath when provided', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/index.html');
-        await writeHtml(dir, '.next/server/app/about.html');
-        const { bodyHashes } = await hashPrerenderedPages(dir, '/myapp', LOGGER);
-        expect(bodyHashes['/myapp/']).toMatch(/^sha256-/);
-        expect(bodyHashes['/myapp/about']).toMatch(/^sha256-/);
-        expect(bodyHashes['/']).toBeUndefined();
-    });
-
-    it('produces stable hashes — same content gives same hash', async () => {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pp-'));
-        tmpDirs.push(dir);
-        await writeHtml(dir, '.next/server/app/about.html', '<html>stable</html>');
-        const r1 = await hashPrerenderedPages(dir, '', LOGGER);
-        const r2 = await hashPrerenderedPages(dir, '', LOGGER);
-        expect(r1.bodyHashes['/about']).toBe(r2.bodyHashes['/about']);
     });
 });
 

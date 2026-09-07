@@ -21,7 +21,11 @@
  *
  *   SSR (default Next.js mode):
  *     1. Hashes all files in .next/static/ (served at /_next/static/).
- *     2. Reads pre-rendered HTML from .next/server/{app,pages}/ and hashes them.
+ *     2. Starts the built Next.js server programmatically and fetches every
+ *        known URL twice — deterministic responses get body-hashed, per-request
+ *        varying responses get CSP-only treatment. Parameterised routes are
+ *        enumerated via generateStaticParams(); routes without enumeration are
+ *        sentinel-probed for CSP hashes only.
  *     3. Writes integrity-manifest.json to public/.
  */
 import { createRequire } from 'node:module';
@@ -29,13 +33,14 @@ import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readDynamicRoutes } from '../src/routes.js';
-import {
-    hashPrerenderedPages,
-    hashPublicFiles,
-    hashSSRRoutes,
-    routePatternToPrefixKey,
-} from '../src/ssr.js';
+import { readDynamicRoutes, readPrerenderedRoutes } from '../src/routes.js';
+import { hashPublicFiles, hashSSRRoutes, routePatternToPrefixKey } from '../src/ssr.js';
+
+// Probe URL for the unmatched-route body. Anything not matching a real
+// route → Next serves the /404 body (from _not-found.tsx or pages/404.tsx),
+// which we key as '/404' in the manifest so the SW's error-page rule can
+// verify unmatched-URL responses.
+const NOT_FOUND_PROBE_URL = '/404';
 
 const _require = createRequire(import.meta.url);
 const { generateManifest, buildNetlifyContentRules, resolveNetlifyCdpHashes } = _require(
@@ -71,24 +76,40 @@ async function runSSR(opts, projectRoot) {
         process.exit(1);
     }
 
-    const {
-        allRoutes: dynamicRoutes,
-        fixedRoutes,
-        probedPatterns,
-        isrRoutes,
-    } = await readDynamicRoutes(projectRoot);
-
-    const [pageResult, publicHashes, cdpHashes, ssrResult] = await Promise.all([
-        hashPrerenderedPages(projectRoot, basePath, logger),
+    const [
+        { allRoutes: dynamicRoutes, fixedRoutes, probedPatterns, isrRoutes },
+        prerenderedRoutes,
+        publicHashes,
+        cdpHashes,
+    ] = await Promise.all([
+        readDynamicRoutes(projectRoot),
+        readPrerenderedRoutes(projectRoot),
         hashPublicFiles(projectRoot, opts.manifestPath, basePath, logger),
         isNetlify ? resolveNetlifyCdpHashes(logger) : Promise.resolve(null),
-        hashSSRRoutes(projectRoot, fixedRoutes, probedPatterns, logger),
     ]);
 
+    // Feed every hashable URL through the single fetch-based pipeline. Includes:
+    //   - prerenderedRoutes: pages + force-static route handlers from prerender
+    //     manifest (deterministic bytes → body-hashed)
+    //   - fixedRoutes: dynamic SSR pages/handlers with no URL params (double-fetch
+    //     decides body hash vs CSP-only)
+    //   - isrRoutes: ISR pages included so their CSP hashes are extracted; body
+    //     hashes are dropped below because they go stale after the first
+    //     revalidation cycle
+    //   - NOT_FOUND_PROBE_URL: unmatched-route probe → Next serves the /404 body
+    //     which gets keyed as /404 in the manifest for the SW's error-page rule
+    // Deduped via Set — force-static route handlers can appear in both
+    // prerenderedRoutes and fixedRoutes.
+    const allFixedUrls = [
+        ...new Set([...prerenderedRoutes, ...fixedRoutes, ...isrRoutes, NOT_FOUND_PROBE_URL]),
+    ];
+    const ssrResult = await hashSSRRoutes(projectRoot, allFixedUrls, probedPatterns, logger);
+
     // ISR routes are prerendered at build time but regenerated periodically.
-    // The body hash captured from the on-disk HTML becomes stale after the first
-    // revalidation cycle and would produce false-positive tamper alerts once
-    // navigation body verification is implemented. Drop the body hashes now.
+    // The double-fetch determinism check succeeds within the build window but
+    // the hash goes stale after the first revalidation cycle. Drop them from
+    // bodyHashes; the contentRule loop below emits a `csp` action so the SW
+    // serves ISR responses CSP-only.
     const isrPathSet = new Set(isrRoutes.map((r) => (basePath ? basePath + r : r)));
     if (isrPathSet.size > 0) {
         for (const route of isrRoutes) {
@@ -101,9 +122,8 @@ async function runSSR(opts, projectRoot) {
 
     const extraHashes = {
         ...(cdpHashes && { '/.netlify/scripts/cdp': cdpHashes }),
-        ...ssrResult.bodyHashes,
         ...Object.fromEntries(
-            Object.entries(pageResult.bodyHashes).filter(([k]) => !isrPathSet.has(k))
+            Object.entries(ssrResult.bodyHashes).filter(([k]) => !isrPathSet.has(k))
         ),
         ...publicHashes,
     };
@@ -113,7 +133,7 @@ async function runSSR(opts, projectRoot) {
     // to the SW's default `verify`. csp.pages carries only the routes that produced
     // real inline hashes; empty entries would be indistinguishable from missing
     // and the SW defaults missing to empty.
-    const completeCspPages = { ...pageResult.cspPages, ...ssrResult.cspPages };
+    const completeCspPages = ssrResult.cspPages;
     const cspRules = [];
     const seenPrefixes = new Set();
     for (const route of dynamicRoutes) {
