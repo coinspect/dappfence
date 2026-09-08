@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>DappFence-style CSP canary probe</title>
+        <!-- style-src 'self' 'unsafe-inline' allows this inline <style>.
+             We read --canary-style back from getComputedStyle to prove it applied. -->
+        <style>
+            :root {
+                --canary-style: applied;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>DappFence-style CSP canary probe</h1>
+
+        <!-- Un-nonced inline <script>: blocked by script-src-elem
+             (nonce mismatch, no matching hash, `*` doesn't cover inline). -->
+        <script>
+            window.__c = window.__c || {};
+            window.__c.inlineNoNonce = 1;
+        </script>
+
+        <!-- <img onerror>: blocked by script-src-attr (falls to default-src 'none').
+             Same-origin src=x 404s and would fire the handler if CSP permitted it. -->
+        <img src="x" onerror="window.__c=window.__c||{};window.__c.onerror=1;" alt="" />
+
+        <!-- javascript: URL clicked from the bootstrap: blocked by script-src
+             (falls to default-src 'none'). -->
+        <a id="jslink" href="javascript:window.__c=window.__c||{};window.__c.jsurl=1;void 0">j</a>
+
+        <!-- <object data>: blocked by object-src 'none'. -->
+        <object id="obj" data="/csp-tests/probe-a.js" type="text/javascript"></object>
+
+        <!-- <script src="data:…">: blocked by script-src-elem.
+             `*` matches any *network* scheme (http/https/ws/wss/ftp) but
+             specifically excludes data:, blob:, and filesystem: per CSP3.
+             So a data: URI script is not covered by the wildcard even when
+             the wildcard is otherwise wide open. -->
+        <script src="data:text/javascript,window.__c=window.__c||{};window.__c.dataUri=1;"></script>
+
+        <!-- <base href>: blocked by base-uri 'none'.
+             `'none'` refuses any base URL — even same-origin — so we don't need
+             a cross-origin href here to prove the block. -->
+        <base href="/" />
+
+        <!-- Cross-origin <img>: blocked by img-src 'self' data:. -->
+        <img src="http://csp-ext.test/csp-tests/pixel.png" alt="" />
+
+        <!-- Cross-origin <script src>: allowed by script-src-elem *
+             (DappFence relies on SW-layer hash verification for external
+             scripts, so CSP intentionally lets any origin through here).
+             Sets window.__probeA. -->
+        <script src="http://csp-ext.test/csp-tests/probe-a.js"></script>
+
+        <!-- Nonced bootstrap: runs (script-src-elem 'nonce-boot').  Sets
+             __c.bootRan, then probes each JS-only vector that either throws
+             at CSP check time (eval, new Function) or is blocked by a
+             non-script directive (fetch → connect-src).  The click drives
+             the javascript: URL vector; the innerHTML assignment shows that
+             <script> tags inside innerHTML are inert regardless of CSP
+             (parser rule). -->
+        <script nonce="boot">
+            (async () => {
+                const c = (window.__c = window.__c || {});
+                c.bootRan = 1;
+
+                try {
+                    eval('c.evalRan = 1;');
+                } catch (_e) {
+                    c.evalError = 1;
+                }
+
+                try {
+                    new Function('c.funcRan = 1;')();
+                } catch (_e) {
+                    c.funcError = 1;
+                }
+
+                try {
+                    const r = await fetch('http://csp-ext.test/csp-tests/probe-a.js');
+                    c.fetchStatus = r.status;
+                } catch (_e) {
+                    c.fetchError = 1;
+                }
+
+                document.getElementById('jslink').click();
+
+                const div = document.createElement('div');
+                div.innerHTML = '<scr' + 'ipt>window.__c.innerHtmlScript = 1;</scr' + 'ipt>';
+                document.body.appendChild(div);
+
+                c.bootDone = 1;
+            })();
+        </script>
+    </body>
+</html>

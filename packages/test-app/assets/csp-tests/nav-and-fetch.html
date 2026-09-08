@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>CSP: navigation vs fetch</title>
+    </head>
+    <body>
+        <h1>CSP delivered on navigation vs on subresource fetches</h1>
+        <!--
+            Nav CSP (set by the test via response headers): script-src 'self'
+            The inline script has no nonce and no matching hash — nav CSP
+            must block it.  probe-a.js has no per-response CSP and must run.
+            probe-b.js is served with its own CSP "script-src 'none'" that
+            would block itself if the browser honoured subresource CSPs;
+            the assertion is that it still runs.
+        -->
+        <script>
+            window.__inlineNoCspRan = 'ran';
+        </script>
+        <script src="/csp-tests/probe-a.js"></script>
+        <script src="/csp-tests/probe-b.js"></script>
+    </body>
+</html>
