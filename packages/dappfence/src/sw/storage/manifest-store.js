@@ -66,7 +66,7 @@ export function createManifestStore(database) {
         // findByHash can return both appVersion and manifest in one lookup.
         for (let i = list.length - 1; i >= 0; i--) {
             const entry = list[i];
-            for (const hash of Object.values(entry.manifest.files || {})) {
+            for (const hash of Object.values(entry.manifest.files || {}).flat()) {
                 index[hash] = entry;
             }
         }
