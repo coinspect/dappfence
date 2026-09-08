@@ -94,14 +94,21 @@ npm run dev
 
 ## Repository Structure
 
-This is a monorepo with three packages. Each has its own README with detailed documentation:
+This is a monorepo with five packages. Each has its own README with detailed documentation:
 
--   [`packages/dappfence`](packages/dappfence/README.md) — core framework architecture, module
-    descriptions, manifest format, and design patterns
+-   [`packages/dappfence`](packages/dappfence/README.md) — core security framework: SW registration,
+    fetch interception, manifest verification, IndexedDB storage
+-   [`packages/manifest-tools`](packages/manifest-tools/README.md) — hashing, signing, and manifest
+    generation library plus the `dappfence-manifest` CLI (`signManifest`, `calculateFileHash`,
+    `deriveIdentity`, `verifyManifest`)
+-   [`packages/astro`](packages/astro/README.md) — Astro integration: script injection, manifest
+    generation, dynamic content tagging
+-   [`packages/next`](packages/next/README.md) — Next.js integration: webpack plugin, manifest
+    generation, RSC runtime patching, `dappfence-next` CLI
 -   [`packages/test-app`](packages/test-app/README.md) — test scenarios, dev server configuration,
     and libfaketime setup for cache expiration testing
--   [`packages/signer`](packages/signer/) — manifest signing library (`signManifest`,
-    `calculateFileHash`)
+
+`packages/netlify/` holds Netlify-integration notes; no code package yet.
 
 ```
 dappfence/
@@ -118,14 +125,20 @@ dappfence/
 │   │   │   └── templates/        # Security warning HTML/CSS
 │   │   ├── vite.config.js        # Build configuration
 │   │   └── feature_flag.json     # Feature toggles per environment
+│   ├── manifest-tools/           # Hashing, signing, manifest CLI + library
+│   ├── astro/                    # @dappfence/astro integration
+│   ├── next/                     # @dappfence/next integration
+│   ├── netlify/                  # Netlify integration notes (docs-only)
 │   └── test-app/                 # Development & testing harness
 │       ├── src/                  # Dev server, build scripts
 │       ├── test/                 # Playwright end-to-end tests
 │       ├── template/             # Example app HTML templates
 │       └── dist/                 # Built test app variants
+├── docs/                         # Architecture, verification, publish docs
+├── scripts/                      # Repo maintenance scripts
 ├── eslint.config.js              # ESLint configuration
 ├── .prettierrc                   # Prettier configuration
-└── package.json                  # Root scripts, dependencies
+└── package.json                  # Root scripts, workspaces
 ```
 
 ## Development
@@ -133,14 +146,23 @@ dappfence/
 ### Root Scripts
 
 -   `npm run dev` - Build all packages and start the dev server with browser
+-   `npm run dev:http` - Build all packages and start the dev server without opening a browser
 -   `npm test` - Build all packages, then run unit tests and e2e tests
+-   `npm run test:unit` - Run `@dappfence/core` unit tests
+-   `npm run test:e2e` - Build all packages, then run the `@dappfence/test-app` Playwright suite
 -   `npm run build` - Build all packages (core + test-app manifests)
 -   `npm run build:prod` - Production build of `@dappfence/core` (minified, obfuscated)
 -   `npm run build:watch` - Watch mode: auto-rebuild core + manifests on source changes
 -   `npm run clean` - Remove all build output from every package
--   `npm run check` - Run linting and formatting checks
+-   `npm run publish:local` - Pack each publishable package as a tarball into `dist/` for use by
+    local consumers
+-   `npm run publish:all` - Run `check` + `build:prod`, then `npm publish` each publishable package
+-   `npm run check` - Prettier + ESLint + lockfile integrity checks
+-   `npm run check:lock` - Verify `package-lock.json` integrity (supply-chain audit)
 -   `npm run lint` - Run ESLint with auto-fix
 -   `npm run format` - Format code with Prettier
+-   `npm run sync-versions` - Bump all publishable packages to a single coordinated version
+-   `npm run update-consumer` - Refresh a downstream consumer that links via local `.tgz`
 
 ### Per-Package Scripts
 
