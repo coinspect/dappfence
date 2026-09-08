@@ -1,17 +1,31 @@
 {
     "name": "@dappfence/manifest-tools",
     "version": "0.1.2",
-    "description": "Signed integrity manifest builder for web applications",
+    "description": "Hashing, signing, and manifest generation tools for DappFence integrations",
     "license": "MIT",
     "type": "commonjs",
     "main": "src/build.js",
     "exports": {
         ".": "./src/build.js",
-        "./crypto": "./src/crypto.js"
+        "./crypto": "./src/crypto.js",
+        "./manifest": "./src/manifest.js",
+        "./inline-scripts": "./src/inline-scripts.js"
+    },
+    "bin": {
+        "dappfence-manifest": "./src/cli.js"
     },
     "files": [
-        "src"
+        "src",
+        "!src/__tests__"
     ],
+    "scripts": {
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/coinspect/dappfence.git",
@@ -24,13 +38,8 @@
         "sha256",
         "signing"
     ],
-    "scripts": {
-        "publish:local": "npm pack --pack-destination ../../dist"
-    },
-    "publishConfig": {
-        "access": "public"
-    },
     "dependencies": {
+        "@dappfence/core": "*",
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0"
     }

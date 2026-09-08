@@ -89,3 +89,9 @@ export const ASSET_TYPE = {
     SERVICE_WORKER: 'service-worker',
     MANIFEST: 'manifest',
 };
+
+// These string values appear verbatim in signed manifests (contentRules actions).
+// Changing a value is a breaking change — existing signed manifests would reject.
+export const TRANSFORM = Object.freeze({
+    NETLIFY_CDP: 'netlify-cdp',
+});
