@@ -9,6 +9,7 @@ const setup = ({ fetch, manifestEntry } = {}) => {
     const swContext = {
         fetch: fetch ?? vi.fn(),
         getLocationHref: vi.fn().mockReturnValue(baseHref),
+        getLocationOrigin: vi.fn().mockReturnValue(new URL(baseHref).origin),
     };
     const trustedManifestStore = {
         findByHash: vi.fn().mockResolvedValue(manifestEntry ?? null),

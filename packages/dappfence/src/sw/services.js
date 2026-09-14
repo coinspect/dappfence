@@ -36,7 +36,7 @@ export function createServices(swGlobal) {
     const config = parseConfig(swContext);
     logger.log('Configuration:', config);
 
-    const appStore = createAppStore(createDatabase(), {
+    const appStore = createAppStore(createDatabase(swGlobal.indexedDB), {
         userAgent: swContext.getUserAgent(),
         origin: swContext.getLocationOrigin(),
     });

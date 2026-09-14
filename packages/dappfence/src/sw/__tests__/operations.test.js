@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+    decodePathname,
     verifyFilePath,
     normalizeManifestData,
     getFileKey,
@@ -158,6 +159,30 @@ describe('getFileKey', () => {
 
     it('returns absolute URL as-is on parse failure', () => {
         expect(getFileKey('https://cdn.com/lib.js', 'bad-base')).toBe('https://cdn.com/lib.js');
+    });
+
+    it('percent-decodes safe reserved chars in pathname (Next dynamic-route keys)', () => {
+        // `[id]` in the manifest matches the browser-encoded /api/%5Bid%5D
+        expect(getFileKey('https://example.com/api/%5Bid%5D', baseUrl)).toBe('/api/[id]');
+    });
+
+    it("keeps %2F encoded so segments aren't merged", () => {
+        // /api%2Fitem must NOT canonicalize to /api/item
+        expect(getFileKey('https://example.com/api%2Fitem', baseUrl)).toBe('/api%2Fitem');
+    });
+});
+
+describe('decodePathname', () => {
+    it('decodes safe reserved chars', () => {
+        expect(decodePathname('/api/%5Bid%5D')).toBe('/api/[id]');
+    });
+
+    it('leaves %2F encoded', () => {
+        expect(decodePathname('/api%2Fitem')).toBe('/api%2Fitem');
+    });
+
+    it('returns raw pathname on malformed input (lone %)', () => {
+        expect(decodePathname('/%')).toBe('/%');
     });
 });
 

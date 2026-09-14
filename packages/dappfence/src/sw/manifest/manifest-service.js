@@ -1,6 +1,10 @@
 /**
- * Manifest Service
- * Handles manifest loading, storage, and file verification.
+ * Manifest Service — PR 4a adapter shape
+ *
+ * Exposes the target public surface (resolveManifest() → { mode, prepareRequest, verifyResponse })
+ * while delegating internally to the current operations.js verification primitives.
+ * The verifier variants (BasicVerifier, SecurityVerifier) arrive in PR 4b as a DI split
+ * inside this file.
  */
 
 import { calculateHash } from '../../core/crypto.js';
@@ -8,6 +12,7 @@ import {
     ASSET_TYPE,
     DEFAULT_SECURITY_CONTENT_TYPES,
     DEFAULT_SECURITY_EXTENSIONS,
+    isExecutableDestination,
     MODE,
     VERIFICATION_STATUS,
 } from '../../core/constants.js';
@@ -22,34 +27,36 @@ import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
 
-/**
- * @param {object} deps
- * @param {object} deps.swContext
- * @param {object} deps.appStore
- * @param {object} deps.config - Manifest config (manifestUrl, manifestSignatureType, manifestSignatureIdentity)
- */
 export const createManifestService = ({ swContext, appStore, config }) => {
     const { trustedManifestStore, verificationResultsStore } = appStore;
     const clientIdXManifest = new Map();
     const singleFlight = createSingleFlight();
+    const locationHref = swContext.getLocationHref();
+    const locationOrigin = swContext.getLocationOrigin();
+
+    // ── manifest fetch/store ───────────────────────────────────────────────
 
     const loadManifestFromUrl = async () => {
         const { manifestUrl, manifestSignatureType, manifestSignatureIdentity } = config;
-        const fileKey = getFileKey(manifestUrl, swContext.getLocationHref());
+        const fileKey = getFileKey(manifestUrl, locationHref);
+        const violation = (fields) => ({
+            ...fields,
+            assetType: ASSET_TYPE.MANIFEST,
+            fileKey,
+            url: manifestUrl,
+        });
         logger.log(`Loading manifest from ${manifestUrl} fileKey: ${fileKey}`);
         try {
             const response = await swContext.fetch(manifestUrl, {
                 cache: 'no-cache',
                 headers: { 'x-dappfence': 'manifest-load' },
             });
-
             if (!response || !response.ok) {
                 logger.error(
                     `Failed to load manifest: ${response?.status} ${response?.statusText}`
                 );
-                return { status: VERIFICATION_STATUS.ERROR, fileKey };
+                return violation({ status: VERIFICATION_STATUS.ERROR });
             }
-
             const json = await response.json();
             const signatureResult = verifyManifestSignature(
                 manifestSignatureType,
@@ -57,13 +64,8 @@ export const createManifestService = ({ swContext, appStore, config }) => {
                 json
             );
             if (signatureResult.status.isViolation) {
-                return {
-                    ...signatureResult,
-                    assetType: ASSET_TYPE.MANIFEST,
-                    fileKey,
-                };
+                return violation(signatureResult);
             }
-
             const { appVersion, manifest } = await trustedManifestStore.addLatest(
                 signatureResult.payload
             );
@@ -74,7 +76,7 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         } catch (error) {
             logger.error('Error loading manifest:', error);
         }
-        return { status: VERIFICATION_STATUS.ERROR, fileKey };
+        return violation({ status: VERIFICATION_STATUS.ERROR });
     };
 
     const fetchAndStoreManifest = async () => {
@@ -82,59 +84,22 @@ export const createManifestService = ({ swContext, appStore, config }) => {
             return {
                 status: VERIFICATION_STATUS.CONFIG_ERROR,
                 assetType: ASSET_TYPE.MANIFEST,
+                fileKey: config.manifestUrl || 'unknown',
+                url: config.manifestUrl || 'unknown',
             };
         }
         return singleFlight(loadManifestFromUrl);
     };
 
-    /**
-     * Fetch a URL and verify its content against the trusted manifest.
-     * Returns a verifyFile-compatible result so callers can decide what to do.
-     * @param {string} url
-     * @returns {Promise<object>} Verification result with at least { status }; verifyFile populates fileKey/expectedHash/actualHash on success.
-     */
-    const verifyLocation = async (url) => {
-        try {
-            const response = await swContext.fetch(
-                url,
-                isFeatureEnabled('mark_request')
-                    ? { headers: { 'x-dappfence': 'sw-verification' } }
-                    : {}
-            );
-            if (response && response.ok) {
-                const fileKey = getFileKey(url, swContext.getLocationHref());
-                return await verifyResponse(fileKey, response);
-            }
-            logger.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-        } catch (error) {
-            logger.error(`Error verifying ${url}:`, error);
-        }
-        return { status: VERIFICATION_STATUS.ERROR };
-    };
+    // ── hash + manifest match (renamed from upstream's inner verifyResponse) ──
 
-    /**
-     * Verify a file against a (possibly pre-resolved) manifest. When
-     * `manifest` is undefined, runs the cold-start path: identify the app
-     * from a stored manifest by file hash, or fetch a fresh one. Once a
-     * manifest is in hand, hashes the content and checks against it; on
-     * mismatch, refetches once in case an in-flight manifest update has
-     * landed (skipped if we just fetched a fresh manifest above).
-     *
-     * once `resolveManifest` pins a manifest to `clientId` on navigation,
-     * this function takes that pinned `{appVersion, manifest}` and verifies
-     * against it, falling back to `findByHash` only when there's no pin yet.
-     */
-    const verifyResponse = async (fileKey, response, isNavigation, clientId) => {
-        // Hash the raw bytes — avoids a UTF-8 round-trip that would silently
-        // corrupt non-UTF-8 content and produce a hash the signer never saw.
+    const hashAndCompare = async (fileKey, response, isNavigation, clientId) => {
         const fileHash = await calculateHash(await response.arrayBuffer());
         logger.log(`Verifying file: ${fileKey} hash ${fileHash}`);
         let manifestInfo;
         if (clientId && !isNavigation) {
             manifestInfo = clientIdXManifest.get(clientId);
         }
-        // Use pinned manifest for this client if available; otherwise look up by hash.
-        // (Pinned manifests are set during navigation; prior clients may lack one.)
         if (!manifestInfo) {
             manifestInfo = await trustedManifestStore.findByHash(fileHash);
             if (!manifestInfo || !manifestInfo.appVersion) {
@@ -154,10 +119,17 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         logger.log(
             `Using manifest ${manifestInfo.appVersion} for ${fileKey} hash ${fileHash} clientId ${clientId} ${isNavigation ? 'navigation' : 'no-navigation'}`
         );
-        const result = verifyFilePath(manifestInfo.manifest, fileKey, fileHash, isNavigation);
-        // Persist as the description string — structuredClone won't reattach
-        // the verdict object's identity, and downstream UI/JSON consumers
-        // expect a plain status name.
+        const raw = verifyFilePath(manifestInfo.manifest, fileKey, fileHash, isNavigation);
+        // Adapt upstream's verifyFilePath shape ({expectedHash}) to fork's contract
+        // ({expectedHashes[], assetType, url}) so storage devAsserts + STATUS_LOG
+        // dispatch line up. Adapter-local — PR 4b's BasicVerifier will emit the
+        // fork shape directly.
+        const { expectedHash, ...rest } = raw;
+        const result = {
+            ...rest,
+            expectedHashes: expectedHash === undefined ? [] : [expectedHash],
+            assetType: ASSET_TYPE.ASSET,
+        };
         await verificationResultsStore.add(manifestInfo.appVersion, {
             ...result,
             status: result.status.description,
@@ -169,25 +141,103 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         return result;
     };
 
-    /**
-     * Resolve the manifest context for a single request/operation.
-     * Loads the current trusted manifest once and returns a view with
-     * `mode` and `verifyFile` so downstream consumers don't each re-read
-     * IndexedDB. The skip-or-verify decision is folded into `verifyFile`
-     * (returns SKIPPED for non-applicable assets), so the caller doesn't
-     * carry a per-asset policy.
-     *
-     * `clientId` and `isNavigation` are accepted for forward compatibility
-     * with per-client manifest pinning — the current implementation still
-     * resolves the global manifest. Pass `{}` (or nothing) for operations
-     * outside the fetch pipeline such as importScripts.
-     */
+    const verifyLocation = async (url) => {
+        try {
+            const response = await swContext.fetch(
+                url,
+                isFeatureEnabled('mark_request')
+                    ? { headers: { 'x-dappfence': 'sw-verification' } }
+                    : {}
+            );
+            if (response && response.ok) {
+                const fileKey = getFileKey(url, locationHref);
+                return await hashAndCompare(fileKey, response, false, null);
+            }
+            logger.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+        } catch (error) {
+            logger.error(`Error verifying ${url}:`, error);
+        }
+        return { status: VERIFICATION_STATUS.ERROR };
+    };
 
-    const resolveManifest = async ({ clientId, isNavigation } = {}) => {
-        // The latest stored manifest drives policy; on a cold start we fetch one.
-        // On fetch failure the result has no `manifest` field, so policy
-        // falls through to defaults via policyFromManifest's optional
-        // chaining. verifyFileWithContext does its own findByHash lookup.
+    // ── request preparation (lifted from upstream fetch-handler.addMarkToRequest,
+    //     extended with no-cors → cors upgrade from fork's verifier.prepareRequest.
+    //     No allow-rule check — that's contentRules, deferred to PR 5.) ──────────
+
+    const markAndUpgrade = (request) => {
+        const url = new URL(request.url);
+        const isSameOrigin = url.origin === locationOrigin;
+        const isNoCorsExecutable =
+            request.mode === 'no-cors' &&
+            isExecutableDestination(request.destination) &&
+            isFeatureEnabled('force_cors_scripts');
+
+        if (!isNoCorsExecutable) {
+            if (!isSameOrigin) {
+                logger.log(`[SW-X-ORIGIN] Cross-origin (no tracking): ${request.url}`);
+                return request;
+            }
+            if (!isFeatureEnabled('mark_request')) {
+                logger.log(`[SW-NO-TRACKING] No tracking: ${request.url}`);
+                return request;
+            }
+        }
+
+        const createRequest = (overrides) => {
+            const req = new Request(url.href, {
+                method: request.method,
+                credentials: request.credentials,
+                cache: request.cache,
+                redirect: request.redirect,
+                referrer: request.referrer,
+                referrerPolicy: request.referrerPolicy,
+                integrity: request.integrity,
+                ...overrides,
+            });
+            Object.defineProperty(req, 'destination', {
+                value: request.destination,
+                configurable: true,
+            });
+            return req;
+        };
+
+        try {
+            if (request.mode === 'navigate') {
+                logger.log(
+                    `[DFSW-NAVIGATE] Navigation request (URL tracking only): ${request.url}`
+                );
+                return createRequest({
+                    headers: new Headers({
+                        ...Object.fromEntries(request.headers),
+                        'x-dappfence': 'processed',
+                    }),
+                });
+            }
+            if (isNoCorsExecutable) {
+                logger.log(`[DFSW-NO-CORS] Upgrading no-cors executable to cors: ${request.url}`);
+            } else {
+                logger.log(`[DFSW-HEADER+URL] Added header to: ${url.href}`);
+            }
+            const markHeader = isFeatureEnabled('mark_request')
+                ? { 'x-dappfence': 'processed' }
+                : {};
+            return createRequest({
+                mode: isNoCorsExecutable ? 'cors' : request.mode,
+                credentials: isNoCorsExecutable ? 'omit' : request.credentials,
+                headers: new Headers({ ...Object.fromEntries(request.headers), ...markHeader }),
+                body: request.body,
+                keepalive: request.keepalive,
+                signal: request.signal,
+            });
+        } catch (error) {
+            logger.warn(`Failed to prepare request: ${request.url}`, error);
+        }
+        return request;
+    };
+
+    // ── public surface (matches fork's shape) ──────────────────────────────
+
+    const resolveManifest = async () => {
         let latestManifest = await trustedManifestStore.getLatest();
         if (latestManifest) {
             logger.log(
@@ -196,7 +246,7 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         } else {
             latestManifest = await fetchAndStoreManifest();
             logger.log(
-                `Resolved manifest from network ${latestManifest.appVersion} ${latestManifest.manifest.mode}`
+                `Resolved manifest from network ${latestManifest.appVersion} ${latestManifest.manifest?.mode}`
             );
         }
         const mode =
@@ -206,18 +256,18 @@ export const createManifestService = ({ swContext, appStore, config }) => {
             latestManifest?.manifest?.metadata?.extensions || DEFAULT_SECURITY_EXTENSIONS;
         const contentTypes =
             latestManifest?.manifest?.metadata?.contentTypes || DEFAULT_SECURITY_CONTENT_TYPES;
-        logger.log(
-            `Resolved manifest ${latestManifest?.appVersion} with mode ${mode}, extensions [${extensions.join(', ')}], content-types [${contentTypes.join(', ')}]`
-        );
+
         return {
             mode,
-            verifyFile: (url, response) => {
-                const fileKey = getFileKey(url, swContext.getLocationHref());
+            prepareRequest: markAndUpgrade,
+            verifyResponse: async (req, response, clientId = null) => {
+                const isNavigation = req.mode === 'navigate';
+                const fileKey = getFileKey(req.url, locationHref);
                 if (!shouldVerifyAsset(fileKey, isNavigation, response, extensions, contentTypes)) {
                     logger.log(`⏭️  Skipping verification: ${fileKey}`);
                     return { status: VERIFICATION_STATUS.SKIPPED, fileKey };
                 }
-                return verifyResponse(fileKey, response, isNavigation, clientId);
+                return hashAndCompare(fileKey, response.clone(), isNavigation, clientId);
             },
         };
     };

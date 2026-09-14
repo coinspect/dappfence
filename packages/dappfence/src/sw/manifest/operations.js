@@ -122,6 +122,26 @@ export const normalizeManifestData = (manifestData) => {
 };
 
 /**
+ * Percent-decode a URL pathname for manifest-key comparison. Uses decodeURI
+ * (not decodeURIComponent) so URI-reserved characters (`/`, `?`, `#`, `:`, …)
+ * stay encoded — `%5B` → `[` matches Next dynamic-route keys like `[id]`, but
+ * `%2F` stays encoded so `/api%2Fitem` isn't canonicalized into `/api/item`
+ * and merged with segments the origin kept separate. On malformed input
+ * (e.g. a lone `%`) returns the raw pathname — the manifest lookup will miss,
+ * which is the correct security outcome.
+ *
+ * @param {string} pathname
+ * @returns {string}
+ */
+export const decodePathname = (pathname) => {
+    try {
+        return decodeURI(pathname);
+    } catch {
+        return pathname;
+    }
+};
+
+/**
  * Determine a file key from URL (pure function).
  * Same-origin URLs return the pathname; external URLs return the full href.
  * @param {string} url - The asset URL
@@ -135,7 +155,7 @@ export const getFileKey = (url, baseUrl) => {
 
         // Same origin - use pathname
         if (fileUrl.origin === originUrl.origin) {
-            return fileUrl.pathname;
+            return decodePathname(fileUrl.pathname);
         }
 
         // External - use full URL

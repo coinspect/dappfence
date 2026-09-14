@@ -77,6 +77,7 @@ const verdict = (description, isViolation) => Object.freeze({ description, isVio
 export const VERIFICATION_STATUS = Object.freeze({
     MATCH: verdict('MATCH', false),
     SKIPPED: verdict('SKIPPED', false),
+    REWRITE: verdict('REWRITE', false),
     MISMATCH: verdict('MISMATCH', true),
     NOT_FOUND_IN_MANIFEST: verdict('NOT_FOUND_IN_MANIFEST', true),
     UNSUPPORTED_SIGNATURE: verdict('UNSUPPORTED_SIGNATURE', true),
@@ -89,6 +90,27 @@ export const ASSET_TYPE = {
     SERVICE_WORKER: 'service-worker',
     MANIFEST: 'manifest',
 };
+
+// Known-inert destinations: responses that the browser never executes as code.
+// Unknown future destinations default to executable (fail-closed) — only
+// destinations proven safe are listed here.
+const INERT_DESTINATIONS = new Set([
+    'style',
+    'xslt',
+    'image',
+    'font',
+    'track',
+    'video',
+    'audio',
+    'manifest',
+    'report',
+    'json',
+    'text',
+    'speculationrules',
+]);
+
+export const isExecutableDestination = (destination) =>
+    !(INERT_DESTINATIONS.has(destination) || !destination);
 
 // These string values appear verbatim in signed manifests (contentRules actions).
 // Changing a value is a breaking change — existing signed manifests would reject.
