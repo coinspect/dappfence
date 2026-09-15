@@ -17,12 +17,8 @@ import {
     VERIFICATION_STATUS,
 } from '../../core/constants.js';
 import { createSingleFlight, hasConfigManifest, isFeatureEnabled } from '../../core/utils.js';
-import {
-    getFileKey,
-    shouldVerifyAsset,
-    verifyFilePath,
-    verifyManifestSignature,
-} from './operations.js';
+import { shouldVerifyAsset, verifyFilePath } from './operations.js';
+import { toPathname, verifyManifestSignature } from './verification.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
@@ -38,7 +34,7 @@ export const createManifestService = ({ swContext, appStore, config }) => {
 
     const loadManifestFromUrl = async () => {
         const { manifestUrl, manifestSignatureType, manifestSignatureIdentity } = config;
-        const fileKey = getFileKey(manifestUrl, locationHref);
+        const fileKey = toPathname(manifestUrl, locationHref);
         const violation = (fields) => ({
             ...fields,
             assetType: ASSET_TYPE.MANIFEST,
@@ -139,25 +135,6 @@ export const createManifestService = ({ swContext, appStore, config }) => {
         const statusIcon = result.status.isViolation ? '❌' : '✅';
         logger.log(`${statusIcon} ${icon} ${result.status.description}: ${fileKey}`);
         return result;
-    };
-
-    const verifyLocation = async (url) => {
-        try {
-            const response = await swContext.fetch(
-                url,
-                isFeatureEnabled('mark_request')
-                    ? { headers: { 'x-dappfence': 'sw-verification' } }
-                    : {}
-            );
-            if (response && response.ok) {
-                const fileKey = getFileKey(url, locationHref);
-                return await hashAndCompare(fileKey, response, false, null);
-            }
-            logger.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-        } catch (error) {
-            logger.error(`Error verifying ${url}:`, error);
-        }
-        return { status: VERIFICATION_STATUS.ERROR };
     };
 
     // ── request preparation (lifted from upstream fetch-handler.addMarkToRequest,
@@ -262,7 +239,7 @@ export const createManifestService = ({ swContext, appStore, config }) => {
             prepareRequest: markAndUpgrade,
             verifyResponse: async (req, response, clientId = null) => {
                 const isNavigation = req.mode === 'navigate';
-                const fileKey = getFileKey(req.url, locationHref);
+                const fileKey = toPathname(req.url, locationHref);
                 if (!shouldVerifyAsset(fileKey, isNavigation, response, extensions, contentTypes)) {
                     logger.log(`⏭️  Skipping verification: ${fileKey}`);
                     return { status: VERIFICATION_STATUS.SKIPPED, fileKey };
@@ -275,6 +252,5 @@ export const createManifestService = ({ swContext, appStore, config }) => {
     return {
         fetchAndStoreManifest,
         resolveManifest,
-        verifyLocation,
     };
 };

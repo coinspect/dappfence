@@ -5,32 +5,8 @@
 
 import { monkeyPatch } from '../core/monkey-patch.js';
 import { createLogger } from '../core/logger.js';
-import { ASSET_TYPE } from '../core/constants.js';
 
 const logger = createLogger();
-
-/**
- * Verify an imported script against the trusted manifest.
- * @param {object} deps
- * @param {object} deps.manifestService
- * @param {object} deps.appStore
- * @param {string} scriptPath
- */
-export async function verifyImportedScript({ manifestService, appStore }, scriptPath) {
-    const verificationResult = await manifestService.verifyLocation(scriptPath);
-    if (verificationResult.status.isViolation) {
-        await appStore.recordSecurityViolation({
-            ...verificationResult,
-            assetType: ASSET_TYPE.SERVICE_WORKER,
-            url: scriptPath,
-        });
-        logger.log(
-            `Security violation detected for ${scriptPath}: ${verificationResult.status.description}`
-        );
-        return;
-    }
-    logger.log(`Script verified: ${scriptPath}`);
-}
 
 // Keep track of registered listeners
 const ListenerMap = () => {

@@ -5,7 +5,8 @@
 
 import { createSecurityFetchHandler } from './fetch-handler.js';
 import { createActivateHandler, createInstallHandler } from './lifecycle-handlers.js';
-import { createHookService, verifyImportedScript } from './appsw-hooks.js';
+import { createHookService } from './appsw-hooks.js';
+import { verifyImportedScript } from './manifest/verification.js';
 import { createManifestService } from './manifest/manifest-service.js';
 import { createMessageBroker, createMessageHandler } from './message-broker.js';
 import { createDatabase } from './storage/indexeddb.js';
