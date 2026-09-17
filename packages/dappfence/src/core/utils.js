@@ -8,9 +8,7 @@
  */
 export function devAssert(condition) {
     if (__DEV__) {
-        if (!condition) {
-            throw new Error('devAssert failed');
-        }
+        if (!condition) throw new Error('devAssert failed');
     }
 }
 
