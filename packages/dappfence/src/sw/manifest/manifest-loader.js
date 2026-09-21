@@ -12,6 +12,19 @@ import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
 
+// Reads a build-time flag with a caller-supplied default. Not `isFeatureEnabled`
+// because it collapses "missing" and "explicitly false" — the tri-state needs both.
+const flagOrDefault = (name, defaultValue) => {
+    if (typeof __FEATURES__ === 'undefined' || __FEATURES__ === null) {
+        return defaultValue;
+    }
+    const v = __FEATURES__[name];
+    if (v === undefined) {
+        return defaultValue;
+    }
+    return v === true;
+};
+
 /**
  * Normalize raw manifest input into the shape the SW consumes.
  *
@@ -20,6 +33,11 @@ const logger = createLogger();
  * can `.includes(actualHash)` uniformly. Arrays support CDN-served assets
  * whose bytes vary across regions or releases — every known-good hash
  * verifies while unexpected content still blocks.
+ *
+ * The `csp` block always resolves to a fully-populated shape so downstream
+ * `buildCspHeader` never has to consult feature flags itself. The tri-state
+ * (`upgradeInsecureRequests`, `reportSample`) is resolved here against the
+ * `csp_upgrade_insecure_requests` and `csp_report_sample` build-time flags.
  */
 export const normalizeManifestData = (manifestData) => {
     const toArray = (entry) => {
@@ -46,11 +64,46 @@ export const normalizeManifestData = (manifestData) => {
         }
     }
 
+    const rawCsp =
+        manifestData?.csp && typeof manifestData.csp === 'object' ? manifestData.csp : {};
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    const csp = {
+        // Integrator opt-out: `enabled: false` disables CSP header injection
+        // entirely for this manifest. When disabled the SW leaves the origin's
+        // CSP headers (if any) untouched. Defaults to true; missing manifest.csp
+        // or missing `enabled` field both keep CSP on.
+        enabled: rawCsp.enabled !== false,
+        scriptOrigins: arr(rawCsp.scriptOrigins),
+        connectOrigins: arr(rawCsp.connectOrigins),
+        formActionOrigins: arr(rawCsp.formActionOrigins),
+        frameOrigins: arr(rawCsp.frameOrigins),
+        mediaOrigins: arr(rawCsp.mediaOrigins),
+        manifestSrcOrigins: arr(rawCsp.manifestSrcOrigins),
+        imgOrigins: arr(rawCsp.imgOrigins),
+        fontOrigins: arr(rawCsp.fontOrigins),
+        styleOrigins: arr(rawCsp.styleOrigins),
+        frameAncestors: arr(rawCsp.frameAncestors),
+        upgradeInsecureRequests:
+            typeof rawCsp.upgradeInsecureRequests === 'boolean'
+                ? rawCsp.upgradeInsecureRequests
+                : flagOrDefault('csp_upgrade_insecure_requests', true),
+        reportSample:
+            typeof rawCsp.reportSample === 'boolean'
+                ? rawCsp.reportSample
+                : flagOrDefault('csp_report_sample', false),
+        pages:
+            rawCsp.pages && typeof rawCsp.pages === 'object' && !Array.isArray(rawCsp.pages)
+                ? rawCsp.pages
+                : {},
+    };
+
     return {
         ...(typeof manifestData === 'object' && manifestData !== null ? manifestData : {}),
         files: normalizedFiles,
         pathRules: Array.isArray(manifestData?.pathRules) ? manifestData.pathRules : [],
+        contentRules: Array.isArray(manifestData?.contentRules) ? manifestData.contentRules : [],
         mode: manifestData?.mode ?? MODE.REPORTING,
+        csp,
     };
 };
 

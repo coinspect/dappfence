@@ -1,8 +1,41 @@
 /**
- * Manifest pathRules evaluation.
+ * Manifest rules evaluation: pathRules resolution, contentRules matching,
+ * content transforms, and file hash verification.
  */
 
+// ── contentRules ─────────────────────────────────────────────────────────────
+
 import { decodePathname } from './verification.js';
+
+/**
+ * @param {object|undefined} condition
+ * @param {string} fileKey
+ * @param {string|undefined} destination
+ * @returns {boolean}
+ */
+export const matchesCondition = (condition, fileKey, destination) => {
+    if (!condition) {
+        return true;
+    }
+    const { urlFilter, resourceTypes } = condition;
+    if (urlFilter && !fileKey.startsWith(urlFilter)) {
+        return false;
+    }
+    return !(resourceTypes && !resourceTypes.includes(destination));
+};
+
+/**
+ * @param {string} fileKey
+ * @param {string|undefined} destination
+ * @param {Array} contentRules
+ * @returns {Array}
+ */
+export const collectContentRuleActions = (fileKey, destination, contentRules = []) =>
+    contentRules
+        .filter(({ condition }) => matchesCondition(condition, fileKey, destination))
+        .map(({ action }) => action);
+
+// ── pathRules ─────────────────────────────────────────────────────────────────
 
 /**
  * Apply a single named pathRule type to a pathname and return the candidate key,
@@ -47,23 +80,14 @@ const isApplicableRule = (pathname) => (r) =>
     (!r.condition?.urlFilter || pathname.startsWith(r.condition.urlFilter));
 
 // Predicate: rule is an error-page fallback matching the response status and request
-// destination. The mapped `url` is used as the manifest key downstream — the
-// verifier's existing files lookup decides byte-hash vs unknown-key, exactly like
-// any normal navigation.
-const isErrorPageRule = (pathname, destination, status) => (r) => {
-    if (r.type !== 'error-page' || r.status !== status || !r.url) {
-        return false;
-    }
-    const condition = r.condition;
-    if (!condition) {
-        return true;
-    }
-    const { urlFilter, resourceTypes } = condition;
-    if (urlFilter && !pathname.startsWith(urlFilter)) {
-        return false;
-    }
-    return !(resourceTypes && !resourceTypes.includes(destination));
-};
+// condition. The mapped `url` is used as the manifest key downstream — the verifier's
+// existing contentRule / files lookup decides byte-hash vs CSP-only vs unknown-key,
+// exactly like any normal navigation. Used as pathRules.find(isErrorPageRule(...)).
+const isErrorPageRule = (pathname, destination, status) => (r) =>
+    r.type === 'error-page' &&
+    r.status === status &&
+    r.url &&
+    matchesCondition(r.condition, pathname, destination);
 
 /**
  * Resolve a request URL to its canonical manifest key using pathRules.
@@ -92,10 +116,7 @@ export const resolveManifestKey = (req, base, manifest = {}, response = null) =>
         fileUrl = new URL(url, base);
         originUrl = new URL(base);
     } catch (_error) {
-        if (url.startsWith('http')) {
-            return url;
-        }
-        return url.startsWith('/') ? url : '/' + url;
+        return url.startsWith('http') ? url : url.startsWith('/') ? url : '/' + url;
     }
 
     if (fileUrl.origin !== originUrl.origin) {
@@ -111,12 +132,31 @@ export const resolveManifestKey = (req, base, manifest = {}, response = null) =>
     }
 
     // error-page is last resort regardless of its position in pathRules.
+    // The mapped `url` may or may not exist in `files` — the verifier's
+    // downstream contentRule + files lookup handles both cases uniformly
+    // (byte-verify if hashed, CSP-only if a matching contentRule exists,
+    // unknown-key if neither).
     if (response && !response.ok && files[pathname] === undefined) {
         const rule = pathRules.find(isErrorPageRule(pathname, req.destination, response.status));
-        if (rule) {
-            return rule.url;
-        }
+        if (rule) return rule.url;
     }
 
     return pathname;
+};
+
+/**
+ * Returns true when a manifest contentRule with action `allow` matches the
+ * request — used to short-circuit CORS upgrade and verification.
+ *
+ * @param {{ url: string, destination: string }} req
+ * @param {string} locationHref - SW location href (for origin comparison)
+ * @param {object|null|undefined} manifest
+ * @returns {boolean}
+ */
+export const isRequestAllowed = (req, locationHref, manifest) => {
+    if (!manifest) return false;
+    const key = resolveManifestKey(req, locationHref, manifest);
+    return collectContentRuleActions(key, req.destination, manifest.contentRules).some(
+        (a) => a.type === 'allow'
+    );
 };

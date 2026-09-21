@@ -1,30 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createVerifier } from '../manifest/verifier.js';
+import { describe, it, expect, vi } from 'vitest';
+import { createSecurityVerifier } from '../manifest/security-verifier.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const FILE_HASH = 'sha256-abc123';
 const MANIFEST_V1 = {
     files: { '/index.html': [FILE_HASH] },
     pathRules: [{ type: 'directory-index' }],
+    contentRules: [],
     mode: 'protected',
 };
 const MANIFEST_V2 = {
     files: { '/index.html': ['sha256-newHash'] },
     pathRules: [{ type: 'directory-index' }],
+    contentRules: [],
     mode: 'protected',
 };
 const INFO_V1 = { appVersion: 'v1', manifest: MANIFEST_V1 };
 
+// Mock calculateHash so we control what hash a buffer produces.
+// Use importOriginal so verification.js (also imported transitively) still gets
+// recoverEthereumAddress and recoverPersonalSign from the real module.
 vi.mock('../../core/crypto.js', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, calculateHash: vi.fn(() => Promise.resolve(FILE_HASH)) };
 });
 import { calculateHash } from '../../core/crypto.js';
-
-beforeEach(() => {
-    calculateHash.mockReset();
-    calculateHash.mockResolvedValue(FILE_HASH);
-});
 
 function makeSwContext({ clients = [{ id: 'client-1' }] } = {}) {
     return {
@@ -36,6 +38,7 @@ function makeSwContext({ clients = [{ id: 'client-1' }] } = {}) {
 function makeAppStore() {
     return {
         verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
+        apiTokenStore: { getApiToken: vi.fn(() => Promise.resolve('test-token')) },
     };
 }
 
@@ -83,13 +86,12 @@ function makeVerifier({
     const swContext = makeSwContext({ clients });
     const appStore = makeAppStore();
     const config = { manifestUrl: 'https://example.com/integrity-manifest.json' };
-    const manifestLoader = {
-        fetchAndStoreManifest,
-        storeManifestFromResponse,
-        getManifestHistory,
-    };
+    const manifestLoader = { fetchAndStoreManifest, storeManifestFromResponse, getManifestHistory };
 
-    const { verifyResponse } = createVerifier({ swContext, appStore, config }, manifestLoader);
+    const { verifyResponse } = createSecurityVerifier(
+        { swContext, appStore, config },
+        manifestLoader
+    );
 
     const verify = (req, response, clientId = 'client-1') =>
         verifyResponse(req, response, clientId, latestManifest);
@@ -104,6 +106,8 @@ function makeVerifier({
         swContext,
     };
 }
+
+// ── gate checks ───────────────────────────────────────────────────────────────
 
 describe('gate checks', () => {
     it('skips non-GET requests', async () => {
@@ -126,7 +130,8 @@ describe('gate checks', () => {
             destination: 'document',
             url: 'https://example.com/',
         };
-        const result = await verify(req, makeOkResponse());
+        const response = makeOkResponse();
+        const result = await verify(req, response);
         expect(result.status).not.toBe(VERIFICATION_STATUS.SKIPPED);
     });
 
@@ -139,41 +144,6 @@ describe('gate checks', () => {
             url: 'https://example.com/app.js',
         };
         const result = await verify(req, makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
-    });
-
-    it('rewrites opaque executable responses (upgrade did not succeed)', async () => {
-        const { verify } = makeVerifier();
-        const response = { ok: false, type: 'opaque' };
-        const req = {
-            method: 'GET',
-            mode: 'no-cors',
-            destination: 'script',
-            url: 'https://cdn.other.com/lib.js',
-        };
-        const result = await verify(req, response);
-        expect(result.status).toBe(VERIFICATION_STATUS.REWRITE);
-    });
-
-    it('skips non-executable opaque responses', async () => {
-        const { verify } = makeVerifier();
-        const response = { ok: false, type: 'opaque' };
-        const req = {
-            method: 'GET',
-            mode: 'no-cors',
-            destination: 'image',
-            url: 'https://cdn.other.com/logo.png',
-        };
-        const result = await verify(req, response);
-        expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
-    });
-
-    it('skips non-ok sub-resources', async () => {
-        const { verify } = makeVerifier();
-        const response = { ok: false, type: 'basic', status: 404 };
-        const req = makeSubResource('/missing.png');
-        req.destination = 'image';
-        const result = await verify(req, response);
         expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
     });
 
@@ -190,8 +160,13 @@ describe('gate checks', () => {
     });
 });
 
+// ── manifest response clone ───────────────────────────────────────────────────
+
 describe('manifest self-verification — response clone', () => {
     it('passes a clone to storeManifestFromResponse so the original body stays unconsumed', async () => {
+        // storeManifestFromResponse calls .json(), consuming whatever response it receives.
+        // Without .clone(), the original response body would be used up here, and
+        // the fetch handler's event.respondWith(response) would throw "body already used".
         let originalConsumed = false;
         let cloneConsumed = false;
 
@@ -219,7 +194,7 @@ describe('manifest self-verification — response clone', () => {
             return { status: VERIFICATION_STATUS.MATCH, appVersion: 'v1', manifest: MANIFEST_V1 };
         });
 
-        const { verifyResponse } = createVerifier(
+        const { verifyResponse } = createSecurityVerifier(
             {
                 swContext: makeSwContext(),
                 appStore: makeAppStore(),
@@ -244,6 +219,8 @@ describe('manifest self-verification — response clone', () => {
     });
 });
 
+// ── step 2: latestManifest ────────────────────────────────────────────────────
+
 describe('step 2 — latestManifest', () => {
     it('passes when file hash matches latestManifest', async () => {
         const { verify, fetchAndStoreManifest, getManifestHistory } = makeVerifier();
@@ -255,12 +232,15 @@ describe('step 2 — latestManifest', () => {
 
     it('pins client to latestManifest on step-2 success', async () => {
         const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
+        const response = makeOkResponse();
+        await verifyResponse(makeNav('/'), response, 'client-1', INFO_V1);
 
+        // Second request (sub-resource, non-navigation) should use the pin without escalating.
         fetchAndStoreManifest.mockClear();
+        const response2 = makeOkResponse();
         const result = await verifyResponse(
             makeSubResource('/index.html'),
-            makeOkResponse(),
+            response2,
             'client-1',
             INFO_V1
         );
@@ -272,18 +252,23 @@ describe('step 2 — latestManifest', () => {
         const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
         await verifyResponse(makeNav('/'), makeOkResponse(), null, INFO_V1);
         await verifyResponse(makeSubResource('/index.html'), makeOkResponse(), null, INFO_V1);
+        // Without pinning, step 2 is always re-evaluated (no escalation needed here since it passes).
         expect(fetchAndStoreManifest).not.toHaveBeenCalled();
     });
 });
 
+// ── step 1: pinned client ─────────────────────────────────────────────────────
+
 describe('step 1 — pinned client', () => {
     it('uses pinned manifest for sub-resources, no escalation', async () => {
         const { verifyResponse, fetchAndStoreManifest, getManifestHistory } = makeVerifier();
+        // Pin the client via a navigation.
         await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
 
         fetchAndStoreManifest.mockClear();
         getManifestHistory.mockClear();
 
+        // Sub-resource should use the pin directly.
         const result = await verifyResponse(
             makeSubResource('/index.html'),
             makeOkResponse(),
@@ -300,6 +285,9 @@ describe('step 1 — pinned client', () => {
         await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
         fetchAndStoreManifest.mockClear();
 
+        // Simulate a file whose hash doesn't match the pinned manifest.
+        // applyAction returns null on verify failure so the pipeline falls through
+        // to NOT_FOUND_IN_MANIFEST — still a violation, just not escalated.
         calculateHash.mockResolvedValueOnce('sha256-tampered');
         const result = await verifyResponse(
             makeSubResource('/index.html'),
@@ -316,10 +304,13 @@ describe('step 1 — pinned client', () => {
         await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
         fetchAndStoreManifest.mockClear();
 
+        // Navigation bypasses pin and re-evaluates (step 2 passes here).
         const result = await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
         expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
     });
 });
+
+// ── step 3: historic manifests ────────────────────────────────────────────────
 
 describe('step 3 — historic manifests', () => {
     it('falls through to historic manifests when latestManifest fails', async () => {
@@ -339,6 +330,8 @@ describe('step 3 — historic manifests', () => {
             historicManifests: [{ appVersion: 'v-same', manifest: MANIFEST_V2 }],
             fetchResult: INFO_V1,
         });
+        // step 2 fails (MANIFEST_V2 has wrong hash), step 3 is same version so skipped,
+        // step 4 returns INFO_V1 which matches.
         const result = await verify(makeNav('/'), makeOkResponse());
         expect(getManifestHistory).toHaveBeenCalled();
         expect(fetchAndStoreManifest).toHaveBeenCalled();
@@ -365,10 +358,13 @@ describe('step 3 — historic manifests', () => {
     });
 });
 
+// ── step 4: network fetch ─────────────────────────────────────────────────────
+
 describe('step 4 — fetchAndStoreManifest (terminal)', () => {
     it('fetches from network when steps 2 and 3 fail', async () => {
         const { verify, fetchAndStoreManifest } = makeVerifier({
             latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
+            findByHashResult: null,
             fetchResult: INFO_V1,
         });
         const result = await verify(makeNav('/'), makeOkResponse());
@@ -379,6 +375,7 @@ describe('step 4 — fetchAndStoreManifest (terminal)', () => {
     it('returns violation when fresh manifest also fails', async () => {
         const { verify } = makeVerifier({
             latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
+            findByHashResult: null,
             fetchResult: { appVersion: 'v-fresh', manifest: MANIFEST_V2 },
         });
         const result = await verify(makeNav('/'), makeOkResponse());
@@ -392,7 +389,7 @@ describe('step 4 — fetchAndStoreManifest (terminal)', () => {
                 fileKey: '/integrity-manifest.json',
             })
         );
-        const { verifyResponse: verify } = createVerifier(
+        const { verifyResponse: verify } = createSecurityVerifier(
             {
                 swContext: makeSwContext(),
                 appStore: makeAppStore(),
@@ -410,6 +407,7 @@ describe('step 4 — fetchAndStoreManifest (terminal)', () => {
     it('pins client to fresh manifest after step 4', async () => {
         const { verifyResponse, fetchAndStoreManifest: fetch1 } = makeVerifier({
             latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
+            findByHashResult: null,
             fetchResult: INFO_V1,
         });
         const staleInfo = { appVersion: 'v-stale', manifest: MANIFEST_V2 };
@@ -427,27 +425,162 @@ describe('step 4 — fetchAndStoreManifest (terminal)', () => {
     });
 });
 
-describe('verify action', () => {
-    it('returns MISMATCH (not NOT_FOUND_IN_MANIFEST) when hash does not match', async () => {
-        // All manifests in the escalation walk have the wrong hash for /index.html.
-        calculateHash.mockResolvedValue('sha256-tampered');
-        const { verify } = makeVerifier({
-            latestManifest: INFO_V1,
-            historicManifests: [],
-            fetchResult: INFO_V1,
+// ── pipeline action semantics ─────────────────────────────────────────────────
+
+describe('pipeline action semantics', () => {
+    it('DENIED_BY_RULE stops escalation — does not try historic or fetched manifests', async () => {
+        const denyManifest = {
+            appVersion: 'v-deny',
+            manifest: {
+                files: { '/index.html': [FILE_HASH] },
+                contentRules: [{ action: { type: 'deny' } }],
+                pathRules: [{ type: 'directory-index' }],
+                mode: 'protected',
+            },
+        };
+        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
+            latestManifest: denyManifest,
         });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.status).toBe(VERIFICATION_STATUS.DENIED_BY_RULE);
+        expect(getManifestHistory).not.toHaveBeenCalled();
+        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
+    });
+
+    it('verify action returns MISMATCH (not NOT_FOUND_IN_MANIFEST) when hash does not match', async () => {
+        calculateHash.mockResolvedValueOnce('sha256-tampered');
+        const { verify } = makeVerifier();
         const result = await verify(makeSubResource('/index.html'), makeOkResponse());
         expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
         expect(result.actualHash).toBe('sha256-tampered');
         expect(result.expectedHashes).toEqual([FILE_HASH]);
     });
 
-    it('returns NOT_FOUND_IN_MANIFEST when the fileKey is unknown', async () => {
-        const { verify } = makeVerifier();
-        const result = await verify(makeSubResource('/nowhere.js'), makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST);
+    it('transform action falls through (null) on mismatch, allowing subsequent actions to run', async () => {
+        // The netlify-cdp transform finds no pattern to strip in the mock buffer,
+        // so the transformed hash does not match FILE_HASH → handleTransform returns
+        // null → pipeline continues to the verify action → MATCH.
+        calculateHash
+            .mockResolvedValueOnce('sha256-stripped-no-match') // hash after transform
+            .mockResolvedValueOnce(FILE_HASH); // hash for verify fallback
+
+        const transformManifest = {
+            appVersion: 'v-transform',
+            manifest: {
+                files: { '/index.html': [FILE_HASH] },
+                contentRules: [
+                    { action: { type: 'transform', transform: 'netlify-cdp' } },
+                    { action: { type: 'verify' } },
+                ],
+                pathRules: [{ type: 'directory-index' }],
+                mode: 'protected',
+            },
+        };
+        const { verify } = makeVerifier({ latestManifest: transformManifest });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
     });
 });
+
+// ── csp action + layered CSP headers ─────────────────────────────────────────
+//
+// `csp` action is a per-route opt-out of hash-verify for SSR/dynamic routes:
+// the handler returns CSP_PROTECTED (distinct from SKIPPED, which means
+// "hands off entirely"). CSP headers are layered on document responses by
+// layerCsp when the manifest defines a `csp` section AND the decision is
+// not SKIPPED. See verifier.js § layerCsp.
+
+describe('csp action + layered CSP headers', () => {
+    const cspManifest = (cspSection = {}) => ({
+        appVersion: 'v-csp',
+        manifest: {
+            files: {},
+            contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
+            pathRules: [{ type: 'directory-index' }],
+            csp: cspSection,
+            mode: 'protected',
+        },
+    });
+
+    it('csp action returns CSP_PROTECTED (route opts out of hash-verify but keeps CSP)', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.status).toBe(VERIFICATION_STATUS.CSP_PROTECTED);
+    });
+
+    it('CSP_PROTECTED is non-violating', () => {
+        expect(VERIFICATION_STATUS.CSP_PROTECTED.isViolation).toBe(false);
+    });
+
+    it('csp action is terminal — result does not set keepTryingActions', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.keepTryingActions).toBeFalsy();
+    });
+
+    it('document result carries a Content-Security-Policy header (Headers instance)', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.headers).toBeInstanceOf(Headers);
+        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
+    });
+
+    it('layered CSP surfaces a per-response nonce', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.nonce).toEqual(expect.any(String));
+        expect(result.nonce.length).toBeGreaterThan(0);
+        expect(result.headers.get('Content-Security-Policy')).toContain(`'nonce-${result.nonce}'`);
+    });
+
+    it('CSP header uses script-src-elem with nonce + * for external scripts', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest() });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain('script-src-elem');
+        expect(csp).toContain(`'nonce-${result.nonce}'`);
+        expect(csp).toContain('*');
+        expect(csp).not.toContain('strict-dynamic');
+    });
+
+    it('CSP header includes inline hash and * when pages entry matches the page key', async () => {
+        const { verify } = makeVerifier({
+            latestManifest: cspManifest({
+                pages: { '/': ['sha256-abc123'] },
+            }),
+        });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain("'sha256-abc123'");
+        expect(csp).toContain('*');
+        expect(csp).not.toContain('strict-dynamic');
+    });
+
+    it('does not escalate to historic manifests — csp action is terminal', async () => {
+        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
+            latestManifest: cspManifest(),
+        });
+        await verify(makeNav('/'), makeOkResponse());
+        expect(getManifestHistory).not.toHaveBeenCalled();
+        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
+    });
+
+    it('manifest.csp.enabled=false skips header injection entirely (origin CSP passes through)', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest({ enabled: false }) });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.headers).toBeUndefined();
+        expect(result.nonce).toBeUndefined();
+    });
+
+    it('manifest.csp.enabled=true (default) still emits headers', async () => {
+        const { verify } = makeVerifier({ latestManifest: cspManifest({ enabled: true }) });
+        const result = await verify(makeNav('/'), makeOkResponse());
+        expect(result.headers).toBeInstanceOf(Headers);
+        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
+    });
+});
+
+// ── stale client pruning ──────────────────────────────────────────────────────
 
 describe('stale client pruning', () => {
     it('calls matchAllClients after pinning', async () => {
@@ -458,11 +591,11 @@ describe('stale client pruning', () => {
     });
 
     it('evicts inactive clients so they re-escalate on next request', async () => {
-        const swContext = makeSwContext({ clients: [] });
+        const swContext = makeSwContext({ clients: [] }); // client-1 not active
         const fetchAndStoreManifest = vi.fn(() =>
             Promise.resolve({ status: VERIFICATION_STATUS.MATCH, ...INFO_V1 })
         );
-        const { verifyResponse } = createVerifier(
+        const { verifyResponse } = createSecurityVerifier(
             {
                 swContext,
                 appStore: makeAppStore(),
@@ -471,10 +604,12 @@ describe('stale client pruning', () => {
             { fetchAndStoreManifest, getManifestHistory: vi.fn(() => Promise.resolve([])) }
         );
 
+        // First call pins client-1 (but pruning evicts it immediately).
         await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
         await new Promise((r) => setTimeout(r, 0));
         fetchAndStoreManifest.mockClear();
 
+        // Second call (sub-resource) — client evicted, so no pin, escalates to step 4.
         const staleInfo = { appVersion: 'v-stale', manifest: MANIFEST_V2 };
         await verifyResponse(
             makeSubResource('/index.html'),

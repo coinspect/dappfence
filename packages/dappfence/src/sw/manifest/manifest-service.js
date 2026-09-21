@@ -6,7 +6,8 @@
 import { MODE } from '../../core/constants.js';
 import { isFeatureEnabled } from '../../core/utils.js';
 import { createManifestLoader } from './manifest-loader.js';
-import { createVerifier } from './verifier.js';
+import { createBasicVerifier } from './basic-verifier.js';
+import { createSecurityVerifier } from './security-verifier.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
@@ -23,6 +24,9 @@ const getEffectiveMode = (manifest) =>
  */
 export const createManifestService = (deps) => {
     const manifestLoader = createManifestLoader(deps);
+    const createVerifier = isFeatureEnabled('enforce_content_rules')
+        ? createSecurityVerifier
+        : createBasicVerifier;
     const verifier = createVerifier(deps, manifestLoader);
 
     const resolveManifest = async () => {
