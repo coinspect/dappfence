@@ -400,11 +400,11 @@ function startServer({
                 res.end('File not found');
                 return;
             }
-            serveBuffer(filePath, data, res, req, testParams);
+            serveBuffer(filePath, data, res, req, testParams, 'file');
         });
     }
 
-    function serveBuffer(filePath, data, res, req, testParams) {
+    function serveBuffer(filePath, data, res, req, testParams, result) {
         const sriHash = calculateSRIHash(data);
         const mimeType = getMimeType(filePath || testParams.requestPath);
         const extraHeaders = getExtraResponseHeaders(testParams);
@@ -427,7 +427,7 @@ function startServer({
               )
             : data;
 
-        saveTestResponse(testParams, 'ok', filePath, extraHeaders, intercept);
+        saveTestResponse(testParams, result, filePath, extraHeaders, intercept);
         logRequestToConsole(
             req,
             testParams,
@@ -498,6 +498,7 @@ function startServer({
                 testId: 'default',
                 url: baseUrl.toString(),
                 requestPath: baseUrl.pathname,
+                method: req.method,
             };
         }
         const { appName, appVersion, testTitle, testId } = params || {};
@@ -510,6 +511,7 @@ function startServer({
             testId,
             url: baseUrl.toString(),
             requestPath: baseUrl.pathname,
+            method: req.method,
         };
     }
 
@@ -518,6 +520,22 @@ function startServer({
     // hosts will fail with a TypeError — the browser rejects responses without
     // Access-Control-Allow-Origin even though the SW upgraded the request mode.
     const NO_CORS_HOSTS = new Set(['cors-unsupported-cdn.com']);
+
+    // Generic capture sink. Any request under `/capture/*` is recorded into
+    // testResponse (when saveResponses is on) with `method` + `body` on the
+    // entry, then delegates to serveBuffer so the standard intercept pipeline
+    // (inject/unchanged/empty/remap) applies. Reusable for CSP reports,
+    // beacons, or any "did the browser hit this URL with what payload?" test.
+    function serveCapture(req, res, testParams) {
+        let raw = '';
+        req.on('data', (chunk) => {
+            raw += chunk.toString();
+        });
+        req.on('end', () => {
+            testParams.body = raw || null;
+            return serveBuffer('', Buffer.alloc(0), res, req, testParams, 'capture');
+        });
+    }
 
     const server = http.createServer((req, res) => {
         const testParams = getTestParameters(req);
@@ -548,6 +566,10 @@ function startServer({
 
         if (testParams.requestPath.startsWith('/api/')) {
             return serveApi(res, req, testParams);
+        }
+
+        if (testParams.requestPath.startsWith('/capture/')) {
+            return serveCapture(req, res, testParams);
         }
 
         if (dev && testParams.requestPath.endsWith('/dappfence.js')) {
@@ -600,7 +622,7 @@ function startServer({
                     return serveFile(targetPath, res, req, testParams);
                 }
             } else {
-                return serveBuffer('', Buffer.alloc(0), res, req, testParams);
+                return serveBuffer('', Buffer.alloc(0), res, req, testParams, 'synth');
             }
         }
 

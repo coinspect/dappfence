@@ -71,6 +71,14 @@ const simpleAppPages = {
         manifest: 'integrity-manifest.json',
     },
     'no-not-found.html': { template: 'simple-app.html', manifest: 'no-not-found-manifest.json' },
+    'csp-report.html': {
+        template: 'simple-app.html',
+        manifest: 'csp-report-manifest.json',
+    },
+    'csp-report-only.html': {
+        template: 'simple-app.html',
+        manifest: 'csp-report-only-manifest.json',
+    },
 };
 
 const simpleAppBase = {
@@ -83,6 +91,19 @@ const simpleAppBase = {
         'no-not-found-manifest.json': {
             ...defaultManifest,
             pathRules: [{ type: 'directory-index' }],
+        },
+        'csp-report-manifest.json': {
+            ...defaultManifest,
+            csp: { ...defaultManifest.csp, reportUri: '/capture/csp', reportSample: true },
+        },
+        'csp-report-only-manifest.json': {
+            ...defaultManifest,
+            csp: {
+                ...defaultManifest.csp,
+                reportUri: '/capture/csp',
+                reportOnly: true,
+                reportSample: true,
+            },
         },
     },
     pages: simpleAppPages,
