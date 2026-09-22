@@ -1,13 +1,76 @@
 import { expect, test } from '../sw-fixtures';
+import { APIRequestContext, Page } from '@playwright/test';
 
 // SHA-256 of the first inline template script body in simple-app.html:
 //   "\n window.__csp_inline_1 = 'script-1-ran';\n        "
 // Stable as long as the template script content and indentation don't change.
 const CSP_INLINE_1_HASH = 'sha256-vRDxHJVof5XdgQz3jMqMeB0wpoGfCWXTSV60g2VfXx4=';
 
+// Matches `csp.reportUri` set in test-app build-config.js on the
+// csp-report-manifest.json and csp-report-only-manifest.json variants (default
+// manifest has no reportUri). Relative — browser resolves it same-origin per
+// worker; the dev-server's /capture/* sink records the POST into testResponse.
+const REPORT_URI = '/capture/csp';
+
+type ViolationHit = {
+    violatedDirective: string;
+    effectiveDirective: string;
+    blockedURI: string;
+    disposition: string;
+    sample: string;
+};
+
+type CspReport = {
+    'violated-directive': string;
+    'effective-directive': string;
+    'blocked-uri': string;
+    'document-uri': string;
+    disposition: string;
+    'script-sample'?: string;
+};
+
+async function installCspListener(page: Page) {
+    await page.addInitScript(() => {
+        (window as unknown as Record<string, unknown>).__cspViolations = [];
+        document.addEventListener('securitypolicyviolation', (e) => {
+            ((window as unknown as Record<string, unknown>).__cspViolations as ViolationHit[]).push(
+                {
+                    violatedDirective: e.violatedDirective,
+                    effectiveDirective: e.effectiveDirective,
+                    blockedURI: e.blockedURI,
+                    disposition: e.disposition,
+                    sample: e.sample,
+                }
+            );
+        });
+    });
+}
+
+async function readCapturedReports(
+    request: APIRequestContext,
+    expected: number
+): Promise<CspReport[]> {
+    let reports: CspReport[] = [];
+    await expect
+        .poll(async () => {
+            const response = await request.get('/api/test-responses');
+            const entries = await response.json();
+            reports = entries
+                .filter(
+                    (e: { result: string; requestPath: string }) =>
+                        e.result === 'capture' && e.requestPath === '/capture/csp'
+                )
+                .map((e: { body: string }) => JSON.parse(e.body)['csp-report'] as CspReport);
+            return reports.length;
+        })
+        .toBe(expected);
+    return reports;
+}
+
 test.describe('CSP injection', () => {
     test.beforeEach(async ({ page, swHelper }) => {
-        await page.goto('');
+        // Bootstrap under csp-report-manifest.json — enforce + reportUri.
+        await page.goto('/csp-report.html');
         await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
         await swHelper.waitForServiceWorkerActivation();
     });
@@ -29,8 +92,7 @@ test.describe('CSP injection', () => {
         expect(csp).toContain('*');
         expect(csp).toContain("object-src 'none'");
         expect(csp).toContain("base-uri 'none'");
-        // CSP violation reporting is intentionally not shipped — no report-uri directive.
-        expect(csp).not.toContain('report-uri');
+        expect(csp).toContain(`report-uri ${REPORT_URI}`);
     });
 
     test('SW strips origin CSP headers and replaces them, but preserves other policy headers', async ({
@@ -118,16 +180,7 @@ test.describe('CSP injection', () => {
         page,
         swHelper,
     }) => {
-        // Capture any CSP violations that fire during page load. The init script runs
-        // before any page JS, so the listener is active before dappfence.js executes.
-        await page.addInitScript(() => {
-            (window as unknown as Record<string, unknown>).__cspViolations = [];
-            document.addEventListener('securitypolicyviolation', (e) => {
-                ((window as unknown as Record<string, unknown>).__cspViolations as string[]).push(
-                    `${e.effectiveDirective}: ${e.blockedURI}`
-                );
-            });
-        });
+        await installCspListener(page);
 
         await swHelper.interceptAndModifyPageContent({
             pattern: '/csp-test-allowed',
@@ -136,7 +189,6 @@ test.describe('CSP injection', () => {
         });
         const response = await page.goto('/csp-test-allowed');
 
-        // The SW must serve this response — DappFence is in control.
         expect(response.fromServiceWorker()).toBeTruthy();
         const isControlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
         expect(isControlled).toBeTruthy();
@@ -144,58 +196,19 @@ test.describe('CSP injection', () => {
         const csp = response.headers()['content-security-policy'];
         expect(csp).toBeDefined();
 
-        // default-src 'none': deny-all baseline — every permitted resource type must be
-        // listed explicitly; prevents new resource types from being silently permitted.
         expect(csp).toContain("default-src 'none'");
-
-        // script-src-elem controls <script> elements (both inline and external src).
-        //   - Inline scripts: only those whose SHA-256 matches a hash in this directive run;
-        //     all others are blocked by the browser without DappFence involvement.
-        //   - External scripts (*): any origin is permitted at the CSP level. DappFence
-        //     already verifies every external script by content hash at the SW layer, so
-        //     restricting by origin in the CSP would add no security benefit.
-        //   - 'strict-dynamic' is omitted: it is incompatible with '*' (strict-dynamic
-        //     ignores all origin allowlists), and the trust propagation it provides is
-        //     already covered by DappFence's SW-level verification.
-        //   - eval / new Function / inline event handlers are NOT covered by script-src-elem
-        //     and fall back to default-src 'none' — they remain blocked.
         expect(csp).toContain('script-src-elem');
         expect(csp).toContain(`'${CSP_INLINE_1_HASH}'`); // one of the hashed template scripts
         expect(csp).toContain('*');
         expect(csp).not.toContain('strict-dynamic');
-
-        // style-src 'self' 'unsafe-inline': 'unsafe-inline' is safe for styles because all
-        // CSS JS-execution vectors (expression(), behavior:, HTC) are IE-only and dead in
-        // modern browsers — see docs/js-execution-vectors.md §11.
         expect(csp).toMatch(/style-src (?:'report-sample' )?'self' 'unsafe-inline'/);
-
-        // worker-src 'self': DappFence registers its own service worker from the page
-        // context (navigator.serviceWorker.register in dappfence.js). Without this,
-        // default-src 'none' would block the registration. 'self' cannot be tightened to a
-        // specific path without hardcoding the deployment URL. The browser already enforces
-        // that service workers must be same-origin regardless of CSP.
         expect(csp).toContain("worker-src 'self'");
-
-        // object-src 'none': blocks Flash, Java, and PDF plugin execution vectors (§4 of
-        // docs/js-execution-vectors.md). No legitimate use case requires plugin embeds.
         expect(csp).toContain("object-src 'none'");
-
-        // base-uri 'none': blocks any <base href> — even same-origin. Tightens 'self'
-        // by refusing base-URL manipulation entirely; Next.js and Astro don't emit
-        // <base>, so this doesn't break the frameworks DappFence targets.
         expect(csp).toContain("base-uri 'none'");
-
-        // frame-ancestors 'none': prevents the page from being loaded inside an iframe,
-        // closing clickjacking and UI-redressing attack vectors.
         expect(csp).toContain("frame-ancestors 'none'");
-
-        // CSP violation reporting is intentionally not shipped — no report-uri directive
-        // and no /sw-api/csp-violation endpoint.
-        expect(csp).not.toContain('report-uri');
+        expect(csp).toContain(`report-uri ${REPORT_URI}`);
         expect(csp).not.toContain('/sw-api/csp-violation');
 
-        // Styles applied: check a CSS custom property from the inline <style> block.
-        // If style-src had blocked the inline styles this property would be empty.
         const brandColor = await page.evaluate(() =>
             getComputedStyle(document.documentElement).getPropertyValue('--color-brand').trim()
         );
@@ -203,26 +216,61 @@ test.describe('CSP injection', () => {
 
         // No CSP violations during page load — every directive is correctly configured.
         const violations = await page.evaluate(
-            () => (window as unknown as Record<string, unknown>).__cspViolations as string[]
+            () => (window as unknown as Record<string, unknown>).__cspViolations as ViolationHit[]
         );
         expect(violations).toEqual([]);
     });
 
-    test('inline script without a matching hash is blocked by browser CSP', async ({
+    test('inline script without a matching hash is blocked AND report POSTs to /capture/csp', async ({
         page,
+        request,
         swHelper,
     }) => {
-        const unknownScript = '<script>window.__blockedScriptRan = true;</script>';
-        await swHelper.interceptAndModifyPageContent({
-            pattern: '/csp-test-denied',
-            formula: 'remap',
-            args: { file: 'index.html', inject: [unknownScript, '<!-- test:inject-body-end -->'] },
+        await installCspListener(page);
+        await swHelper.setServerTestParameters({
+            saveResponses: true,
+            intercept: {
+                pattern: '/csp-test-denied',
+                formula: 'remap',
+                args: {
+                    file: 'index.html',
+                    inject: [
+                        '<script>window.__blockedScriptRan = true;</script>',
+                        '<!-- test:inject-body-end -->',
+                    ],
+                },
+            },
         });
+
         await page.goto('/csp-test-denied');
+        await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+
         const ran = await page.evaluate(
             () => (window as unknown as Record<string, unknown>).__blockedScriptRan
         );
         expect(ran).toBeUndefined();
+
+        const listenerHits = await page.evaluate(
+            () => (window as unknown as Record<string, unknown>).__cspViolations as ViolationHit[]
+        );
+        expect(listenerHits.length).toBeGreaterThan(0);
+        for (const v of listenerHits) {
+            expect(v.effectiveDirective).toBe('script-src-elem');
+            expect(v.blockedURI).toBe('inline');
+            expect(v.disposition).toBe('enforce');
+        }
+        expect(listenerHits.find((v) => v.sample.includes('__blockedScriptRan'))).toBeDefined();
+
+        const posted = await readCapturedReports(request, listenerHits.length);
+        for (const r of posted) {
+            expect(r['effective-directive']).toBe('script-src-elem');
+            expect(r['blocked-uri']).toBe('inline');
+            expect(r['document-uri']).toContain('/csp-test-denied');
+            expect(r.disposition).toBe('enforce');
+        }
+        expect(
+            posted.find((r) => (r['script-sample'] ?? '').includes('__blockedScriptRan'))
+        ).toBeDefined();
     });
 
     test('template inline scripts execute when their hashes are in the manifest', async ({
@@ -349,4 +397,83 @@ test.describe('CSP injection', () => {
         expect(result.rscChunks).toBeUndefined();
         expect(result.bypassExecuted).toBeUndefined();
     });
+
+    test('report-uri from manifest.csp.reportUri is emitted as the last directive', async ({
+        page,
+        swHelper,
+    }) => {
+        await swHelper.interceptAndModifyPageContent({
+            pattern: '/csp-test-denied',
+            formula: 'remap',
+            args: { file: 'index.html' },
+        });
+        const response = await page.goto('/csp-test-denied');
+        expect(response.fromServiceWorker()).toBeTruthy();
+        const headers = response.headers();
+
+        // Enforce header carries the report-uri; no Report-Only header is emitted
+        // since csp-report-manifest.json does not set csp.reportOnly.
+        const csp = headers['content-security-policy'];
+        expect(csp).toBeDefined();
+        expect(headers['content-security-policy-report-only']).toBeUndefined();
+
+        // Kept last so consumers extracting the URI with a `\S+`-style regex
+        // don't accidentally capture the `; ` separator and a following directive.
+        const directives = csp.split('; ');
+        expect(directives[directives.length - 1]).toBe(`report-uri ${REPORT_URI}`);
+    });
+});
+
+test('report-only manifest: violating script executes AND report POSTs to /capture/csp', async ({
+    page,
+    request,
+    swHelper,
+}) => {
+    await page.goto('/csp-report-only.html');
+    await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+    await swHelper.waitForServiceWorkerActivation();
+
+    await installCspListener(page);
+    await swHelper.setServerTestParameters({
+        saveResponses: true,
+        intercept: {
+            pattern: '/csp-test-denied',
+            formula: 'remap',
+            args: {
+                file: 'index.html',
+                inject: [
+                    '<script>window.__violation = true;</script>',
+                    '<!-- test:inject-body-end -->',
+                ],
+            },
+        },
+    });
+
+    await page.goto('/csp-test-denied');
+    await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+
+    const ran = await page.evaluate(
+        () => (window as unknown as Record<string, unknown>).__violation
+    );
+    expect(ran).toBe(true);
+
+    const listenerHits = await page.evaluate(
+        () => (window as unknown as Record<string, unknown>).__cspViolations as ViolationHit[]
+    );
+    expect(listenerHits.length).toBeGreaterThan(0);
+    for (const v of listenerHits) {
+        expect(v.effectiveDirective).toBe('script-src-elem');
+        expect(v.blockedURI).toBe('inline');
+        expect(v.disposition).toBe('report');
+    }
+    expect(listenerHits.find((v) => v.sample.includes('__violation'))).toBeDefined();
+
+    const posted = await readCapturedReports(request, listenerHits.length);
+    for (const r of posted) {
+        expect(r['effective-directive']).toBe('script-src-elem');
+        expect(r['blocked-uri']).toBe('inline');
+        expect(r['document-uri']).toContain('/csp-test-denied');
+        expect(r.disposition).toBe('report');
+    }
+    expect(posted.find((r) => (r['script-sample'] ?? '').includes('__violation'))).toBeDefined();
 });

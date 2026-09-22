@@ -91,6 +91,8 @@ export const normalizeManifestData = (manifestData) => {
             typeof rawCsp.reportSample === 'boolean'
                 ? rawCsp.reportSample
                 : flagOrDefault('csp_report_sample', false),
+        reportUri: typeof rawCsp.reportUri === 'string' ? rawCsp.reportUri : null,
+        reportOnly: rawCsp.reportOnly === true,
         pages:
             rawCsp.pages && typeof rawCsp.pages === 'object' && !Array.isArray(rawCsp.pages)
                 ? rawCsp.pages

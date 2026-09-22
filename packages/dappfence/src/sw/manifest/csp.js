@@ -31,6 +31,8 @@ const matchCspPageEntry = (pages, fileKey) => {
  *     frameAncestors:          ["https://parent.example"],   // parents allowed to embed this page
  *     upgradeInsecureRequests: false,                         // enable auto-upgrade of http:// subresources
  *     reportSample:            true,                           // include 40-char sample of blocked inline in reports
+ *     reportUri:               "https://reports.example/csp", // external endpoint for CSP violation reports; null skips report-uri
+ *     reportOnly:              false,                          // when reportUri set, switch to Content-Security-Policy-Report-Only (no enforcement)
  *     pages: { "/": { scripts: ["sha256-..."], attrs: [...] } }
  *   }
  *
@@ -162,10 +164,26 @@ export function buildCspHeader(fileKey, response, manifest, nonce) {
         directives.push('upgrade-insecure-requests');
     }
 
+    // Reporting is opt-in: only emit `report-uri` when the manifest declares an
+    // external endpoint. Kept last so URL doesn't collide with a following
+    // directive when consumers extract it with a `\S+`-style regex.
+    // `reportOnly` promotes the whole policy to Content-Security-Policy-Report-Only
+    // (nothing is blocked, browser only reports). It requires `reportUri` — without
+    // it, a Report-Only header has no destination and would be inert, so we fall
+    // back to enforce.
+    const reportUri = typeof csp.reportUri === 'string' ? csp.reportUri : null;
+    const reportOnly = reportUri && csp.reportOnly === true;
+    if (reportUri) {
+        directives.push(`report-uri ${reportUri}`);
+    }
+
     // Origin CSP is untrusted — strip both enforce and report-only, then set ours.
     const headers = new Headers(response.headers);
     headers.delete('content-security-policy');
     headers.delete('content-security-policy-report-only');
-    headers.set('Content-Security-Policy', directives.join('; '));
+    const headerName = reportOnly
+        ? 'Content-Security-Policy-Report-Only'
+        : 'Content-Security-Policy';
+    headers.set(headerName, directives.join('; '));
     return headers;
 }
