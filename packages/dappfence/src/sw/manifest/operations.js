@@ -1,16 +1,7 @@
 import { VERIFICATION_STATUS } from '../../core/constants.js';
-import { recoverEthereumAddress, recoverPersonalSign } from '../../core/crypto.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
-
-/**
- * Valid manifest signature types (we only support this one right now)
- */
-const MANIFEST_SIGNATURE_TYPES = {
-    'noble-secp256k1-recovered-eth': recoverEthereumAddress,
-    'personal-sign-alt': recoverPersonalSign,
-};
 
 /**
  * Resolve a fileKey against a manifest's `.files` map, applying navigation
@@ -122,36 +113,11 @@ export const normalizeManifestData = (manifestData) => {
 };
 
 /**
- * Determine a file key from URL (pure function).
- * Same-origin URLs return the pathname; external URLs return the full href.
- * @param {string} url - The asset URL
- * @param {string} baseUrl - The service worker's location href
- * @returns {string} The file key for manifest lookups
- */
-export const getFileKey = (url, baseUrl) => {
-    try {
-        const fileUrl = new URL(url, baseUrl);
-        const originUrl = new URL(baseUrl);
-
-        // Same origin - use pathname
-        if (fileUrl.origin === originUrl.origin) {
-            return fileUrl.pathname;
-        }
-
-        // External - use full URL
-        return fileUrl.href;
-    } catch (_error) {
-        // Fallback to using the URL as-is if it's already absolute, or prepend '/' if relative
-        return url.startsWith('http') ? url : url.startsWith('/') ? url : '/' + url;
-    }
-};
-
-/**
  * Determines if a fetched asset requires verification against the manifest.
  * Logs the decision reason at each branch; callers only read the boolean.
  *
  * Takes `fileKey` (the manifest-key form: pathname for same-origin or full
- * URL for cross-origin, as returned by `getFileKey`) rather than a raw URL —
+ * URL for cross-origin, as returned by `toPathname`) rather than a raw URL —
  * callers reach this function with already-resolved keys (importScripts may
  * pass relative URLs that `new URL(url)` couldn't parse standalone).
  *
@@ -189,53 +155,4 @@ export const shouldVerifyAsset = (fileKey, isNavigation, response, extensions, c
         `Asset check for ${fileKey}: no extension or content-type match (mime=${mime || 'none'})`
     );
     return false;
-};
-
-/**
- * Validate manifest data signature using Ethereum-style secp256k1 signature recovery.
- * @param {string} manifestSignatureType - Signature algorithm identifier
- * @param {string} manifestSignatureIdentity - Expected signer address
- * @param {object} manifestData - Manifest with .pay (payload) and .sig (signature)
- * @returns {{ status: Readonly<{description: string, isViolation: boolean}>, payload?: object, expectedHash?: string, actualHash?: string }}
- */
-export const verifyManifestSignature = (
-    manifestSignatureType,
-    manifestSignatureIdentity,
-    manifestData
-) => {
-    if (manifestSignatureType in MANIFEST_SIGNATURE_TYPES) {
-        try {
-            logger.log('checking signature', manifestSignatureType, manifestData.sig);
-            const msg = new TextEncoder('utf-8').encode(JSON.stringify(manifestData.pay, null, 2));
-            const recovered = MANIFEST_SIGNATURE_TYPES[manifestSignatureType](
-                msg,
-                manifestData.sig
-            );
-            if (manifestSignatureIdentity !== recovered) {
-                logger.error(
-                    `Invalid signature, expected address: ${manifestSignatureIdentity} got ${recovered}`
-                );
-                return {
-                    status: VERIFICATION_STATUS.MISMATCH,
-                    expectedHash: manifestSignatureIdentity,
-                    actualHash: recovered,
-                };
-            }
-            logger.log('recovered address', recovered);
-            return {
-                status: VERIFICATION_STATUS.MATCH,
-                payload: manifestData.pay,
-            };
-        } catch (error) {
-            logger.error('error validating signature:', error);
-            return {
-                status: VERIFICATION_STATUS.ERROR,
-            };
-        }
-    } else {
-        logger.error(`unsupported signature type ${manifestSignatureType}`);
-        return {
-            status: VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE,
-        };
-    }
 };

@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    verifyFilePath,
-    normalizeManifestData,
-    getFileKey,
-    verifyManifestSignature,
-} from '../manifest/operations.js';
+import { verifyFilePath, normalizeManifestData } from '../manifest/operations.js';
 import { createSingleFlight } from '../../core/utils.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 
@@ -131,40 +126,6 @@ describe('normalizeManifestData', () => {
         expect(result.metadata).toEqual({ extensions: ['.js', '.wasm'] });
         expect(result.customField).toEqual({ future: true });
         expect(result.files['/app.js']).toBe('abc');
-    });
-});
-
-describe('getFileKey', () => {
-    const baseUrl = 'https://example.com/dappfence.js';
-
-    it('returns pathname for same-origin URLs', () => {
-        expect(getFileKey('https://example.com/app.js', baseUrl)).toBe('/app.js');
-    });
-
-    it('returns pathname for relative URLs', () => {
-        expect(getFileKey('/app.js', baseUrl)).toBe('/app.js');
-    });
-
-    it('returns full href for cross-origin URLs', () => {
-        expect(getFileKey('https://cdn.other.com/lib.js', baseUrl)).toBe(
-            'https://cdn.other.com/lib.js'
-        );
-    });
-
-    it('prepends / for bare relative paths', () => {
-        // When URL parsing fails, falls back to prepending /
-        expect(getFileKey('app.js', 'not-a-valid-url')).toBe('/app.js');
-    });
-
-    it('returns absolute URL as-is on parse failure', () => {
-        expect(getFileKey('https://cdn.com/lib.js', 'bad-base')).toBe('https://cdn.com/lib.js');
-    });
-});
-
-describe('verifyManifestSignature', () => {
-    it('returns UNSUPPORTED_SIGNATURE for unknown signature types', () => {
-        const result = verifyManifestSignature('unknown-type', '0xABC', { pay: {}, sig: 'sig' });
-        expect(result.status).toBe(VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE);
     });
 });
 
