@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createVerifier } from '../manifest/verifier.js';
+import { createBasicVerifier } from '../manifest/basic-verifier.js';
 import { isFeatureEnabled } from '../../core/utils.js';
 
 vi.mock('../../templates/security-warning.html?raw', () => ({
@@ -28,7 +28,7 @@ function makePrepareRequest() {
         fetchAndStoreManifest: vi.fn(),
         getManifestHistory: vi.fn(() => Promise.resolve([])),
     };
-    const { prepareRequest } = createVerifier({ swContext, appStore, config }, manifestLoader);
+    const { prepareRequest } = createBasicVerifier({ swContext, appStore, config }, manifestLoader);
     // Wrap to match old (request, _origin) call signature; manifest not needed for these tests.
     return (request) => prepareRequest(request, null);
 }

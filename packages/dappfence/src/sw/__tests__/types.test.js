@@ -8,7 +8,7 @@ describe('VERIFICATION_STATUS', () => {
         expect(VERIFICATION_STATUS.SKIPPED.isViolation).toBe(false);
         expect(VERIFICATION_STATUS.MISMATCH.isViolation).toBe(true);
         expect(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST.isViolation).toBe(true);
-        expect(VERIFICATION_STATUS.ERROR.description).toBe('VERIFICATION_ERROR');
+        expect(VERIFICATION_STATUS.ERROR.description).toBe('ERROR');
         expect(VERIFICATION_STATUS.ERROR.isViolation).toBe(true);
         expect(VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE.isViolation).toBe(true);
         expect(VERIFICATION_STATUS.CONFIG_ERROR.isViolation).toBe(true);

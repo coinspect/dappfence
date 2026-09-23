@@ -36,14 +36,12 @@ const STATUS_LOG = {
         `File: ${d.fileKey}`,
         `Hash: ${d.actualHash}`,
     ],
+    DENIED_BY_RULE: (d) => [`SECURITY ALERT: File denied by security rule!`, `File: ${d.fileKey}`],
     UNSUPPORTED_SIGNATURE: (d) => [
         `SECURITY ALERT: Manifest signature algorithm not supported!`,
         `File: ${d.fileKey}`,
     ],
-    VERIFICATION_ERROR: (d) => [
-        `SECURITY ALERT: Verification error!`,
-        `File: ${d.fileKey ?? 'N/A'}`,
-    ],
+    ERROR: (d) => [`SECURITY ALERT: Verification error!`, `File: ${d.fileKey ?? 'N/A'}`],
     CONFIG_ERROR: (d) => [
         `SECURITY ALERT: Security configuration error!`,
         `File: ${d.fileKey ?? 'N/A'}`,

@@ -5,6 +5,7 @@
         "mark_request": false,
         "default_to_protected_mode": false,
         "force_cors_scripts": true,
+        "enforce_content_rules": true,
         "csp_upgrade_insecure_requests": false,
         "csp_report_sample": true
     },
@@ -14,6 +15,7 @@
         "mark_request": false,
         "default_to_protected_mode": false,
         "force_cors_scripts": true,
+        "enforce_content_rules": true,
         "csp_upgrade_insecure_requests": true,
         "csp_report_sample": false
     },

@@ -41,7 +41,7 @@ const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.h
  * @param {object} deps.config
  * @param {object} manifestLoader
  */
-export const createVerifier = ({ swContext, appStore, config }, manifestLoader) => {
+export const createBasicVerifier = ({ swContext, appStore, config }, manifestLoader) => {
     const { storeManifestFromResponse, fetchAndStoreManifest, getManifestHistory } = manifestLoader;
     const { verificationResultsStore } = appStore;
     const locationHref = swContext.getLocationHref();
