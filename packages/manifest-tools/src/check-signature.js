@@ -1,8 +1,14 @@
-const fs = require('fs');
-const { keccak256, ethereumAddress, getPublicKey, recoverPersonalSign } = require('./crypto');
+import fs from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+    keccak256,
+    ethereumAddress,
+    getPublicKey,
+    recoverPersonalSign,
+    hexToBytes,
+} from './crypto.js';
 
-function checkSignature(manifestPath, secretKeyHex) {
-    const { hexToBytes } = require('./crypto');
+export function checkSignature(manifestPath, secretKeyHex) {
     const secretKey = hexToBytes(secretKeyHex);
     const publicKey = getPublicKey(secretKey);
     const { sig, pay } = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -16,10 +22,8 @@ function checkSignature(manifestPath, secretKeyHex) {
     return recovered;
 }
 
-module.exports = { checkSignature };
-
-if (require.main === module) {
-    const idx = process.argv.findIndex((x) => x == __filename);
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const idx = process.argv.findIndex((x) => x === fileURLToPath(import.meta.url));
     if (process.argv.length <= idx + 1) {
         console.error(`Usage: ${process.argv[idx]} manifestFile`);
         process.exit(1);

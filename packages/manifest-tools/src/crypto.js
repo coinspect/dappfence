@@ -1,14 +1,14 @@
-const secp = require('@noble/secp256k1');
-const { keccak_256 } = require('@noble/hashes/sha3.js');
-const { sha256 } = require('@noble/hashes/sha2.js');
-const { hmac } = require('@noble/hashes/hmac.js');
+import * as secp from '@noble/secp256k1';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hmac } from '@noble/hashes/hmac.js';
 secp.hashes.hmacSha256 = (key, msg) => hmac(sha256, key, msg);
 secp.hashes.sha256 = sha256;
 
 /**
  * Calculate Ethereum address from a compressed public key
  */
-function ethereumAddress(compressedPubKey) {
+export function ethereumAddress(compressedPubKey) {
     const point = secp.Point.fromBytes(compressedPubKey);
     const keccak = keccak_256(point.toBytes(false).slice(1));
     return '0x' + secp.etc.bytesToHex(keccak.slice(-20));
@@ -17,7 +17,7 @@ function ethereumAddress(compressedPubKey) {
 /**
  * Signs a message using secp256k1 and returns the hex signature
  */
-function sign(msg, secretKey) {
+export function sign(msg, secretKey) {
     return secp.etc.bytesToHex(
         secp.sign(msg, secretKey, {
             format: 'recovered',
@@ -27,7 +27,7 @@ function sign(msg, secretKey) {
     );
 }
 
-function recoverSigner(msgHash, signature) {
+export function recoverSigner(msgHash, signature) {
     const sigBytes = secp.etc.hexToBytes(signature);
     const compressedPubKey = secp.recoverPublicKey(sigBytes, msgHash, { prehash: false });
     const point = secp.Point.fromBytes(compressedPubKey);
@@ -35,7 +35,7 @@ function recoverSigner(msgHash, signature) {
     return '0x' + secp.etc.bytesToHex(keccak.slice(-20));
 }
 
-function recoverPersonalSign(msgHash, signature) {
+export function recoverPersonalSign(msgHash, signature) {
     const sigBytes = secp.etc.hexToBytes(signature);
     const prefix = '\x19Ethereum Signed Message:\n';
     const messageHash = keccak_256(
@@ -47,24 +47,13 @@ function recoverPersonalSign(msgHash, signature) {
     return '0x' + secp.etc.bytesToHex(keccak.slice(-20));
 }
 
-function getPublicKey(secretKey) {
+export function getPublicKey(secretKey) {
     return secp.getPublicKey(secretKey);
 }
 
-function hexToBytes(hex) {
+export function hexToBytes(hex) {
     return secp.etc.hexToBytes(hex);
 }
 
-const bytesToHex = secp.etc.bytesToHex;
-const keccak256 = keccak_256;
-
-module.exports = {
-    recoverSigner,
-    recoverPersonalSign,
-    sign,
-    ethereumAddress,
-    getPublicKey,
-    hexToBytes,
-    bytesToHex,
-    keccak256,
-};
+export const bytesToHex = secp.etc.bytesToHex;
+export const keccak256 = keccak_256;

@@ -2,12 +2,13 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { createRequire } from 'module';
 import { TRANSFORM } from '@dappfence/core/constants';
-
-const _require = createRequire(import.meta.url);
-const { buildScriptAttrs, buildScriptTag, injectScriptTag, generateManifest } =
-    _require('../manifest');
+import {
+    buildScriptAttrs,
+    buildScriptTag,
+    injectScriptTag,
+    generateManifest,
+} from '../manifest.js';
 
 const MINIMAL = { scriptSrc: '/dappfence.js' };
 const LOGGER = { info: () => {}, warn: () => {}, error: () => {} };

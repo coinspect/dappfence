@@ -2,12 +2,12 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { createRequire } from 'module';
-
-const _require = createRequire(import.meta.url);
-const { extractInlineScriptHashes, extractInlineAttrHashes, extractInlineHashesFromHtml } =
-    _require('../inline-scripts');
-const { calculateStringHash } = _require('../build');
+import {
+    extractInlineScriptHashes,
+    extractInlineAttrHashes,
+    extractInlineHashesFromHtml,
+} from '../inline-scripts.js';
+import { calculateStringHash } from '../build.js';
 
 let tmpFiles = [];
 async function writeHtml(content) {

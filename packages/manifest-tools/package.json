@@ -3,7 +3,7 @@
     "version": "0.1.2",
     "description": "Hashing, signing, and manifest generation tools for DappFence integrations",
     "license": "MIT",
-    "type": "commonjs",
+    "type": "module",
     "main": "src/build.js",
     "exports": {
         ".": "./src/build.js",

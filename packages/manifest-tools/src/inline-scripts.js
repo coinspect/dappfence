@@ -1,7 +1,5 @@
-'use strict';
-
-const { promises: fs } = require('fs');
-const { calculateStringHash } = require('./build');
+import { promises as fs } from 'node:fs';
+import { calculateStringHash } from './build.js';
 
 // Find `<script` (7 chars) followed by whitespace, >, or / — case-insensitive.
 // Returns the index of `<`, or -1.
@@ -254,7 +252,7 @@ function _hashScripts(html) {
  *   hashes: 'sha256-<base64>' strings, one per inline <script> body
  *   warnings: non-fatal issues found during parsing
  */
-async function extractInlineScriptHashes(htmlPath) {
+export async function extractInlineScriptHashes(htmlPath) {
     const raw = await fs.readFile(htmlPath);
 
     if ((raw[0] === 0xff && raw[1] === 0xfe) || (raw[0] === 0xfe && raw[1] === 0xff)) {
@@ -343,7 +341,7 @@ function _hashAttrs(html) {
  *   attrs: one entry per unique attribute value, in discovery order
  *   hash: 'sha256-<base64>' (same format as extractInlineScriptHashes)
  */
-async function extractInlineAttrHashes(htmlPath) {
+export async function extractInlineAttrHashes(htmlPath) {
     const raw = await fs.readFile(htmlPath);
 
     if ((raw[0] === 0xff && raw[1] === 0xfe) || (raw[0] === 0xfe && raw[1] === 0xff)) {
@@ -371,7 +369,7 @@ async function extractInlineAttrHashes(htmlPath) {
  *   attrs:   'sha256-<base64>' strings for each unique on* attribute value
  *   warnings: non-fatal parse issues
  */
-function extractInlineHashesFromHtml(html) {
+export function extractInlineHashesFromHtml(html) {
     const { hashes: scripts, warnings: w1 } = _hashScripts(html);
     const { attrs, warnings: w2 } = _hashAttrs(html);
     return {
@@ -380,9 +378,3 @@ function extractInlineHashesFromHtml(html) {
         warnings: [...w1, ...w2],
     };
 }
-
-module.exports = {
-    extractInlineScriptHashes,
-    extractInlineAttrHashes,
-    extractInlineHashesFromHtml,
-};

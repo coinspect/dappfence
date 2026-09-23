@@ -12,10 +12,11 @@
  *   dappfence-manifest verify integrity-manifest.json
  *   dappfence-manifest sign ./out --secret-key <hex> --script-src /dappfence.js
  */
-const { calculateFileHash, verifyManifest, deriveIdentity } = require('./build');
-const { generateManifest, buildScriptAttrs, buildScriptTag } = require('./manifest');
-const fs = require('fs');
-const path = require('path');
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { calculateFileHash, verifyManifest, deriveIdentity } from './build.js';
+import { generateManifest, buildScriptAttrs, buildScriptTag } from './manifest.js';
 
 function usage() {
     console.log(`Usage:
@@ -43,7 +44,7 @@ function cmdHash(files) {
         try {
             const sri = calculateFileHash(file);
             const buf = fs.readFileSync(file);
-            const hex = require('crypto').createHash('sha256').update(buf).digest('hex');
+            const hex = createHash('sha256').update(buf).digest('hex');
             if (multi) console.log(file);
             console.log(`  hex: ${hex}`);
             console.log(`  sri: ${sri}`);
