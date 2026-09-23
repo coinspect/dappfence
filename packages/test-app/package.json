@@ -3,6 +3,9 @@
     "version": "0.1.2",
     "description": "Development server and e2e tests for DappFence",
     "type": "module",
+    "engines": {
+        "node": ">=22.0.0"
+    },
     "main": "src/dev-server.js",
     "exports": {
         ".": "./src/dev-server.js",
