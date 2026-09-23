@@ -1,0 +1,15 @@
+{
+    "name": "@dappfence/astro",
+    "version": "0.1.2",
+    "description": "Astro integration for DappFence (placeholder, implementation lands in a later PR)",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/coinspect/dappfence.git",
+        "directory": "packages/astro"
+    },
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    }
+}

@@ -1,6 +1,6 @@
 {
-    "name": "@dappfence/signer",
-    "version": "0.1.0",
+    "name": "@dappfence/manifest-tools",
+    "version": "0.1.2",
     "description": "Signed integrity manifest builder for web applications",
     "license": "MIT",
     "type": "commonjs",
@@ -15,7 +15,7 @@
     "repository": {
         "type": "git",
         "url": "git+https://github.com/coinspect/dappfence.git",
-        "directory": "packages/signer"
+        "directory": "packages/manifest-tools"
     },
     "keywords": [
         "security",
@@ -24,6 +24,12 @@
         "sha256",
         "signing"
     ],
+    "scripts": {
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
     "dependencies": {
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0"
