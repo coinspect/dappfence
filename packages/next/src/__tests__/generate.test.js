@@ -2,17 +2,17 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createRequire } from 'node:module';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { readDynamicRoutes } from '../routes.js';
 import { routePatternToProbeUrl, routePatternToPrefixKey } from '../ssr.js';
 import { withDappfence, getDappfenceScriptAttrs, ATTRS_ENV_KEY } from '../index.js';
 import { buildContentRules } from '../webpack-plugin.js';
-
-const _require = createRequire(import.meta.url);
-const { buildScriptAttrs, buildScriptTag, injectScriptTag, generateManifest } = _require(
-    '@dappfence/manifest-tools/manifest'
-);
+import {
+    buildScriptAttrs,
+    buildScriptTag,
+    injectScriptTag,
+    generateManifest,
+} from '@dappfence/manifest-tools/manifest';
 
 const MINIMAL = { scriptSrc: '/dappfence.js' };
 const LOGGER = { info: () => {}, warn: () => {}, error: () => {} };

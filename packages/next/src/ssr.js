@@ -4,9 +4,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-
-const _require = createRequire(import.meta.url);
-const { extractInlineHashesFromHtml } = _require('@dappfence/manifest-tools/inline-scripts');
+import { extractInlineHashesFromHtml } from '@dappfence/manifest-tools/inline-scripts';
 
 export function routePatternToProbeUrl(pattern) {
     return pattern

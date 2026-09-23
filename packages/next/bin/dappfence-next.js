@@ -35,6 +35,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readDynamicRoutes, readPrerenderedRoutes } from '../src/routes.js';
 import { hashPublicFiles, hashSSRRoutes, routePatternToPrefixKey } from '../src/ssr.js';
+import {
+    generateManifest,
+    buildNetlifyContentRules,
+    resolveNetlifyCdpHashes,
+} from '@dappfence/manifest-tools/manifest';
 
 // Probe URL for the unmatched-route body. Anything not matching a real
 // route → Next serves the /404 body (from _not-found.tsx or pages/404.tsx),
@@ -43,9 +48,6 @@ import { hashPublicFiles, hashSSRRoutes, routePatternToPrefixKey } from '../src/
 const NOT_FOUND_PROBE_URL = '/404';
 
 const _require = createRequire(import.meta.url);
-const { generateManifest, buildNetlifyContentRules, resolveNetlifyCdpHashes } = _require(
-    '@dappfence/manifest-tools/manifest'
-);
 const resolveDappfenceJsPath = (scriptSrc) =>
     scriptSrc.endsWith('.dev.js')
         ? _require.resolve('@dappfence/core/dev')
