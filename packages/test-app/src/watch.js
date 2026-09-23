@@ -6,10 +6,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DEBOUNCE_MS = 1000;
@@ -39,7 +37,7 @@ function onChange() {
 
 function watchDappfence() {
     try {
-        const dappfenceDist = path.dirname(require.resolve('@dappfence/core'));
+        const dappfenceDist = path.dirname(fileURLToPath(import.meta.resolve('@dappfence/core')));
 
         if (!parentWatcher) {
             parentWatcher = fs.watch(path.dirname(dappfenceDist), (event, filename) => {

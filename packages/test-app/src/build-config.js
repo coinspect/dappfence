@@ -1,10 +1,8 @@
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { getPublicKey, hexToBytes } from '@dappfence/manifest-tools/crypto';
 import { MODE, TRANSFORM } from '@dappfence/core/constants';
 
-const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTERNAL_ASSETS = {
@@ -165,7 +163,7 @@ for (const env in DAPPFENCE_PACKAGES) {
         BUILD_TARGETS[target] = {
             ...BUILD_CONFIGURATIONS[name],
             outDir: path.join(OUT_DIR, target),
-            dappfencePath: require.resolve(DAPPFENCE_PACKAGES[env]),
+            dappfencePath: fileURLToPath(import.meta.resolve(DAPPFENCE_PACKAGES[env])),
         };
     }
 }
