@@ -3,10 +3,14 @@
  * Watches @dappfence/core dist output, templates, and assets for changes
  * and rebuilds manifests automatically.
  */
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import fs from 'node:fs';
+import path from 'node:path';
+import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DEBOUNCE_MS = 1000;
 const WATCH_RETRY_MS = 1000;

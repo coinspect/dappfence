@@ -1,6 +1,11 @@
-const path = require('path');
-const { getPublicKey, hexToBytes } = require('@dappfence/manifest-tools/crypto');
-const { MODE, TRANSFORM } = require('@dappfence/core/constants');
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { getPublicKey, hexToBytes } from '@dappfence/manifest-tools/crypto';
+import { MODE, TRANSFORM } from '@dappfence/core/constants';
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTERNAL_ASSETS = {
     'http://code.jquery.com/jquery-3.7.1.min.js': [
@@ -164,9 +169,4 @@ for (const env in DAPPFENCE_PACKAGES) {
         };
     }
 }
-module.exports = {
-    OUT_DIR,
-    BUILD_TARGETS,
-    keys,
-    EXTERNAL_ASSETS,
-};
+export { OUT_DIR, BUILD_TARGETS, keys, EXTERNAL_ASSETS };

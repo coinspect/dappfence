@@ -2,7 +2,7 @@
     "name": "@dappfence/test-app",
     "version": "0.1.2",
     "description": "Development server and e2e tests for DappFence",
-    "type": "commonjs",
+    "type": "module",
     "main": "src/dev-server.js",
     "exports": {
         ".": "./src/dev-server.js",
