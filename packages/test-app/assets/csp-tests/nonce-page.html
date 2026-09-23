@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>CSP nonce + wildcard</title>
+    </head>
+    <body>
+        <h1>CSP nonce + wildcard</h1>
+        <!--
+            Nav CSP is set per test via response headers.  Every variant here
+            uses `script-src 'nonce-csptest123' *` as a base; each test adds
+            other keywords (e.g. 'strict-dynamic') to see how they interact
+            with inline nonces and the URL wildcard.
+
+            Four canaries in one page:
+              1. Inline with the matching nonce         — always runs
+              2. Inline with NO nonce                   — always blocked
+              3. Inline with a WRONG nonce              — always blocked
+                 (proves the wildcard `*` does NOT compensate for a bad nonce
+                 on inline scripts — URL sources never cover inline)
+              4. External <script src> without a nonce  — runs unless
+                 'strict-dynamic' is present, in which case the URL wildcard
+                 is ignored and the external is blocked too.
+        -->
+        <script nonce="csptest123">
+            window.__inlineNonceRan = 'ran';
+        </script>
+        <script>
+            window.__inlineNoNonceRan = 'ran';
+        </script>
+        <script nonce="wrong">
+            window.__inlineWrongNonceRan = 'ran';
+        </script>
+        <script src="http://csp-nonce-external.test/csp-tests/probe-a.js"></script>
+    </body>
+</html>

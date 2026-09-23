@@ -26,14 +26,14 @@ const MANIFEST_SIGNATURE_TYPES = {
  */
 const matchManifestPath = (manifest, fileKey, isNavigation) => {
     const direct = manifest.files[fileKey];
-    if (direct !== undefined) {
+    if (direct !== undefined && !(Array.isArray(direct) && direct.length === 0)) {
         logger.log(`matchManifestPath, file: ${fileKey}, hash: ${direct}`);
         return { matchedKey: fileKey, expectedHash: direct };
     }
     if (isNavigation) {
         const indexKey = (fileKey.endsWith('/') ? fileKey : fileKey + '/') + 'index.html';
         const remapped = manifest.files[indexKey];
-        if (remapped !== undefined) {
+        if (remapped !== undefined && !(Array.isArray(remapped) && remapped.length === 0)) {
             logger.log(`matchManifestPath, file: ${indexKey}, hash: ${remapped}`);
             return { matchedKey: indexKey, expectedHash: remapped };
         }
@@ -68,15 +68,17 @@ export const verifyFilePath = (trustedManifest, fileKey, actualHash, isNavigatio
         };
     }
     const { matchedKey, expectedHash } = matched;
-    const status =
-        expectedHash === actualHash ? VERIFICATION_STATUS.MATCH : VERIFICATION_STATUS.MISMATCH;
+    const expectedHashes = Array.isArray(expectedHash) ? expectedHash : [expectedHash];
+    const matches = expectedHashes.includes(actualHash);
+    const status = matches ? VERIFICATION_STATUS.MATCH : VERIFICATION_STATUS.MISMATCH;
+    const reportedExpected = matches ? actualHash : expectedHashes[0];
     logger.log(
-        `verifyFilePath, file: ${matchedKey}, hash: ${actualHash}, expectedHash: ${expectedHash}, status: ${status.description}`
+        `verifyFilePath, file: ${matchedKey}, hash: ${actualHash}, expectedHash: ${reportedExpected}, status: ${status.description}`
     );
     return {
         status,
         fileKey: matchedKey,
-        expectedHash,
+        expectedHash: reportedExpected,
         actualHash,
     };
 };
@@ -99,7 +101,8 @@ export const normalizeManifestData = (manifestData) => {
         // Enhanced format: { "files": { "/path/file.js": "sha256-..." }, "metadata": {...} }
         if (manifestData.files && typeof manifestData.files === 'object') {
             for (const [filePath, entry] of Object.entries(manifestData.files)) {
-                const hashValue = typeof entry === 'string' ? entry : entry?.hash;
+                const hashValue =
+                    typeof entry === 'string' || Array.isArray(entry) ? entry : entry?.hash;
                 if (hashValue) {
                     normalizedFiles[filePath] = hashValue;
                 }
