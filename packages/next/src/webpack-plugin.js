@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { buildNetlifyContentRules } from '@dappfence/manifest-tools/manifest';
 
 const DEFAULT_PATH_RULES = [{ type: 'directory-index' }, { type: 'html-extension' }];
@@ -62,12 +63,10 @@ export class DappfenceWebpackPlugin {
     }
 
     async _copyDappfenceJs(projectRoot) {
-        const { createRequire } = await import(/* webpackIgnore: true */ 'module');
-        const _require = createRequire(import.meta.url);
         const isDevBuild = this.opts.scriptSrc.endsWith('.dev.js');
-        const dappfenceJsPath = isDevBuild
-            ? _require.resolve('@dappfence/core/dev')
-            : _require.resolve('@dappfence/core');
+        const dappfenceJsPath = fileURLToPath(
+            import.meta.resolve(isDevBuild ? '@dappfence/core/dev' : '@dappfence/core')
+        );
         const publicDir = path.join(projectRoot, 'public');
         await fs.mkdir(publicDir, { recursive: true });
         const destRel = this.opts.scriptSrc.replace(/^\//, '');

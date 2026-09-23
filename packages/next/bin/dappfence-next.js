@@ -28,11 +28,10 @@
  *        sentinel-probed for CSP hashes only.
  *     3. Writes integrity-manifest.json to public/.
  */
-import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { readDynamicRoutes, readPrerenderedRoutes } from '../src/routes.js';
 import { hashPublicFiles, hashSSRRoutes, routePatternToPrefixKey } from '../src/ssr.js';
 import {
@@ -47,11 +46,12 @@ import {
 // verify unmatched-URL responses.
 const NOT_FOUND_PROBE_URL = '/404';
 
-const _require = createRequire(import.meta.url);
 const resolveDappfenceJsPath = (scriptSrc) =>
-    scriptSrc.endsWith('.dev.js')
-        ? _require.resolve('@dappfence/core/dev')
-        : _require.resolve('@dappfence/core');
+    fileURLToPath(
+        import.meta.resolve(
+            scriptSrc.endsWith('.dev.js') ? '@dappfence/core/dev' : '@dappfence/core'
+        )
+    );
 
 const STATIC_EXPORT_PATH_RULES = [{ type: 'directory-index' }, { type: 'html-extension' }];
 
@@ -280,7 +280,7 @@ async function main() {
         // a parent process only if we were using fork() — spawnSync is safe.
         // --import the preload so the RSC compile hook installs in every worker
         // Next forks during prerender. Env vars survive fork boundaries.
-        const preloadUrl = pathToFileURL(_require.resolve('@dappfence/next/preload')).href;
+        const preloadUrl = import.meta.resolve('@dappfence/next/preload');
         const priorNodeOptions = process.env.NODE_OPTIONS || '';
         const nodeOptions = `${priorNodeOptions} --import=${preloadUrl}`.trim();
         const result = spawnSync('next', ['build', ...args.slice(1)], {
