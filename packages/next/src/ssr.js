@@ -61,8 +61,8 @@ async function enumerateConcreteUrls(projectRoot, pattern) {
         );
         let compiled;
         try {
-            const moduleRequire = createRequire(modulePath);
-            compiled = moduleRequire(modulePath);
+            const mod = await import(pathToFileURL(modulePath).href);
+            compiled = mod.default ?? mod;
         } catch {
             continue;
         }
@@ -117,6 +117,9 @@ export async function hashSSRRoutes(projectRoot, fixedRoutes, probedPatterns, lo
     try {
         // Resolve `next` relative to projectRoot so symlinked packages find the
         // user's installed copy rather than resolving from this file's real path.
+        // import.meta.resolve() can't do this — it only ever resolves relative to
+        // *this* module's own location, with no way to pass an external base path —
+        // so createRequire(basePath) stays here regardless of Node version.
         const projectRequire = createRequire(path.join(projectRoot, 'package.json'));
         const nextPath = projectRequire.resolve('next');
         const { default: next } = await import(pathToFileURL(nextPath).href);
