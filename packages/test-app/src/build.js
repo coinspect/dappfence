@@ -3,21 +3,22 @@
  * Generates integrity manifests with real SHA-256 hashes of assets
  * and creates example HTML with the correct SRI manifest hash.
  */
-const fs = require('fs');
-const readline = require('readline');
-const path = require('path');
-const { calculateFileHash, signManifest } = require('@dappfence/manifest-tools');
-const {
+import fs from 'node:fs';
+import readline from 'node:readline';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { calculateFileHash, signManifest } from '@dappfence/manifest-tools';
+import {
     extractInlineScriptHashes,
     extractInlineAttrHashes,
-} = require('@dappfence/manifest-tools/inline-scripts');
-const {
+} from '@dappfence/manifest-tools/inline-scripts';
+import {
     recoverPersonalSign,
     ethereumAddress,
     bytesToHex,
     keccak256,
-} = require('@dappfence/manifest-tools/crypto');
-const { BUILD_TARGETS, OUT_DIR, keys, EXTERNAL_ASSETS } = require('./build-config');
+} from '@dappfence/manifest-tools/crypto';
+import { BUILD_TARGETS, OUT_DIR, keys, EXTERNAL_ASSETS } from './build-config.js';
 
 let log = console.log;
 
@@ -233,10 +234,10 @@ async function buildTarget(targetName, target, { personalSign = false }, version
 }
 
 // CLI
-if (require.main === module) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     if (process.argv.some((x) => x.toLowerCase().includes('--quiet'))) log = () => {};
     const useWallet = process.argv.some((x) => x.toLowerCase().includes('--wallet'));
-    const idx = process.argv.indexOf(__filename);
+    const idx = process.argv.indexOf(fileURLToPath(import.meta.url));
     const targetArgs = process.argv.slice(idx + 1).filter((x) => !x.startsWith('-'));
     const targets = targetArgs.length > 0 ? targetArgs : Object.keys(BUILD_TARGETS);
 

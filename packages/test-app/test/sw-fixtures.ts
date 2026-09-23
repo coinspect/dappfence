@@ -1,4 +1,5 @@
-import {
+import { test as base } from '@playwright/test';
+import type {
     APIRequestContext,
     Browser,
     BrowserContext,
@@ -6,11 +7,10 @@ import {
     Frame,
     Page,
     Request,
-    test as base,
     TestInfo,
     Worker,
 } from '@playwright/test';
-import { PageFunction } from 'playwright-core/types/structs';
+import type { PageFunction } from 'playwright-core/types/structs';
 import * as fs from 'node:fs';
 
 declare global {

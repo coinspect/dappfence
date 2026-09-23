@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 
-const http = require('http');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-const { spawn } = require('child_process');
-const { connect } = require('node:net');
+import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { spawn, execFileSync } from 'node:child_process';
+import { connect } from 'node:net';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const { TRANSFORM } = require('@dappfence/core/constants');
+import { TRANSFORM } from '@dappfence/core/constants';
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_ROOT = path.resolve(__dirname, '..', 'assets');
 const DAPPFENCE_DIST = require.resolve('@dappfence/core');
 
@@ -158,7 +163,6 @@ function launchBrowserWithProxy(port) {
         }
 
         // Linux: try Chrome/Chromium variants with proxy, fall back to xdg-open
-        const { execFileSync } = require('child_process');
         const browsers = ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium'];
         for (const browser of browsers) {
             try {
@@ -199,7 +203,7 @@ function launchBrowserWithProxy(port) {
  *                                              When unset no virtual-file mapping is applied.
  * @returns {Promise<http.Server>}            - Resolves once the server is listening.
  */
-function startServer({
+export function startServer({
     port = 3333,
     root,
     defaultApp,
@@ -667,11 +671,9 @@ function startServer({
     });
 }
 
-module.exports = { startServer };
-
 // --- CLI entry point ---
 
-if (require.main === module) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const rootArg = process.argv.find((a) => a.startsWith('--root='));
     const pIndex = process.argv.indexOf('-p');
     const dIndex = process.argv.indexOf('-d');

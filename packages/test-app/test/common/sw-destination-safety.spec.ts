@@ -15,7 +15,7 @@
  * Browser-blocked tests: run entirely via page.evaluate() on a loaded page.
  */
 import { expect, test } from '../sw-fixtures';
-import { Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 type W = { __pwned?: number };
 
