@@ -693,7 +693,7 @@ export function startServer({
 
 // --- CLI entry point ---
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const rootArg = process.argv.find((a) => a.startsWith('--root='));
     const pIndex = process.argv.indexOf('-p');
     const dIndex = process.argv.indexOf('-d');

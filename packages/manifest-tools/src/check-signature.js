@@ -22,7 +22,7 @@ export function checkSignature(manifestPath, secretKeyHex) {
     return recovered;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const idx = process.argv.findIndex((x) => x === fileURLToPath(import.meta.url));
     if (process.argv.length <= idx + 1) {
         console.error(`Usage: ${process.argv[idx]} manifestFile`);

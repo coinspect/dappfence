@@ -234,7 +234,7 @@ async function buildTarget(targetName, target, { personalSign = false }, version
 }
 
 // CLI
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     if (process.argv.some((x) => x.toLowerCase().includes('--quiet'))) log = () => {};
     const useWallet = process.argv.some((x) => x.toLowerCase().includes('--wallet'));
     const idx = process.argv.indexOf(fileURLToPath(import.meta.url));
