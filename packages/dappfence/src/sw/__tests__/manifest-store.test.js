@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
 
 function createInMemoryStorage() {
@@ -23,11 +23,6 @@ describe('createManifestStore', () => {
     });
 
     describe('trustedManifest', () => {
-        // appVersion is a deterministic synthetic key derived from the
-        // manifest content via SHA-256, so tests use distinct content to
-        // get distinct keys and capture the returned appVersion when they
-        // need to refer to a specific entry.
-
         it('returns undefined for unknown version', async () => {
             const manifest = await storage.trustedManifestStore.get('unknown');
             expect(manifest).toBeUndefined();
@@ -42,15 +37,11 @@ describe('createManifestStore', () => {
             const { appVersion } = await storage.trustedManifestStore.addLatest({
                 files: { '/a.js': 'h' },
             });
-            // Synthetic appVersion is "manifest-" + 16 chars of base64 entropy
-            // (the `sha256-` prefix is stripped before truncation).
             expect(appVersion).toMatch(/^manifest-[A-Za-z0-9+/]{16}$/);
-            // Adding the same content again yields the same key.
             const dup = await storage.trustedManifestStore.addLatest({
                 files: { '/a.js': 'h' },
             });
             expect(dup.appVersion).toBe(appVersion);
-            // Different content yields a different key.
             const other = await storage.trustedManifestStore.addLatest({
                 files: { '/b.js': 'h2' },
             });
@@ -62,10 +53,12 @@ describe('createManifestStore', () => {
             const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
 
             expect(await storage.trustedManifestStore.get(appVersion)).toEqual(manifestData);
-            expect(await storage.trustedManifestStore.getLatest()).toEqual({
-                appVersion,
-                manifest: manifestData,
-            });
+            expect(await storage.trustedManifestStore.getLatest()).toEqual(
+                expect.objectContaining({
+                    appVersion,
+                    manifest: manifestData,
+                })
+            );
         });
 
         it('preserves mode, metadata, and other top-level manifest fields', async () => {
@@ -92,22 +85,21 @@ describe('createManifestStore', () => {
             expect(latest.manifest).toEqual({ files: { '/b.js': 'y' } });
         });
 
-        it('addLatest evicts the oldest entry once length exceeds 5', async () => {
+        it('addLatest caps entries at 20 (safety bound)', async () => {
             const versions = [];
-            for (let i = 1; i <= 6; i++) {
+            for (let i = 1; i <= 25; i++) {
                 const { appVersion } = await storage.trustedManifestStore.addLatest({
                     files: { [`/f${i}.js`]: `h${i}` },
                 });
                 versions.push(appVersion);
             }
-            // First addition (oldest) should have been evicted.
-            expect(await storage.trustedManifestStore.get(versions[0])).toBeUndefined();
-            // Last addition (newest) should be the latest.
-            expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(versions[5]);
-            // Second-oldest still present.
-            expect(await storage.trustedManifestStore.get(versions[1])).toEqual({
-                files: { '/f2.js': 'h2' },
-            });
+            const all = await storage.trustedManifestStore.getAll();
+            expect(all).toHaveLength(20);
+            expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(versions[24]);
+            // The five earliest additions should have been dropped by the cap.
+            for (let i = 0; i < 5; i++) {
+                expect(await storage.trustedManifestStore.get(versions[i])).toBeUndefined();
+            }
         });
 
         it('re-adding an existing manifest dedups and promotes it to the front', async () => {
@@ -121,60 +113,53 @@ describe('createManifestStore', () => {
             expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(a.appVersion);
         });
 
-        it('findByHash returns the entry that owns a hash', async () => {
-            const a = await storage.trustedManifestStore.addLatest({
-                files: { '/a.js': 'hash-a', '/b.js': 'hash-b' },
-            });
-            const b = await storage.trustedManifestStore.addLatest({
-                files: { '/c.js': 'hash-c' },
-            });
+        describe('age-based pruning', () => {
+            beforeEach(() => vi.useFakeTimers());
+            afterEach(() => vi.useRealTimers());
 
-            expect(await storage.trustedManifestStore.findByHash('hash-a')).toEqual({
-                appVersion: a.appVersion,
-                manifest: a.manifest,
-            });
-            expect(await storage.trustedManifestStore.findByHash('hash-c')).toEqual({
-                appVersion: b.appVersion,
-                manifest: b.manifest,
-            });
-            expect(await storage.trustedManifestStore.findByHash('missing')).toBeNull();
-        });
-
-        it('findByHash prefers the newest manifest when a hash collides', async () => {
-            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'shared' } });
-            const newer = await storage.trustedManifestStore.addLatest({
-                files: { '/b.js': 'shared' },
-            });
-
-            const found = await storage.trustedManifestStore.findByHash('shared');
-            expect(found.appVersion).toBe(newer.appVersion);
-        });
-
-        it('findByHash drops hashes that were only in evicted manifests', async () => {
-            await storage.trustedManifestStore.addLatest({ files: { '/old.js': 'gone' } });
-            const survivors = [];
-            for (let i = 1; i <= 5; i++) {
-                const { appVersion } = await storage.trustedManifestStore.addLatest({
-                    files: { [`/f${i}.js`]: `h${i}` },
+            it('prunes entries older than 24h on next addLatest', async () => {
+                vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+                const stale = await storage.trustedManifestStore.addLatest({
+                    files: { '/old.js': 'gone' },
                 });
-                survivors.push(appVersion);
-            }
-            // The oldest entry has been evicted; its hashes should no longer resolve.
-            expect(await storage.trustedManifestStore.findByHash('gone')).toBeNull();
-            const found = await storage.trustedManifestStore.findByHash('h1');
-            expect(found.appVersion).toBe(survivors[0]);
+                expect(await storage.trustedManifestStore.get(stale.appVersion)).toBeDefined();
+
+                vi.setSystemTime(new Date('2026-01-02T00:00:01Z'));
+                const fresh = await storage.trustedManifestStore.addLatest({
+                    files: { '/new.js': 'kept' },
+                });
+
+                expect(await storage.trustedManifestStore.get(stale.appVersion)).toBeUndefined();
+                expect(await storage.trustedManifestStore.get(fresh.appVersion)).toBeDefined();
+            });
+
+            it('does not prune entries younger than 24h', async () => {
+                vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+                const first = await storage.trustedManifestStore.addLatest({
+                    files: { '/a.js': 'ha' },
+                });
+                vi.setSystemTime(new Date('2026-01-01T23:59:59Z'));
+                await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'hb' } });
+
+                expect(await storage.trustedManifestStore.get(first.appVersion)).toBeDefined();
+            });
         });
 
-        it('findByHash rebuilds the in-memory index lazily after a fresh store is created', async () => {
-            // Populate via one store, then create a new one over the same backend
-            // — simulates SW restart where the in-memory index is empty.
-            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'hash-a' } });
-            const sameBackend = createInMemoryStorage();
-            // Copy persisted state
-            const persisted = { appVersion: 'v1', manifest: { files: { '/a.js': 'hash-a' } } };
-            await sameBackend.set('trusted-manifest', [persisted]);
-            const reopened = createManifestStore(sameBackend);
-            expect(await reopened.trustedManifestStore.findByHash('hash-a')).toEqual(persisted);
+        it('getAll returns entries newest-first', async () => {
+            const a = await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'ha' } });
+            const b = await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'hb' } });
+            const c = await storage.trustedManifestStore.addLatest({ files: { '/c.js': 'hc' } });
+
+            const all = await storage.trustedManifestStore.getAll();
+            expect(all.map((e) => e.appVersion)).toEqual([
+                c.appVersion,
+                b.appVersion,
+                a.appVersion,
+            ]);
+        });
+
+        it('getAll returns an empty array when nothing is stored', async () => {
+            expect(await storage.trustedManifestStore.getAll()).toEqual([]);
         });
     });
 
@@ -184,12 +169,34 @@ describe('createManifestStore', () => {
             expect(results).toEqual([]);
         });
 
-        it('adds and retrieves verification results', async () => {
-            const result = { status: 'MATCH', fileKey: '/app.js' };
+        it('adds and retrieves verification results (allowlisted fields only)', async () => {
+            const result = {
+                status: 'MATCH',
+                timestamp: '2026-01-01T00:00:00Z',
+                fileKey: '/app.js',
+                url: 'https://example.com/app.js',
+                assetType: 'asset',
+                expectedHashes: ['sha256-x'],
+                actualHash: 'sha256-x',
+            };
             await storage.verificationResultsStore.add('v1', result);
 
             const results = await storage.verificationResultsStore.get('v1');
             expect(results).toEqual([result]);
+        });
+
+        it('drops non-cloneable extra fields (defense against Headers/nonce)', async () => {
+            await storage.verificationResultsStore.add('v1', {
+                status: 'MATCH',
+                fileKey: '/a.js',
+                headers: new Headers({ 'content-security-policy': "default-src 'none'" }),
+                nonce: 'abc',
+            });
+            const [stored] = await storage.verificationResultsStore.get('v1');
+            expect(stored.headers).toBeUndefined();
+            expect(stored.nonce).toBeUndefined();
+            expect(stored.status).toBe('MATCH');
+            expect(stored.fileKey).toBe('/a.js');
         });
 
         it('appends multiple results for same version', async () => {
@@ -218,14 +225,16 @@ describe('createManifestStore', () => {
 
         it('caps results at 100 per version', async () => {
             for (let i = 0; i < 110; i++) {
-                await storage.verificationResultsStore.add('v1', { index: i });
+                await storage.verificationResultsStore.add('v1', {
+                    status: 'MATCH',
+                    fileKey: `/f${i}.js`,
+                });
             }
 
             const results = await storage.verificationResultsStore.get('v1');
             expect(results).toHaveLength(100);
-            // Should keep the last 100 (indices 10-109)
-            expect(results[0].index).toBe(10);
-            expect(results[99].index).toBe(109);
+            expect(results[0].fileKey).toBe('/f10.js');
+            expect(results[99].fileKey).toBe('/f109.js');
         });
     });
 });

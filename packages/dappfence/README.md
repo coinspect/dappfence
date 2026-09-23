@@ -53,8 +53,11 @@ src/
 │   ├── message-broker.js     # Security message queuing to clients
 │   ├── response.js      # Block response and navigation redirect builders
 │   ├── manifest/
-│   │   ├── operations.js    # Hash verification, signature checks, verifyLocation, shouldVerifyAsset
-│   │   └── manifest-service.js  # Manifest lifecycle, loading, file verification
+│   │   ├── manifest-service.js  # Composition: loader + verifier
+│   │   ├── manifest-loader.js   # Fetching, signature verification, normalization, storage handoff
+│   │   ├── verifier.js          # Hash-every-response + pathRules key resolution + escalation walk
+│   │   ├── rules.js             # pathRules evaluation (resolveManifestKey)
+│   │   └── verification.js      # verifyManifestSignature, verifyLocation, verifyImportedScript, toPathname
 │   ├── storage/
 │   │   ├── indexeddb.js       # Low-level IndexedDB wrapper
 │   │   ├── index.js           # App store facade (recordSecurityViolation)
@@ -78,8 +81,11 @@ main.js
         │     ├── manifest-store.js
         │     └── security-stores.js
         ├── manifest/
-        │     ├── operations.js (hash verification, signature checks, verifyLocation, shouldVerifyAsset)
-        │     └── manifest-service.js (manifest lifecycle, file verification, manifest loading)
+        │     ├── manifest-service.js (composition: loader + verifier)
+        │     ├── manifest-loader.js (fetch, verify signature, normalize, hand to store)
+        │     ├── verifier.js (hash-every-response + escalation walk)
+        │     ├── rules.js (pathRules — resolveManifestKey)
+        │     └── verification.js (verifyManifestSignature, verifyLocation, verifyImportedScript)
         ├── message-broker.js
         ├── appsw-hooks.js
         ├── fetch-handler.js
@@ -113,7 +119,8 @@ All handlers receive a shared `core` object:
 `{ swContext, appStore, manifestService, onSecurityViolation }`.
 
 -   **`fetch-handler.js`** — main request interceptor. Checks active blocks, routes `/sw-api/*` to
-    the API handler, verifies assets via `manifestService.verifyFile`, broadcasts violations.
+    the API handler, verifies assets via the ctx returned by `manifestService.resolveManifest`,
+    broadcasts violations.
 -   **`lifecycle-handlers.js`** — `install` initializes the manifest, loads the app SW via
     `importScripts`, signals `onInstallDone`. `activate` claims clients and re-broadcasts
     violations.
@@ -127,25 +134,38 @@ All handlers receive a shared `core` object:
 `VERIFICATION_STATUS` and `ASSET_TYPE` constants live in `core/constants.js` alongside the other
 cross-module contract strings.
 
-**`manifest/operations.js`** contains pure verification functions: `verifyFilePath` (manifest lookup
-and hash compare), `verifyManifestSignature` (secp256k1 recovery), `normalizeManifestData`,
-`getFileKey` (URL to manifest key), `shouldVerifyAsset` (extension/navigation predicate),
-`verifyLocation` (fetch + verify), `verifyImportedScript` (delegates to `verifyLocation`, records
-violations).
+**`manifest/verification.js`** contains pure verification primitives: `verifyManifestSignature`
+(secp256k1 recovery), `toPathname` / `decodePathname` (URL → manifest key), `verifyLocation` (fetch
+and verify), `verifyImportedScript` (delegates to `verifyLocation`, records violations).
 
-**`manifest/manifest-service.js`** is the stateful manifest lifecycle manager. Contains
-`loadManifestFromUrl` (fetch + signature verification + normalization + storage) as a private
-function with single-flight deduplication. Exposes `verifyFile(url, content)` which computes hashes
-and orchestrates verification with retry. Returns results with a `status` field (`MATCH`,
-`MISMATCH`, `NOT_FOUND_IN_MANIFEST`, `VERIFICATION_ERROR`).
+**`manifest/rules.js`** evaluates pathRules — `resolveManifestKey(req, base, manifest, response)`
+applies `directory-index`, `html-extension`, `match`/`resolveAs`, and last-resort `error-page` rules
+to map a request URL to its canonical manifest key.
+
+**`manifest/manifest-loader.js`** owns the boundary between raw external manifest JSON and the
+normalized in-memory shape: `normalizeManifestData` (files → hash arrays, pathRules default, mode
+default), `fetchAndStoreManifest` (single-flight fetch → signature verify → normalize →
+`trustedManifestStore.addLatest`), `resolveLatest` (cache-first + fallback fetch), and
+`getManifestHistory` (delegates to the store).
+
+**`manifest/verifier.js`** exports `createVerifier` — hashes every verifiable response and matches
+against the manifest's `files` map. Uses pathRules to canonicalize URL → manifest key
+(`directory-index`, `error-page`, etc.). Owns the escalation walk (pinned → latest → history →
+network), per-client pinning with stale-client pruning, and gate checks (`shouldSkipVerification` —
+non-GET, `destination=""`, opaque REWRITE branch). Returns verdicts with a `status` field (`MATCH`,
+`MISMATCH`, `NOT_FOUND_IN_MANIFEST`, `SKIPPED`, `REWRITE`).
+
+**`manifest/manifest-service.js`** composes the loader and the verifier. Exposes
+`{ fetchAndStoreManifest, resolveManifest }`; `resolveManifest()` returns
+`{ mode, prepareRequest, verifyResponse }`.
 
 ### Storage
 
 -   **`storage/indexeddb.js`** — low-level IndexedDB wrapper: `{ get, set, delete, withTx }`.
 -   **`storage/index.js`** — app store facade. Composes all stores, exposes
     `recordSecurityViolation(details)`.
--   **`storage/manifest-store.js`** — trusted manifests (priority queue, hash index) and
-    verification results.
+-   **`storage/manifest-store.js`** — trusted manifests (newest-first priority queue, 24h age
+    pruning, MAX 20 safety cap) and verification results (per-version, capped at 100).
 -   **`storage/security-stores.js`** — active blocks (deterministic IDs), security events, API
     tokens.
 
@@ -168,10 +188,11 @@ Ethereum-style secp256k1 key recovery.
 
 ### Manifest Lifecycle
 
-1. At build time, `@dappfence/signer` hashes all files and signs the manifest payload.
-2. At runtime, `manifest-service.js` fetches the manifest, verifies the signature, normalizes hashes
-   to hex, and stores it in IndexedDB.
-3. Subsequent file requests are verified against the stored manifest via `verifyFile`.
+1. At build time, `@dappfence/manifest-tools` hashes all files and signs the manifest payload.
+2. At runtime, `manifest-loader.js` fetches the manifest, verifies the signature, normalizes it, and
+   stores it in IndexedDB.
+3. Subsequent file requests flow through `ctx.verifyResponse`, where the active verifier variant
+   hashes the response and walks the escalation chain against stored manifests.
 
 ## Design Patterns
 

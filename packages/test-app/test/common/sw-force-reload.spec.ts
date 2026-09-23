@@ -25,7 +25,13 @@ test.describe('after force reload (Ctrl-F5)', () => {
         await expect(page).toHaveTitle('Security Warning - Content Blocked');
     });
 
-    test('should claim control and handle ajax', async ({ page, swHelper }) => {
+    test('should claim control but not block programmatic fetches (ajax)', async ({
+        page,
+        swHelper,
+    }) => {
+        // Programmatic fetch() calls have destination="" and are intentionally
+        // skipped by DappFence. Only browser-initiated resource loads (scripts,
+        // navigation) are subject to integrity verification.
         await swHelper.interceptAndModifyPageContent('**/app.js');
 
         await page.evaluate(async () => {
@@ -33,8 +39,8 @@ test.describe('after force reload (Ctrl-F5)', () => {
             await res.text();
         });
 
-        await page.waitForURL(/.*\/sw-api/);
-        await expect(page).toHaveTitle('Security Warning - Content Blocked');
+        await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+        await expect(page).not.toHaveURL(/.*\/sw-api/);
     });
 });
 

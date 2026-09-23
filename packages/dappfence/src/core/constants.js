@@ -35,29 +35,6 @@ export const MODE = {
 };
 
 /**
- * Verification Policy
- * Decides whether a request needs integrity verification
- * based on manifest metadata and file extensions.
- */
-export const DEFAULT_SECURITY_EXTENSIONS = ['.js', '.css', '.json', '.html', '.svg'];
-
-/**
- * Default Content-Type allowlist used when the manifest doesn't carry its
- * own `metadata.contentTypes`. Includes both `text/javascript` and
- * `application/javascript` because real servers emit either; the build
- * tool emits `text/javascript`, but a same-origin asset proxied through a
- * different stack might come back as `application/javascript`.
- */
-export const DEFAULT_SECURITY_CONTENT_TYPES = [
-    'text/javascript',
-    'application/javascript',
-    'text/css',
-    'application/json',
-    'text/html',
-    'image/svg+xml',
-];
-
-/**
  * Verification verdict for a single file or manifest.
  *
  * Each entry is a frozen object carrying both a human-readable `description`
