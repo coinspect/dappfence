@@ -2,24 +2,25 @@
  * Signed integrity manifest builder.
  * Pure functions for hashing files and signing manifests.
  */
-const crypto = require('crypto');
-const {
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import {
     sign,
     ethereumAddress,
     getPublicKey,
     hexToBytes,
     keccak256,
     recoverSigner,
-} = require('./crypto');
+} from './crypto.js';
 
 /**
  * Calculate SHA-256 hash of a file buffer or path.
  * @param {Buffer|string} input - File buffer or file path
  * @returns {string} SRI hash like "sha256-..."
  */
-function calculateFileHash(input) {
-    const buffer = typeof input === 'string' ? require('fs').readFileSync(input) : input;
-    const hash = crypto.createHash('sha256').update(buffer).digest('base64');
+export function calculateFileHash(input) {
+    const buffer = typeof input === 'string' ? readFileSync(input) : input;
+    const hash = createHash('sha256').update(buffer).digest('base64');
     return `sha256-${hash}`;
 }
 
@@ -28,8 +29,8 @@ function calculateFileHash(input) {
  * @param {string} content
  * @returns {string} SRI hash like "sha256-..."
  */
-function calculateStringHash(content) {
-    const hash = crypto.createHash('sha256').update(content, 'utf8').digest('base64');
+export function calculateStringHash(content) {
+    const hash = createHash('sha256').update(content, 'utf8').digest('base64');
     return `sha256-${hash}`;
 }
 
@@ -40,7 +41,7 @@ function calculateStringHash(content) {
  * @param {string|Uint8Array} keys.secretKey - Hex string (with or without 0x) or raw bytes
  * @returns {{ pay: object, sig: string, identity: string, signatureType: string }}
  */
-function signManifest(manifestData, { secretKey }) {
+export function signManifest(manifestData, { secretKey }) {
     const skBytes =
         typeof secretKey === 'string' ? hexToBytes(secretKey.replace(/^0x/, '')) : secretKey;
     const pkBytes = getPublicKey(skBytes);
@@ -61,7 +62,7 @@ function signManifest(manifestData, { secretKey }) {
  * @param {string} secretKeyHex - 64-char hex, with or without 0x prefix
  * @returns {string} Ethereum address like "0x..."
  */
-function deriveIdentity(secretKeyHex) {
+export function deriveIdentity(secretKeyHex) {
     const sk = hexToBytes(secretKeyHex.replace(/^0x/, ''));
     const pk = getPublicKey(sk);
     return ethereumAddress(pk);
@@ -73,8 +74,8 @@ function deriveIdentity(secretKeyHex) {
  * @returns {{ identity: string }} the verified signer identity
  * @throws if unsigned or signature does not match the embedded identity
  */
-function verifyManifest(manifestPath) {
-    const { sig, pay, identity } = JSON.parse(require('fs').readFileSync(manifestPath, 'utf-8'));
+export function verifyManifest(manifestPath) {
+    const { sig, pay, identity } = JSON.parse(readFileSync(manifestPath, 'utf-8'));
     if (!sig || !identity) {
         throw new Error('manifest is unsigned');
     }
@@ -86,11 +87,3 @@ function verifyManifest(manifestPath) {
     }
     return { identity };
 }
-
-module.exports = {
-    calculateFileHash,
-    calculateStringHash,
-    signManifest,
-    verifyManifest,
-    deriveIdentity,
-};

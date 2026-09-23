@@ -2,21 +2,21 @@
  * Framework-agnostic manifest generation pipeline.
  * Used internally by @dappfence/astro, @dappfence/next, and any future integrations.
  */
-const { promises: fs } = require('fs');
-const path = require('path');
-const { calculateFileHash, signManifest } = require('./build');
-const { TRANSFORM } = require('@dappfence/core/constants');
-const { extractInlineHashesFromHtml } = require('./inline-scripts');
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { calculateFileHash, signManifest } from './build.js';
+import { TRANSFORM } from '@dappfence/core/constants';
+import { extractInlineHashesFromHtml } from './inline-scripts.js';
 
 const CDP_SCRIPT_PATH = '/.netlify/scripts/cdp';
 
 // Pre-computed hashes for known Netlify CDP script versions.
 // Add new entries here when Netlify ships an updated script.
-const NETLIFY_CDP_KNOWN_HASHES = [
+export const NETLIFY_CDP_KNOWN_HASHES = [
     'sha256-pTgm3D8vQpOitZlnprm7whsvUg/r487ILpgWI9NblUQ=', // 2026-06
 ];
 
-function buildNetlifyContentRules() {
+export function buildNetlifyContentRules() {
     return [
         {
             condition: { resourceTypes: ['document'] },
@@ -38,7 +38,7 @@ function buildNetlifyContentRules() {
  * plus a freshly fetched hash when process.env.URL is available.
  * The rewrite content rule handles any version not yet in the known list.
  */
-async function resolveNetlifyCdpHashes(logger) {
+export async function resolveNetlifyCdpHashes(logger) {
     const hashes = [...NETLIFY_CDP_KNOWN_HASHES];
     const siteUrl = process.env.URL;
     if (!siteUrl) {
@@ -73,13 +73,13 @@ async function resolveNetlifyCdpHashes(logger) {
     return hashes;
 }
 
-const SCRIPT_ATTRS_DEFAULTS = {
+export const SCRIPT_ATTRS_DEFAULTS = {
     scriptSrc: '/dappfence.js',
     manifestUrl: '/integrity-manifest.json',
     manifestSignatureType: 'noble-secp256k1-recovered-eth',
 };
 
-function buildScriptAttrs(opts = {}) {
+export function buildScriptAttrs(opts = {}) {
     const resolved = { ...SCRIPT_ATTRS_DEFAULTS, ...opts };
     const attrs = { src: resolved.scriptSrc };
     if (resolved.manifestUrl) attrs['data-manifest'] = resolved.manifestUrl;
@@ -92,20 +92,20 @@ function buildScriptAttrs(opts = {}) {
     return attrs;
 }
 
-function buildScriptTag(opts) {
+export function buildScriptTag(opts) {
     const attrStr = Object.entries(buildScriptAttrs(opts))
         .map(([k, v]) => `${k}="${v}"`)
         .join(' ');
     return `<script ${attrStr}></script>`;
 }
 
-function injectScriptTag(html, opts) {
+export function injectScriptTag(html, opts) {
     const tag = buildScriptTag(opts);
     if (html.includes(tag)) return html;
     return html.replace(/(<head[^>]*>)/i, `$1\n    ${tag}`);
 }
 
-async function walk(base, dir, excludes, pathPrefix = '') {
+export async function walk(base, dir, excludes, pathPrefix = '') {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const results = await Promise.all(
         entries.map(async (entry) => {
@@ -173,7 +173,7 @@ async function walk(base, dir, excludes, pathPrefix = '') {
  *   @param {object}   [opts.csp.pages]               - Pre-built { pageKey: {scripts,attrs} } map for SSR routes.
  *                                                      Static HTML pages are extracted automatically during the walk.
  */
-async function generateManifest({
+export async function generateManifest({
     outDir,
     manifestPath,
     exclude,
@@ -289,15 +289,3 @@ async function generateManifest({
     await fs.writeFile(out, JSON.stringify(manifest, null, 2), 'utf8');
     logger.info(`DappFence: manifest written → ${manifestPath}`);
 }
-
-module.exports = {
-    SCRIPT_ATTRS_DEFAULTS,
-    buildScriptAttrs,
-    buildScriptTag,
-    injectScriptTag,
-    walk,
-    generateManifest,
-    buildNetlifyContentRules,
-    NETLIFY_CDP_KNOWN_HASHES,
-    resolveNetlifyCdpHashes,
-};
