@@ -1,17 +1,14 @@
-import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-
-const _require = createRequire(import.meta.url);
-const {
+import {
     buildScriptAttrs,
     buildScriptTag,
     injectScriptTag,
-    generateManifest: _generateManifest,
+    generateManifest as _generateManifest,
     buildNetlifyContentRules,
     resolveNetlifyCdpHashes,
-} = _require('@dappfence/manifest-tools/manifest');
-const { extractInlineHashesFromHtml } = _require('@dappfence/manifest-tools/inline-scripts');
+} from '@dappfence/manifest-tools/manifest';
+import { extractInlineHashesFromHtml } from '@dappfence/manifest-tools/inline-scripts';
 
 export { buildScriptAttrs, buildScriptTag, injectScriptTag };
 

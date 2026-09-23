@@ -31,10 +31,10 @@ import {
     sriHash,
 } from './manifest.js';
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
+import { deriveIdentity } from '@dappfence/manifest-tools';
+import { buildScriptTag } from '@dappfence/manifest-tools/manifest';
 
 const _require = createRequire(import.meta.url);
-const { deriveIdentity } = _require('@dappfence/manifest-tools');
-const { buildScriptTag } = _require('@dappfence/manifest-tools/manifest');
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
