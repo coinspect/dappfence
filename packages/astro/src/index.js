@@ -18,7 +18,6 @@
  *   });
  *
  */
-import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,8 +32,6 @@ import {
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
 import { deriveIdentity } from '@dappfence/manifest-tools';
 import { buildScriptTag } from '@dappfence/manifest-tools/manifest';
-
-const _require = createRequire(import.meta.url);
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
@@ -78,9 +75,11 @@ function serverIslandPatchPlugin() {
 }
 
 const resolveDappfenceJsPath = (scriptSrc) =>
-    scriptSrc.endsWith('.dev.js')
-        ? _require.resolve('@dappfence/core/dev')
-        : _require.resolve('@dappfence/core');
+    fileURLToPath(
+        import.meta.resolve(
+            scriptSrc.endsWith('.dev.js') ? '@dappfence/core/dev' : '@dappfence/core'
+        )
+    );
 
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
