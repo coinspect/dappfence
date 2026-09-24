@@ -1,0 +1,47 @@
+{
+    "name": "@dappfence/vite",
+    "version": "0.1.2",
+    "description": "Vite plugin for DappFence — script injection, manifest generation, and SPA-fallback support for static Vite builds",
+    "license": "MIT",
+    "type": "module",
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "main": "./src/index.js",
+    "exports": {
+        ".": "./src/index.js"
+    },
+    "files": [
+        "src",
+        "!src/__tests__"
+    ],
+    "scripts": {
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "publish:local": "npm pack --pack-destination ../../dist"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/coinspect/dappfence.git",
+        "directory": "packages/vite"
+    },
+    "keywords": [
+        "vite",
+        "vite-plugin",
+        "security",
+        "service-worker",
+        "integrity",
+        "dapp",
+        "web-security"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "peerDependencies": {
+        "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
+    },
+    "dependencies": {
+        "@dappfence/core": "*",
+        "@dappfence/manifest-tools": "*"
+    }
+}
