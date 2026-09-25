@@ -506,4 +506,10 @@ describe('withDappfence', () => {
         expect(wrapped.env?.[ATTRS_ENV_KEY]).toBeDefined();
         expect(JSON.parse(wrapped.env[ATTRS_ENV_KEY]).scriptSrc).toBe('/dappfence.js');
     });
+
+    it('rejects a manifestSignatureType the build-time signer cannot produce', () => {
+        expect(() => withDappfence({ manifestSignatureType: 'personal-sign-alt' })).toThrow(
+            /manifestSignatureType "personal-sign-alt" is not supported/
+        );
+    });
 });

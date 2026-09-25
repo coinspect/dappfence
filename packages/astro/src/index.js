@@ -33,7 +33,7 @@ import {
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
 
 const _require = createRequire(import.meta.url);
-const { deriveIdentity } = _require('@dappfence/manifest-tools');
+const { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } = _require('@dappfence/manifest-tools');
 const { buildScriptTag } = _require('@dappfence/manifest-tools/manifest');
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
@@ -108,6 +108,18 @@ export default function dappfence(options = {}) {
     // serialised output or script attributes.
     const { secretKey: explicitKey, ...publicOptions } = options;
     const opts = { ...DEFAULTS, ...publicOptions };
+
+    // signManifest only ever produces one signature type — a manifest signed
+    // with a manifestSignatureType this package can't actually sign would
+    // declare a different type in the script tag than the one the manifest
+    // was really signed with, and the SW would reject it as an unsupported
+    // or mismatched signature.
+    if (!SUPPORTED_SIGNATURE_TYPES.includes(opts.manifestSignatureType)) {
+        throw new Error(
+            `[@dappfence/astro] manifestSignatureType "${opts.manifestSignatureType}" is not ` +
+                `supported by the build-time signer (supported: ${SUPPORTED_SIGNATURE_TYPES.join(', ')}).`
+        );
+    }
 
     const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
 

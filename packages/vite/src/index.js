@@ -25,7 +25,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { calculateFileHash, deriveIdentity } from '@dappfence/manifest-tools';
+import {
+    calculateFileHash,
+    deriveIdentity,
+    SUPPORTED_SIGNATURE_TYPES,
+} from '@dappfence/manifest-tools';
 import { generateManifest } from '@dappfence/manifest-tools/manifest';
 
 const resolveDappfenceJsPath = (scriptSrc) =>
@@ -64,6 +68,18 @@ export default function dappfence(options = {}) {
     // serialised output or script attributes.
     const { secretKey: explicitKey, ...publicOptions } = options;
     const opts = { ...DEFAULTS, ...publicOptions };
+
+    // signManifest only ever produces one signature type — a manifest signed
+    // with a manifestSignatureType this package can't actually sign would
+    // declare a different type in the script tag than the one the manifest
+    // was really signed with, and the SW would reject it as an unsupported
+    // or mismatched signature.
+    if (!SUPPORTED_SIGNATURE_TYPES.includes(opts.manifestSignatureType)) {
+        throw new Error(
+            `[@dappfence/vite] manifestSignatureType "${opts.manifestSignatureType}" is not ` +
+                `supported by the build-time signer (supported: ${SUPPORTED_SIGNATURE_TYPES.join(', ')}).`
+        );
+    }
 
     const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
 

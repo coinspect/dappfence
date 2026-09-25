@@ -43,3 +43,11 @@ describe('astro:config:setup base-path handling', () => {
         expect(loaded).toContain('\\"/integrity-manifest.json\\"');
     });
 });
+
+describe('manifestSignatureType validation', () => {
+    it('rejects a manifestSignatureType the build-time signer cannot produce', () => {
+        expect(() =>
+            dappfence({ secretKey: SECRET_KEY, manifestSignatureType: 'personal-sign-alt' })
+        ).toThrow(/manifestSignatureType "personal-sign-alt" is not supported/);
+    });
+});

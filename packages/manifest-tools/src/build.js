@@ -13,6 +13,20 @@ const {
 } = require('./crypto');
 
 /**
+ * Signature types `signManifest` can actually produce. The SW's runtime
+ * verifier (`packages/dappfence/src/sw/manifest/verification.js`) recognizes
+ * more `manifestSignatureType` values than this build-time signer
+ * implements (e.g. `'personal-sign-alt'`, used only by test-app's
+ * interactive wallet-signing flow, which builds its manifest by hand rather
+ * than through `signManifest`). Every integration option that exposes
+ * `manifestSignatureType` must validate against this list — otherwise a
+ * manifest gets signed with `noble-secp256k1-recovered-eth` regardless,
+ * while the script tag declares a different type, and the SW rejects the
+ * mismatch as an unsupported/invalid signature.
+ */
+const SUPPORTED_SIGNATURE_TYPES = ['noble-secp256k1-recovered-eth'];
+
+/**
  * Calculate SHA-256 hash of a file buffer or path.
  * @param {Buffer|string} input - File buffer or file path
  * @returns {string} SRI hash like "sha256-..."
@@ -93,4 +107,5 @@ module.exports = {
     signManifest,
     verifyManifest,
     deriveIdentity,
+    SUPPORTED_SIGNATURE_TYPES,
 };

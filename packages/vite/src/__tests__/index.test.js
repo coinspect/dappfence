@@ -39,6 +39,12 @@ describe('@dappfence/vite plugin shape', () => {
         expect(typeof plugin.closeBundle).toBe('function');
     });
 
+    it('rejects a manifestSignatureType the build-time signer cannot produce', () => {
+        expect(() =>
+            dappfence({ secretKey: SECRET_KEY, manifestSignatureType: 'personal-sign-alt' })
+        ).toThrow(/manifestSignatureType "personal-sign-alt" is not supported/);
+    });
+
     it('throws in configResolved when no secretKey is available', () => {
         const plugin = dappfence({});
         expect(() => plugin.configResolved({ root: '/tmp', build: { outDir: 'dist' } })).toThrow(
