@@ -147,7 +147,15 @@ export default function dappfence(options = {}) {
                 pathRules: opts.pathRules,
                 contentRules: opts.contentRules,
                 pageFilter,
-                scriptAttrs: opts,
+                // The injected <script> tag's src/data-manifest must be resolved
+                // against the site's base path too, or the browser requests them
+                // at the domain root instead of where the build is actually
+                // deployed (config.base) — see resolvedBase above.
+                scriptAttrs: {
+                    ...opts,
+                    scriptSrc: resolvedBase + opts.scriptSrc,
+                    manifestUrl: opts.manifestUrl && resolvedBase + opts.manifestUrl,
+                },
                 logger,
                 extraHashes: { [scriptSrcWebKey]: scriptHash },
                 pathPrefix: resolvedBase,

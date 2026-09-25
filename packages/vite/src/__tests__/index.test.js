@@ -152,5 +152,12 @@ describe('@dappfence/vite closeBundle', () => {
         );
         expect(manifest.pay.files['/my-app/index.html']).toBeTruthy();
         expect(manifest.pay.files['/my-app/dappfence.js']).toBeTruthy();
+
+        // The injected script tag must request assets under the base path too —
+        // otherwise the browser looks for them at the domain root and 404s.
+        const html = await fs.readFile(path.join(outDir, 'index.html'), 'utf8');
+        expect(html).toContain('src="/my-app/dappfence.js"');
+        expect(html).toContain('data-manifest="/my-app/integrity-manifest.json"');
+        expect(html).not.toContain('src="/dappfence.js"');
     });
 });

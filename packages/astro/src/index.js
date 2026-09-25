@@ -82,6 +82,15 @@ const resolveDappfenceJsPath = (scriptSrc) =>
         ? _require.resolve('@dappfence/core/dev')
         : _require.resolve('@dappfence/core');
 
+// The injected <script> tag's src/data-manifest must be resolved against the
+// site's base path, or the browser requests them at the domain root instead
+// of where the build is actually deployed (config.base).
+const baseScriptAttrs = (o, base) => ({
+    ...o,
+    scriptSrc: base + o.scriptSrc,
+    manifestUrl: o.manifestUrl && base + o.manifestUrl,
+});
+
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
     manifestUrl: '/integrity-manifest.json',
@@ -135,7 +144,7 @@ export default function dappfence(options = {}) {
                 const rawBase = config.base ?? '/';
                 resolvedBase = rawBase === '/' ? '' : rawBase.replace(/\/$/, '');
 
-                const scriptTag = buildScriptTag(opts);
+                const scriptTag = buildScriptTag(baseScriptAttrs(opts, resolvedBase));
                 const vitePlugins = [dappfenceAttrsPlugin(scriptTag)];
                 if (opts.patchServerIslands) {
                     vitePlugins.push(serverIslandPatchPlugin());
@@ -267,7 +276,7 @@ export default function dappfence(options = {}) {
                     routes: resolvedRoutes,
                     buildFormat: resolvedBuildFormat,
                     base: resolvedBase,
-                    scriptAttrs: opts,
+                    scriptAttrs: baseScriptAttrs(opts, resolvedBase),
                     logger,
                     extraHashes: { ...scriptHash, ...(extraHashes || {}) },
                     enumerablePatterns,

@@ -194,6 +194,7 @@ async function runSSR(opts, projectRoot) {
 
 async function runStaticExport(opts, projectRoot) {
     const outDir = path.join(projectRoot, opts.distDir || 'out');
+    const basePath = opts.basePath || '';
 
     const outDirExists = await fs
         .stat(outDir)
@@ -223,7 +224,9 @@ async function runStaticExport(opts, projectRoot) {
     const cspRules = [];
     const seenPrefixes = new Set();
     for (const route of dynamicRoutes) {
-        const key = routePatternToPrefixKey(route);
+        const key = basePath
+            ? basePath + routePatternToPrefixKey(route)
+            : routePatternToPrefixKey(route);
         if (!seenPrefixes.has(key)) {
             seenPrefixes.add(key);
             cspRules.push({
@@ -241,7 +244,15 @@ async function runStaticExport(opts, projectRoot) {
         mode: opts.mode,
         pathRules: STATIC_EXPORT_PATH_RULES,
         contentRules: [...cspRules, ...(isNetlify ? buildNetlifyContentRules() : [])],
-        scriptAttrs: opts,
+        // Manifest keys and the injected <script> tag's src/data-manifest must
+        // both resolve against the site's base path, or a non-root basePath
+        // deployment 404s on its own bootstrap script.
+        pathPrefix: basePath,
+        scriptAttrs: {
+            ...opts,
+            scriptSrc: basePath + opts.scriptSrc,
+            manifestUrl: opts.manifestUrl && basePath + opts.manifestUrl,
+        },
         logger,
         ...(cdpHashes && { extraHashes: { '/.netlify/scripts/cdp': cdpHashes } }),
     });

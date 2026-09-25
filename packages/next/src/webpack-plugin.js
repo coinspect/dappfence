@@ -39,7 +39,7 @@ export class DappfenceWebpackPlugin {
             const isStaticExport = this.nextConfig.output === 'export';
 
             if (isStaticExport) {
-                await this._writeConfig();
+                await this._writeConfig({ basePath: this._basePath });
                 console.log(
                     'DappFence: static export detected — run `dappfence-next` as a postbuild step to generate the manifest.'
                 );
