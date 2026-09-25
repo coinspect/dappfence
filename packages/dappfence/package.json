@@ -35,12 +35,13 @@
     },
     "scripts": {
         "build": "vite build --mode development && vite build --mode production",
-        "build:prod": "vite build --mode production",
+        "build:prod": "COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null) vite build --mode production",
         "build:watch": "vite build --mode development --watch & vite build --mode production --watch",
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
-        "publish:local": "npm run build:prod && npm pack --pack-destination ../../dist"
+        "prepublishOnly": "git diff-index --quiet HEAD || (echo 'ERROR: uncommitted changes — commit before publishing' && exit 1)",
+        "publish:local": "vite build --mode production && npm pack --pack-destination ../../dist"
     },
     "publishConfig": {
         "access": "public"
@@ -49,7 +50,6 @@
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0",
         "terser": "5.24.0",
-        "vite": "7.3.2",
-        "vite-plugin-bundle-obfuscator": "1.8.0"
+        "vite": "7.3.2"
     }
 }
