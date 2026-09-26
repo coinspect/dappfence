@@ -63,7 +63,9 @@ export default [
 
                 // Vite injected globals
                 __VERSION__: 'readonly',
+                __COMMIT__: 'readonly',
                 __BUILD_DATE__: 'readonly',
+                __NODE_VERSION__: 'readonly',
                 __DEV__: 'readonly',
                 __FEATURES__: 'readonly',
             },

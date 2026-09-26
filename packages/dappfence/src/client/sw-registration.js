@@ -24,7 +24,7 @@ let integrityCheckInterval = null;
 /**
  * Get configuration from current script data attributes or global window config.
  */
-function getConfig(clientScriptUrl) {
+export function getConfig(clientScriptUrl) {
     let config = {
         manifestUrl: null,
         manifestSignatureType: null,
@@ -39,7 +39,7 @@ function getConfig(clientScriptUrl) {
     // Try to get config from global window object first
     if (typeof window !== 'undefined' && window.DappFenceConfig) {
         config = { ...config, ...window.DappFenceConfig };
-        console.log('[DappFence Config] Loaded from window.DappFenceConfig:', config);
+        logger.log('[DappFence Config] Loaded from window.DappFenceConfig:', config);
     } else if (typeof document !== 'undefined') {
         // Try to get config from the current script or fallback element
         const script = document.currentScript || document.getElementById('dappfence-config');
@@ -263,8 +263,7 @@ function startIntegrityMonitoring() {
     logger.log('🔒 Integrity monitoring started (5-second intervals)');
 }
 
-export async function initializeClient(clientScriptUrl) {
-    const config = getConfig(clientScriptUrl);
+export async function initializeClient(config) {
     logger.log('Client initializing with config:', config);
 
     if (!('serviceWorker' in navigator)) {

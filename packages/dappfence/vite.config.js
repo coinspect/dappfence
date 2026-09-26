@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
-import obfuscator from 'vite-plugin-bundle-obfuscator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -32,7 +31,7 @@ export default defineConfig(({ mode }) => ({
                 banner: `/**
  * DappFence Security Framework v${process.env.npm_package_version || '0.1.0'}
  * A unified client/service worker security layer for web applications
- * 
+ *
  * ${mode === 'development' ? 'Development build with console logging + sourcemaps' : 'Production build - console logging removed'}
  * Built with Vite from modular source
  */`,
@@ -66,7 +65,9 @@ export default defineConfig(({ mode }) => ({
     // Define environment variables
     define: {
         __VERSION__: JSON.stringify(process.env.npm_package_version || '0.1.0'),
+        __COMMIT__: JSON.stringify(process.env.COMMIT_HASH || 'not-for-release'),
         __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+        __NODE_VERSION__: JSON.stringify(process.versions.node),
         __DEV__: mode !== 'production',
     },
 
@@ -112,15 +113,5 @@ export default defineConfig(({ mode }) => ({
                 };
             },
         },
-        obfuscator({
-            // Options for javascript-obfuscator
-            enable: mode === 'production',
-            compact: true,
-            controlFlowFlattening: true,
-            deadCodeInjection: true,
-            debugProtection: true,
-            splitStrings: true,
-            identifierNamesGenerator: 'mangled-shuffled',
-        }),
     ],
 }));
