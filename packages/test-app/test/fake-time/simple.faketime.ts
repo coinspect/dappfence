@@ -1,5 +1,5 @@
 import { expect, test } from '../sw-fixtures';
-import { Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 test.describe('Fake Time - Basic Functionality', () => {
     ['once', 'again'].forEach((x) =>

@@ -2,7 +2,7 @@
  * End-to-end tests for the Service Worker functionality.
  */
 import { expect, SWHelper, test } from '../sw-fixtures';
-import { Page, TestInfo } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 
 /*
  * Ensures the Service Worker is installed and active before running each test.

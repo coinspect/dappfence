@@ -103,10 +103,68 @@ describe('buildCspHeader', () => {
         expect(headerB).not.toContain("'sha256-hash-a'");
     });
 
-    it('does not emit a report-uri directive (CSP violation reporting is not shipped)', () => {
+    it('omits report-uri when the manifest declares no reportUri', () => {
         expect(csp({})).not.toContain('report-uri');
         expect(csp(null)).not.toContain('report-uri');
         expect(csp({ csp: { pages: { '/': ['sha256-h'] } } })).not.toContain('report-uri');
+    });
+});
+
+describe('buildCspHeader — reporting (reportUri / reportOnly)', () => {
+    const REPORT_URI = 'https://reports.example/csp';
+
+    const buildHeaders = (manifest) => {
+        const normalized = normalizeManifestData({ files: {}, ...(manifest ?? {}) });
+        return buildCspHeader(
+            '/',
+            new Response(null, { headers: new Headers() }),
+            normalized,
+            NONCE
+        );
+    };
+
+    it('appends report-uri to the built policy when reportUri is set', () => {
+        const header = csp({ csp: { reportUri: REPORT_URI } });
+        expect(header).toContain(`report-uri ${REPORT_URI}`);
+    });
+
+    it("keeps report-uri as the last directive so URL doesn't collide with a following directive", () => {
+        const header = csp({
+            csp: {
+                reportUri: REPORT_URI,
+                connectOrigins: ['https://api.example.com'],
+                frameOrigins: ['https://embeds.example'],
+                upgradeInsecureRequests: true,
+            },
+        });
+        const directives = header.split('; ');
+        expect(directives[directives.length - 1]).toBe(`report-uri ${REPORT_URI}`);
+    });
+
+    it('emits Content-Security-Policy (enforce) when reportOnly is false or unset', () => {
+        const headers = buildHeaders({ csp: { reportUri: REPORT_URI } });
+        expect(headers.get('Content-Security-Policy')).toContain(`report-uri ${REPORT_URI}`);
+        expect(headers.get('Content-Security-Policy-Report-Only')).toBeNull();
+    });
+
+    it('emits Content-Security-Policy-Report-Only when reportUri set and reportOnly true', () => {
+        const headers = buildHeaders({ csp: { reportUri: REPORT_URI, reportOnly: true } });
+        expect(headers.get('Content-Security-Policy-Report-Only')).toContain(
+            `report-uri ${REPORT_URI}`
+        );
+        expect(headers.get('Content-Security-Policy')).toBeNull();
+    });
+
+    it('reportOnly without reportUri falls back to enforce (Report-Only would be inert without a destination)', () => {
+        const headers = buildHeaders({ csp: { reportOnly: true } });
+        expect(headers.get('Content-Security-Policy')).toBeTruthy();
+        expect(headers.get('Content-Security-Policy-Report-Only')).toBeNull();
+    });
+
+    it('reportOnly must be exactly true — truthy values do not switch the header', () => {
+        const headers = buildHeaders({ csp: { reportUri: REPORT_URI, reportOnly: 'yes' } });
+        expect(headers.get('Content-Security-Policy')).toBeTruthy();
+        expect(headers.get('Content-Security-Policy-Report-Only')).toBeNull();
     });
 });
 

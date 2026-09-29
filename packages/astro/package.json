@@ -4,6 +4,9 @@
     "description": "Astro integration for DappFence — script injection, manifest generation, dynamic content tagging",
     "license": "MIT",
     "type": "module",
+    "engines": {
+        "node": ">=22.0.0"
+    },
     "main": "./src/index.js",
     "exports": {
         ".": "./src/index.js"

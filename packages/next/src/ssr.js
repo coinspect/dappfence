@@ -4,9 +4,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-
-const _require = createRequire(import.meta.url);
-const { extractInlineHashesFromHtml } = _require('@dappfence/manifest-tools/inline-scripts');
+import { extractInlineHashesFromHtml } from '@dappfence/manifest-tools/inline-scripts';
 
 export function routePatternToProbeUrl(pattern) {
     return pattern
@@ -63,8 +61,8 @@ async function enumerateConcreteUrls(projectRoot, pattern) {
         );
         let compiled;
         try {
-            const moduleRequire = createRequire(modulePath);
-            compiled = moduleRequire(modulePath);
+            const mod = await import(pathToFileURL(modulePath).href);
+            compiled = mod.default ?? mod;
         } catch {
             continue;
         }
@@ -119,6 +117,9 @@ export async function hashSSRRoutes(projectRoot, fixedRoutes, probedPatterns, lo
     try {
         // Resolve `next` relative to projectRoot so symlinked packages find the
         // user's installed copy rather than resolving from this file's real path.
+        // import.meta.resolve() can't do this — it only ever resolves relative to
+        // *this* module's own location, with no way to pass an external base path —
+        // so createRequire(basePath) stays here regardless of Node version.
         const projectRequire = createRequire(path.join(projectRoot, 'package.json'));
         const nextPath = projectRequire.resolve('next');
         const { default: next } = await import(pathToFileURL(nextPath).href);

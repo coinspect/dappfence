@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 
-const http = require('http');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-const { spawn } = require('child_process');
-const { connect } = require('node:net');
+import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { spawn, execFileSync } from 'node:child_process';
+import { connect } from 'node:net';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const { TRANSFORM } = require('@dappfence/core/constants');
+import { TRANSFORM } from '@dappfence/core/constants';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_ROOT = path.resolve(__dirname, '..', 'assets');
-const DAPPFENCE_DIST = require.resolve('@dappfence/core');
+const DAPPFENCE_DIST = fileURLToPath(import.meta.resolve('@dappfence/core'));
 
 /**
  * Named groups of virtual URL-to-file mappings.
@@ -158,7 +161,6 @@ function launchBrowserWithProxy(port) {
         }
 
         // Linux: try Chrome/Chromium variants with proxy, fall back to xdg-open
-        const { execFileSync } = require('child_process');
         const browsers = ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium'];
         for (const browser of browsers) {
             try {
@@ -199,7 +201,7 @@ function launchBrowserWithProxy(port) {
  *                                              When unset no virtual-file mapping is applied.
  * @returns {Promise<http.Server>}            - Resolves once the server is listening.
  */
-function startServer({
+export function startServer({
     port = 3333,
     root,
     defaultApp,
@@ -400,11 +402,11 @@ function startServer({
                 res.end('File not found');
                 return;
             }
-            serveBuffer(filePath, data, res, req, testParams);
+            serveBuffer(filePath, data, res, req, testParams, 'file');
         });
     }
 
-    function serveBuffer(filePath, data, res, req, testParams) {
+    function serveBuffer(filePath, data, res, req, testParams, result) {
         const sriHash = calculateSRIHash(data);
         const mimeType = getMimeType(filePath || testParams.requestPath);
         const extraHeaders = getExtraResponseHeaders(testParams);
@@ -427,7 +429,7 @@ function startServer({
               )
             : data;
 
-        saveTestResponse(testParams, 'ok', filePath, extraHeaders, intercept);
+        saveTestResponse(testParams, result, filePath, extraHeaders, intercept);
         logRequestToConsole(
             req,
             testParams,
@@ -498,6 +500,7 @@ function startServer({
                 testId: 'default',
                 url: baseUrl.toString(),
                 requestPath: baseUrl.pathname,
+                method: req.method,
             };
         }
         const { appName, appVersion, testTitle, testId } = params || {};
@@ -510,6 +513,7 @@ function startServer({
             testId,
             url: baseUrl.toString(),
             requestPath: baseUrl.pathname,
+            method: req.method,
         };
     }
 
@@ -518,6 +522,22 @@ function startServer({
     // hosts will fail with a TypeError — the browser rejects responses without
     // Access-Control-Allow-Origin even though the SW upgraded the request mode.
     const NO_CORS_HOSTS = new Set(['cors-unsupported-cdn.com']);
+
+    // Generic capture sink. Any request under `/capture/*` is recorded into
+    // testResponse (when saveResponses is on) with `method` + `body` on the
+    // entry, then delegates to serveBuffer so the standard intercept pipeline
+    // (inject/unchanged/empty/remap) applies. Reusable for CSP reports,
+    // beacons, or any "did the browser hit this URL with what payload?" test.
+    function serveCapture(req, res, testParams) {
+        let raw = '';
+        req.on('data', (chunk) => {
+            raw += chunk.toString();
+        });
+        req.on('end', () => {
+            testParams.body = raw || null;
+            return serveBuffer('', Buffer.alloc(0), res, req, testParams, 'capture');
+        });
+    }
 
     const server = http.createServer((req, res) => {
         const testParams = getTestParameters(req);
@@ -548,6 +568,10 @@ function startServer({
 
         if (testParams.requestPath.startsWith('/api/')) {
             return serveApi(res, req, testParams);
+        }
+
+        if (testParams.requestPath.startsWith('/capture/')) {
+            return serveCapture(req, res, testParams);
         }
 
         if (dev && testParams.requestPath.endsWith('/dappfence.js')) {
@@ -600,7 +624,7 @@ function startServer({
                     return serveFile(targetPath, res, req, testParams);
                 }
             } else {
-                return serveBuffer('', Buffer.alloc(0), res, req, testParams);
+                return serveBuffer('', Buffer.alloc(0), res, req, testParams, 'synth');
             }
         }
 
@@ -667,11 +691,9 @@ function startServer({
     });
 }
 
-module.exports = { startServer };
-
 // --- CLI entry point ---
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const rootArg = process.argv.find((a) => a.startsWith('--root='));
     const pIndex = process.argv.indexOf('-p');
     const dIndex = process.argv.indexOf('-d');

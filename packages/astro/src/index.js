@@ -18,7 +18,6 @@
  *   });
  *
  */
-import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,10 +30,8 @@ import {
     sriHash,
 } from './manifest.js';
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
-
-const _require = createRequire(import.meta.url);
-const { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } = _require('@dappfence/manifest-tools');
-const { buildScriptTag, resolveContained } = _require('@dappfence/manifest-tools/manifest');
+import { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } from '@dappfence/manifest-tools';
+import { buildScriptTag, resolveContained } from '@dappfence/manifest-tools/manifest';
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
@@ -78,9 +75,11 @@ function serverIslandPatchPlugin() {
 }
 
 const resolveDappfenceJsPath = (scriptSrc) =>
-    scriptSrc.endsWith('.dev.js')
-        ? _require.resolve('@dappfence/core/dev')
-        : _require.resolve('@dappfence/core');
+    fileURLToPath(
+        import.meta.resolve(
+            scriptSrc.endsWith('.dev.js') ? '@dappfence/core/dev' : '@dappfence/core'
+        )
+    );
 
 // The injected <script> tag's src/data-manifest must be resolved against the
 // site's base path, or the browser requests them at the domain root instead
