@@ -215,7 +215,11 @@ export default function dappfence(options = {}) {
                 const outDir = fileURLToPath(dir);
 
                 const destRel = opts.scriptSrc.replace(/^\//, '');
-                const destAbs = resolveContained(outDir, destRel, '[@dappfence/astro] scriptSrc');
+                const destAbs = await resolveContained(
+                    outDir,
+                    destRel,
+                    '[@dappfence/astro] scriptSrc'
+                );
                 await fs.mkdir(path.dirname(destAbs), { recursive: true });
                 await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
                 logger.info(`DappFence: copied dappfence.js → ${destRel}`);
@@ -275,7 +279,11 @@ export default function dappfence(options = {}) {
                     }
                 }
 
-                resolveContained(outDir, opts.manifestPath, '[@dappfence/astro] manifestPath');
+                await resolveContained(
+                    outDir,
+                    opts.manifestPath,
+                    '[@dappfence/astro] manifestPath'
+                );
 
                 await generateManifest({
                     ...opts,

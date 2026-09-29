@@ -180,7 +180,7 @@ async function runSSR(opts, projectRoot) {
     // The manifest is written into public/, not nextStaticDir (the walk root
     // used for hashing .next/static) — the real containment boundary here is
     // publicDir, so validate against that directly rather than nextStaticDir.
-    const manifestAbs = resolveContained(
+    const manifestAbs = await resolveContained(
         publicDir,
         opts.manifestPath,
         '[@dappfence/next] manifestPath'
@@ -218,7 +218,7 @@ async function runStaticExport(opts, projectRoot) {
     }
 
     const destRel = opts.scriptSrc.replace(/^\//, '');
-    const destAbs = resolveContained(outDir, destRel, '[@dappfence/next] scriptSrc');
+    const destAbs = await resolveContained(outDir, destRel, '[@dappfence/next] scriptSrc');
     await fs.mkdir(path.dirname(destAbs), { recursive: true });
     await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
     console.log(`DappFence: copied dappfence.js → ${destRel}`);
@@ -248,7 +248,7 @@ async function runStaticExport(opts, projectRoot) {
         }
     }
 
-    resolveContained(outDir, opts.manifestPath, '[@dappfence/next] manifestPath');
+    await resolveContained(outDir, opts.manifestPath, '[@dappfence/next] manifestPath');
 
     await generateManifest({
         outDir,

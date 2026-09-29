@@ -118,7 +118,7 @@ export default function dappfence(options = {}) {
             const outDir = resolvedOutDir;
 
             const destRel = opts.scriptSrc.replace(/^\//, '');
-            const destAbs = resolveContained(outDir, destRel, '[@dappfence/vite] scriptSrc');
+            const destAbs = await resolveContained(outDir, destRel, '[@dappfence/vite] scriptSrc');
             await fs.mkdir(path.dirname(destAbs), { recursive: true });
             await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
             logger.info(`DappFence: copied dappfence.js → ${destRel}`);
@@ -132,7 +132,7 @@ export default function dappfence(options = {}) {
 
             const fallbackWebPaths = new Set();
             if (opts.spaFallback.length) {
-                const sourceAbs = resolveContained(
+                const sourceAbs = await resolveContained(
                     outDir,
                     opts.spaFallbackSource,
                     '[@dappfence/vite] spaFallbackSource'
@@ -140,7 +140,7 @@ export default function dappfence(options = {}) {
                 const sourceHtml = await fs.readFile(sourceAbs, 'utf8');
                 for (const route of opts.spaFallback) {
                     const rel = route.replace(/^\//, '');
-                    const targetAbs = resolveContained(
+                    const targetAbs = await resolveContained(
                         outDir,
                         rel,
                         '[@dappfence/vite] spaFallback'
@@ -162,7 +162,7 @@ export default function dappfence(options = {}) {
                 ((webPath, ext) =>
                     ext === '.html' || ext === '.htm' || fallbackWebPaths.has(webPath));
 
-            resolveContained(outDir, opts.manifestPath, '[@dappfence/vite] manifestPath');
+            await resolveContained(outDir, opts.manifestPath, '[@dappfence/vite] manifestPath');
 
             await generateManifest({
                 outDir,

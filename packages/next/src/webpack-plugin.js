@@ -70,7 +70,7 @@ export class DappfenceWebpackPlugin {
         const publicDir = path.join(projectRoot, 'public');
         await fs.mkdir(publicDir, { recursive: true });
         const destRel = this.opts.scriptSrc.replace(/^\//, '');
-        const destAbs = resolveContained(publicDir, destRel, '[@dappfence/next] scriptSrc');
+        const destAbs = await resolveContained(publicDir, destRel, '[@dappfence/next] scriptSrc');
         await fs.copyFile(dappfenceJsPath, destAbs);
         logger.info(`DappFence: copied dappfence.js → public/${destRel}`);
     }

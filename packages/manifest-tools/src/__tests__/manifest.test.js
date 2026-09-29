@@ -218,25 +218,72 @@ describe('generateManifest', () => {
 });
 
 describe('resolveContained', () => {
-    it('resolves a path that stays within root', () => {
-        const abs = resolveContained('/build/out', 'dappfence.js', 'scriptSrc');
-        expect(abs).toBe(path.join('/build/out', 'dappfence.js'));
+    async function makeRoot() {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-contained-'));
+        tmpDirs.push(root);
+        return root;
+    }
+
+    it('resolves a path that stays within root', async () => {
+        const root = await makeRoot();
+        const abs = await resolveContained(root, 'dappfence.js', 'scriptSrc');
+        expect(abs).toBe(path.join(root, 'dappfence.js'));
     });
 
-    it('rejects a relative path that escapes root via ..', () => {
-        expect(() => resolveContained('/build/out', '../../etc/evil.js', 'scriptSrc')).toThrow(
+    it('rejects a relative path that escapes root via ..', async () => {
+        const root = await makeRoot();
+        await expect(resolveContained(root, '../../etc/evil.js', 'scriptSrc')).rejects.toThrow(
             /scriptSrc "\.\.\/\.\.\/etc\/evil\.js" resolves outside/
         );
     });
 
-    it('rejects an absolute path outside root', () => {
-        expect(() => resolveContained('/build/out', '/etc/passwd', 'spaFallbackSource')).toThrow(
+    it('rejects an absolute path outside root', async () => {
+        const root = await makeRoot();
+        await expect(resolveContained(root, '/etc/passwd', 'spaFallbackSource')).rejects.toThrow(
             /resolves outside/
         );
     });
 
-    it('allows root itself (empty relative path)', () => {
-        const abs = resolveContained('/build/out', '.', 'manifestPath');
-        expect(abs).toBe(path.resolve('/build/out'));
+    it('allows root itself (empty relative path)', async () => {
+        const root = await makeRoot();
+        const abs = await resolveContained(root, '.', 'manifestPath');
+        expect(abs).toBe(path.resolve(root));
+    });
+
+    it('rejects a target that is itself a symlink pointing outside root', async () => {
+        const root = await makeRoot();
+        const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-contained-outside-'));
+        tmpDirs.push(outsideDir);
+        const secretFile = path.join(outsideDir, 'secret.txt');
+        await fs.writeFile(secretFile, 'do not leak me', 'utf8');
+        await fs.symlink(secretFile, path.join(root, 'dappfence.js'));
+
+        await expect(resolveContained(root, 'dappfence.js', 'scriptSrc')).rejects.toThrow(
+            /scriptSrc "dappfence\.js" resolves outside .* via a symlink/
+        );
+    });
+
+    it('rejects a target under a symlinked ancestor directory pointing outside root', async () => {
+        const root = await makeRoot();
+        const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-contained-outside-'));
+        tmpDirs.push(outsideDir);
+        await fs.symlink(outsideDir, path.join(root, 'escape'));
+
+        // 'escape/not-yet-created.html' doesn't exist yet, but its parent
+        // ('escape') is a symlink pointing outside root — must still be caught.
+        await expect(
+            resolveContained(root, 'escape/not-yet-created.html', 'spaFallback')
+        ).rejects.toThrow(
+            /spaFallback ".*not-yet-created\.html" resolves outside .* via a symlink/
+        );
+    });
+
+    it('allows a symlink that stays within root', async () => {
+        const root = await makeRoot();
+        await fs.writeFile(path.join(root, 'real.js'), 'console.log(1)', 'utf8');
+        await fs.symlink(path.join(root, 'real.js'), path.join(root, 'alias.js'));
+
+        const abs = await resolveContained(root, 'alias.js', 'scriptSrc');
+        expect(abs).toBe(path.join(root, 'alias.js'));
     });
 });

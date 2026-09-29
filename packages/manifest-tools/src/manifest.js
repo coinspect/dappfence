@@ -8,11 +8,43 @@ import { calculateFileHash, signManifest } from './build.js';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { extractInlineHashesFromHtml } from './inline-scripts.js';
 
+function isEscaping(root, target) {
+    const rel = path.relative(root, target);
+    return rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel);
+}
+
+// Walks up from `p` to the nearest path component that actually exists on
+// disk (lstat, so a dangling symlink still counts as "exists"). Everything
+// below that point is guaranteed not-yet-created, so it can't itself be a
+// symlink — only the existing prefix needs a realpath check.
+async function nearestExistingAncestor(p) {
+    let current = p;
+    for (;;) {
+        try {
+            await fs.lstat(current);
+            return current;
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+            const parent = path.dirname(current);
+            if (parent === current) return current; // reached filesystem root
+            current = parent;
+        }
+    }
+}
+
 /**
  * Resolve `relativePath` against `root` and throw if the result would land
  * outside `root` — e.g. a `..` segment smuggled into a configurable option
  * like `scriptSrc`/`spaFallback`/`manifestPath`. Returns the resolved
  * absolute path on success.
+ *
+ * A purely lexical check isn't enough: a symlink already sitting inside
+ * `root` (planted by an earlier, possibly-compromised build step) can make
+ * a path that *looks* contained actually read/write outside it once the
+ * real fs.readFile/writeFile/copyFile call follows it. So after the lexical
+ * check, this also realpath()s the nearest existing ancestor of the target
+ * (following any symlinks in its chain) and re-checks containment against
+ * root's own realpath.
  *
  * Every integration must validate its own user-configurable output paths
  * with this before any filesystem read/write. It is deliberately NOT
@@ -21,12 +53,20 @@ import { extractInlineHashesFromHtml } from './inline-scripts.js';
  * `public/`, outside the `outDir` used for hashing `.next/static` — that
  * caller validates against `public/` itself instead (see bin/dappfence-next.js).
  */
-export function resolveContained(root, relativePath, label) {
+export async function resolveContained(root, relativePath, label) {
     const abs = path.resolve(root, relativePath);
-    const rel = path.relative(root, abs);
-    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+    if (isEscaping(root, abs)) {
         throw new Error(
             `${label} "${relativePath}" resolves outside "${root}" — refusing to read/write there.`
+        );
+    }
+    const [realRoot, realAncestor] = await Promise.all([
+        fs.realpath(root),
+        fs.realpath(await nearestExistingAncestor(abs)),
+    ]);
+    if (isEscaping(realRoot, realAncestor)) {
+        throw new Error(
+            `${label} "${relativePath}" resolves outside "${root}" via a symlink — refusing to read/write there.`
         );
     }
     return abs;
