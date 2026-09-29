@@ -219,3 +219,23 @@ describe('path containment', () => {
         );
     });
 });
+
+describe('base normalization', () => {
+    it('rejects a relative base', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({ secretKey: SECRET_KEY });
+        expect(() => runPlugin(plugin, outDir, './')).toThrow(/base "\.\/" is relative/);
+    });
+
+    it('rejects a full-URL base', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({ secretKey: SECRET_KEY });
+        expect(() => runPlugin(plugin, outDir, 'https://cdn.example.com/assets/')).toThrow(
+            /is a full URL/
+        );
+    });
+});

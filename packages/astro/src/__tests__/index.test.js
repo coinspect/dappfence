@@ -63,6 +63,30 @@ describe('astro:config:setup base-path handling', () => {
         expect(loaded).toContain('\\"/dappfence.js\\"');
         expect(loaded).toContain('\\"/integrity-manifest.json\\"');
     });
+
+    it('rejects a relative base', () => {
+        const plugin = dappfence({ secretKey: SECRET_KEY });
+        expect(() =>
+            plugin.hooks['astro:config:setup']({
+                logger: { error: vi.fn() },
+                config: { base: './', build: {} },
+                updateConfig: vi.fn(),
+                addMiddleware: vi.fn(),
+            })
+        ).toThrow(/base "\.\/" is relative/);
+    });
+
+    it('rejects a full-URL base', () => {
+        const plugin = dappfence({ secretKey: SECRET_KEY });
+        expect(() =>
+            plugin.hooks['astro:config:setup']({
+                logger: { error: vi.fn() },
+                config: { base: 'https://cdn.example.com/assets/', build: {} },
+                updateConfig: vi.fn(),
+                addMiddleware: vi.fn(),
+            })
+        ).toThrow(/is a full URL/);
+    });
 });
 
 describe('manifestSignatureType validation', () => {

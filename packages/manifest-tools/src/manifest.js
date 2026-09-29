@@ -72,6 +72,43 @@ export async function resolveContained(root, relativePath, label) {
     return abs;
 }
 
+/**
+ * Normalize a bundler's `base`/`basePath` config option into the absolute
+ * path prefix this pipeline's `pathPrefix` (manifest keys) and injected
+ * script tag (`scriptSrc`/`manifestUrl`) both assume — empty string for a
+ * site at the origin root, otherwise an absolute path with no trailing
+ * slash (e.g. `/app`).
+ *
+ * Only an absolute-path base (`/app/`, or `/` itself) can be represented
+ * this way. A full URL (`https://cdn.example.com/assets/`) doesn't fit —
+ * manifest keys are same-origin pathnames, not full URLs, and DappFence's
+ * per-file verification model doesn't extend to a separate asset origin. A
+ * relative base (`''`, `'./'`) doesn't fit either — the SW matches absolute
+ * request pathnames, and a relative base's actual resolved path depends on
+ * which page loaded it, so there's no single prefix to bake into the
+ * manifest. Both would otherwise silently produce a manifest whose keys
+ * can never match a real request — reject them instead.
+ */
+export function normalizeBase(rawBase, label) {
+    if (rawBase === '/' || rawBase === undefined) return '';
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawBase) || rawBase.startsWith('//')) {
+        throw new Error(
+            `${label} base "${rawBase}" is a full URL — DappFence's manifest keys are same-origin ` +
+                `pathnames, not full URLs. Serve DappFence-protected assets from the site's own origin ` +
+                `with an absolute-path base (e.g. "/app/"), or omit base entirely.`
+        );
+    }
+    if (!rawBase.startsWith('/')) {
+        throw new Error(
+            `${label} base "${rawBase}" is relative — DappFence needs an absolute-path base (e.g. ` +
+                `"/app/") to build manifest keys that match real request pathnames. A relative base ` +
+                `like "./" or "" produces asset URLs whose final path depends on where the page was ` +
+                `loaded from, which can't be captured in a single signed manifest.`
+        );
+    }
+    return rawBase.replace(/\/$/, '');
+}
+
 const CDP_SCRIPT_PATH = '/.netlify/scripts/cdp';
 
 // Pre-computed hashes for known Netlify CDP script versions.

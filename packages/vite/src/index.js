@@ -30,7 +30,11 @@ import {
     deriveIdentity,
     SUPPORTED_SIGNATURE_TYPES,
 } from '@dappfence/manifest-tools';
-import { generateManifest, resolveContained } from '@dappfence/manifest-tools/manifest';
+import {
+    generateManifest,
+    resolveContained,
+    normalizeBase,
+} from '@dappfence/manifest-tools/manifest';
 
 const resolveDappfenceJsPath = (scriptSrc) =>
     fileURLToPath(
@@ -105,8 +109,7 @@ export default function dappfence(options = {}) {
                 );
             }
             resolvedOutDir = path.resolve(config.root, config.build.outDir);
-            const rawBase = config.base ?? '/';
-            resolvedBase = rawBase === '/' ? '' : rawBase.replace(/\/$/, '');
+            resolvedBase = normalizeBase(config.base ?? '/', '[@dappfence/vite]');
         },
 
         // Fires after Vite has written the build output to disk. This:

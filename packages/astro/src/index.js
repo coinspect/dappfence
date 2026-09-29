@@ -31,7 +31,11 @@ import {
 } from './manifest.js';
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
 import { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } from '@dappfence/manifest-tools';
-import { buildScriptTag, resolveContained } from '@dappfence/manifest-tools/manifest';
+import {
+    buildScriptTag,
+    resolveContained,
+    normalizeBase,
+} from '@dappfence/manifest-tools/manifest';
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
@@ -151,9 +155,7 @@ export default function dappfence(options = {}) {
                 if (config.build?.server) {
                     resolvedServerDir = fileURLToPath(config.build.server);
                 }
-                // Normalize base: strip trailing slash; treat '/' as no prefix.
-                const rawBase = config.base ?? '/';
-                resolvedBase = rawBase === '/' ? '' : rawBase.replace(/\/$/, '');
+                resolvedBase = normalizeBase(config.base ?? '/', '[@dappfence/astro]');
 
                 const scriptTag = buildScriptTag(baseScriptAttrs(opts, resolvedBase));
                 const vitePlugins = [dappfenceAttrsPlugin(scriptTag)];

@@ -9,6 +9,7 @@ import {
     injectScriptTag,
     generateManifest,
     resolveContained,
+    normalizeBase,
 } from '../manifest.js';
 
 const MINIMAL = { scriptSrc: '/dappfence.js' };
@@ -285,5 +286,37 @@ describe('resolveContained', () => {
 
         const abs = await resolveContained(root, 'alias.js', 'scriptSrc');
         expect(abs).toBe(path.join(root, 'alias.js'));
+    });
+});
+
+describe('normalizeBase', () => {
+    it('treats "/" as no prefix', () => {
+        expect(normalizeBase('/', 'label')).toBe('');
+    });
+
+    it('treats undefined as no prefix', () => {
+        expect(normalizeBase(undefined, 'label')).toBe('');
+    });
+
+    it('strips the trailing slash from an absolute-path base', () => {
+        expect(normalizeBase('/my-app/', 'label')).toBe('/my-app');
+    });
+
+    it('rejects a full URL base', () => {
+        expect(() => normalizeBase('https://cdn.example.com/assets/', 'label')).toThrow(
+            /base "https:\/\/cdn\.example\.com\/assets\/" is a full URL/
+        );
+    });
+
+    it('rejects a protocol-relative base', () => {
+        expect(() => normalizeBase('//cdn.example.com/assets/', 'label')).toThrow(/is a full URL/);
+    });
+
+    it('rejects a relative base', () => {
+        expect(() => normalizeBase('./', 'label')).toThrow(/base "\.\/" is relative/);
+    });
+
+    it('rejects an empty-string base', () => {
+        expect(() => normalizeBase('', 'label')).toThrow(/is relative/);
     });
 });
