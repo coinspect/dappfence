@@ -8,6 +8,30 @@ const { calculateFileHash, signManifest } = require('./build');
 const { TRANSFORM } = require('@dappfence/core/constants');
 const { extractInlineHashesFromHtml } = require('./inline-scripts');
 
+/**
+ * Resolve `relativePath` against `root` and throw if the result would land
+ * outside `root` — e.g. a `..` segment smuggled into a configurable option
+ * like `scriptSrc`/`spaFallback`/`manifestPath`. Returns the resolved
+ * absolute path on success.
+ *
+ * Every integration must validate its own user-configurable output paths
+ * with this before any filesystem read/write. It is deliberately NOT
+ * applied inside `generateManifest` itself to `outDir`/`manifestPath`:
+ * `@dappfence/next`'s SSR mode legitimately writes the manifest into
+ * `public/`, outside the `outDir` used for hashing `.next/static` — that
+ * caller validates against `public/` itself instead (see bin/dappfence-next.js).
+ */
+function resolveContained(root, relativePath, label) {
+    const abs = path.resolve(root, relativePath);
+    const rel = path.relative(root, abs);
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+        throw new Error(
+            `${label} "${relativePath}" resolves outside "${root}" — refusing to read/write there.`
+        );
+    }
+    return abs;
+}
+
 const CDP_SCRIPT_PATH = '/.netlify/scripts/cdp';
 
 // Pre-computed hashes for known Netlify CDP script versions.
@@ -300,4 +324,5 @@ module.exports = {
     buildNetlifyContentRules,
     NETLIFY_CDP_KNOWN_HASHES,
     resolveNetlifyCdpHashes,
+    resolveContained,
 };

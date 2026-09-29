@@ -43,9 +43,8 @@ import { hashPublicFiles, hashSSRRoutes, routePatternToPrefixKey } from '../src/
 const NOT_FOUND_PROBE_URL = '/404';
 
 const _require = createRequire(import.meta.url);
-const { generateManifest, buildNetlifyContentRules, resolveNetlifyCdpHashes } = _require(
-    '@dappfence/manifest-tools/manifest'
-);
+const { generateManifest, buildNetlifyContentRules, resolveNetlifyCdpHashes, resolveContained } =
+    _require('@dappfence/manifest-tools/manifest');
 const resolveDappfenceJsPath = (scriptSrc) =>
     scriptSrc.endsWith('.dev.js')
         ? _require.resolve('@dappfence/core/dev')
@@ -174,9 +173,18 @@ async function runSSR(opts, projectRoot) {
         ssrPathRules.push({ type: 'error-page', status: 404, url: notFoundUrl });
     }
 
+    // The manifest is written into public/, not nextStaticDir (the walk root
+    // used for hashing .next/static) — the real containment boundary here is
+    // publicDir, so validate against that directly rather than nextStaticDir.
+    const manifestAbs = resolveContained(
+        publicDir,
+        opts.manifestPath,
+        '[@dappfence/next] manifestPath'
+    );
+
     await generateManifest({
         outDir: nextStaticDir,
-        manifestPath: path.relative(nextStaticDir, path.join(publicDir, opts.manifestPath)),
+        manifestPath: path.relative(nextStaticDir, manifestAbs),
         pathPrefix: basePath + '/_next/static',
         exclude: opts.exclude,
         secretKey,
@@ -206,7 +214,7 @@ async function runStaticExport(opts, projectRoot) {
     }
 
     const destRel = opts.scriptSrc.replace(/^\//, '');
-    const destAbs = path.join(outDir, destRel);
+    const destAbs = resolveContained(outDir, destRel, '[@dappfence/next] scriptSrc');
     await fs.mkdir(path.dirname(destAbs), { recursive: true });
     await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
     console.log(`DappFence: copied dappfence.js → ${destRel}`);
@@ -235,6 +243,8 @@ async function runStaticExport(opts, projectRoot) {
             });
         }
     }
+
+    resolveContained(outDir, opts.manifestPath, '[@dappfence/next] manifestPath');
 
     await generateManifest({
         outDir,

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { buildNetlifyContentRules } from '@dappfence/manifest-tools/manifest';
+import { buildNetlifyContentRules, resolveContained } from '@dappfence/manifest-tools/manifest';
 
 const DEFAULT_PATH_RULES = [{ type: 'directory-index' }, { type: 'html-extension' }];
 
@@ -71,7 +71,7 @@ export class DappfenceWebpackPlugin {
         const publicDir = path.join(projectRoot, 'public');
         await fs.mkdir(publicDir, { recursive: true });
         const destRel = this.opts.scriptSrc.replace(/^\//, '');
-        const destAbs = path.join(publicDir, destRel);
+        const destAbs = resolveContained(publicDir, destRel, '[@dappfence/next] scriptSrc');
         await fs.copyFile(dappfenceJsPath, destAbs);
         logger.info(`DappFence: copied dappfence.js → public/${destRel}`);
     }

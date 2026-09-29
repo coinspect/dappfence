@@ -30,7 +30,7 @@ import {
     deriveIdentity,
     SUPPORTED_SIGNATURE_TYPES,
 } from '@dappfence/manifest-tools';
-import { generateManifest } from '@dappfence/manifest-tools/manifest';
+import { generateManifest, resolveContained } from '@dappfence/manifest-tools/manifest';
 
 const resolveDappfenceJsPath = (scriptSrc) =>
     fileURLToPath(
@@ -118,7 +118,7 @@ export default function dappfence(options = {}) {
             const outDir = resolvedOutDir;
 
             const destRel = opts.scriptSrc.replace(/^\//, '');
-            const destAbs = path.join(outDir, destRel);
+            const destAbs = resolveContained(outDir, destRel, '[@dappfence/vite] scriptSrc');
             await fs.mkdir(path.dirname(destAbs), { recursive: true });
             await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
             logger.info(`DappFence: copied dappfence.js → ${destRel}`);
@@ -132,11 +132,19 @@ export default function dappfence(options = {}) {
 
             const fallbackWebPaths = new Set();
             if (opts.spaFallback.length) {
-                const sourceAbs = path.join(outDir, opts.spaFallbackSource);
+                const sourceAbs = resolveContained(
+                    outDir,
+                    opts.spaFallbackSource,
+                    '[@dappfence/vite] spaFallbackSource'
+                );
                 const sourceHtml = await fs.readFile(sourceAbs, 'utf8');
                 for (const route of opts.spaFallback) {
                     const rel = route.replace(/^\//, '');
-                    const targetAbs = path.join(outDir, rel);
+                    const targetAbs = resolveContained(
+                        outDir,
+                        rel,
+                        '[@dappfence/vite] spaFallback'
+                    );
                     await fs.mkdir(path.dirname(targetAbs), { recursive: true });
                     await fs.writeFile(targetAbs, sourceHtml, 'utf8');
                     fallbackWebPaths.add(resolvedBase + route);
@@ -153,6 +161,8 @@ export default function dappfence(options = {}) {
                 opts.pageFilter ||
                 ((webPath, ext) =>
                     ext === '.html' || ext === '.htm' || fallbackWebPaths.has(webPath));
+
+            resolveContained(outDir, opts.manifestPath, '[@dappfence/vite] manifestPath');
 
             await generateManifest({
                 outDir,

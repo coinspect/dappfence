@@ -167,3 +167,55 @@ describe('@dappfence/vite closeBundle', () => {
         expect(html).not.toContain('src="/dappfence.js"');
     });
 });
+
+describe('path containment', () => {
+    it('rejects a scriptSrc that escapes outDir', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({ secretKey: SECRET_KEY, scriptSrc: '/../../evil.js' });
+        await expect(runPlugin(plugin, outDir)).rejects.toThrow(
+            /scriptSrc ".*evil\.js" resolves outside/
+        );
+    });
+
+    it('rejects a spaFallback route that escapes outDir', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({
+            secretKey: SECRET_KEY,
+            spaFallback: ['/../../evil'],
+        });
+        await expect(runPlugin(plugin, outDir)).rejects.toThrow(
+            /spaFallback ".*evil" resolves outside/
+        );
+    });
+
+    it('rejects a spaFallbackSource that escapes outDir (arbitrary file read)', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({
+            secretKey: SECRET_KEY,
+            spaFallback: ['/about'],
+            spaFallbackSource: '../../../etc/passwd',
+        });
+        await expect(runPlugin(plugin, outDir)).rejects.toThrow(
+            /spaFallbackSource ".*passwd" resolves outside/
+        );
+    });
+
+    it('rejects a manifestPath that escapes outDir', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>app</body></html>',
+        });
+        const plugin = dappfence({
+            secretKey: SECRET_KEY,
+            manifestPath: '../../evil-manifest.json',
+        });
+        await expect(runPlugin(plugin, outDir)).rejects.toThrow(
+            /manifestPath ".*evil-manifest\.json" resolves outside/
+        );
+    });
+});

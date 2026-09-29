@@ -1,8 +1,29 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import dappfence from '../index.js';
 
 const SECRET_KEY = '2d8fbeb769203997d2baa6ef960ab1a39af01dd9eef9caa212e927df77288832';
 const RESOLVED_VIRTUAL_ID = '\0virtual:dappfence/attrs';
+
+let tmpDirs = [];
+afterEach(async () => {
+    await Promise.all(tmpDirs.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+    tmpDirs = [];
+});
+
+async function makeOutDir() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dappfence-astro-'));
+    tmpDirs.push(dir);
+    await fs.writeFile(
+        path.join(dir, 'index.html'),
+        '<html><head></head><body>app</body></html>',
+        'utf8'
+    );
+    return dir;
+}
 
 describe('astro:config:setup base-path handling', () => {
     it('prefixes the SSR-injected script tag with a non-root base', () => {
@@ -49,5 +70,33 @@ describe('manifestSignatureType validation', () => {
         expect(() =>
             dappfence({ secretKey: SECRET_KEY, manifestSignatureType: 'personal-sign-alt' })
         ).toThrow(/manifestSignatureType "personal-sign-alt" is not supported/);
+    });
+});
+
+describe('astro:build:done path containment', () => {
+    it('rejects a scriptSrc that escapes outDir', async () => {
+        const outDir = await makeOutDir();
+        const plugin = dappfence({ secretKey: SECRET_KEY, scriptSrc: '/../../evil.js' });
+        const stubLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        await expect(
+            plugin.hooks['astro:build:done']({
+                dir: pathToFileURL(outDir + path.sep),
+                pages: [],
+                logger: stubLogger,
+            })
+        ).rejects.toThrow(/scriptSrc ".*evil\.js" resolves outside/);
+    });
+
+    it('rejects a manifestPath that escapes outDir', async () => {
+        const outDir = await makeOutDir();
+        const plugin = dappfence({ secretKey: SECRET_KEY, manifestPath: '../../evil.json' });
+        const stubLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        await expect(
+            plugin.hooks['astro:build:done']({
+                dir: pathToFileURL(outDir + path.sep),
+                pages: [],
+                logger: stubLogger,
+            })
+        ).rejects.toThrow(/manifestPath ".*evil\.json" resolves outside/);
     });
 });

@@ -6,7 +6,7 @@ import { createRequire } from 'module';
 import { TRANSFORM } from '@dappfence/core/constants';
 
 const _require = createRequire(import.meta.url);
-const { buildScriptAttrs, buildScriptTag, injectScriptTag, generateManifest } =
+const { buildScriptAttrs, buildScriptTag, injectScriptTag, generateManifest, resolveContained } =
     _require('../manifest');
 
 const MINIMAL = { scriptSrc: '/dappfence.js' };
@@ -212,5 +212,29 @@ describe('generateManifest', () => {
         });
         const html = await fs.readFile(path.join(outDir, 'page.html'), 'utf8');
         expect(html).not.toContain('dappfence');
+    });
+});
+
+describe('resolveContained', () => {
+    it('resolves a path that stays within root', () => {
+        const abs = resolveContained('/build/out', 'dappfence.js', 'scriptSrc');
+        expect(abs).toBe(path.join('/build/out', 'dappfence.js'));
+    });
+
+    it('rejects a relative path that escapes root via ..', () => {
+        expect(() => resolveContained('/build/out', '../../etc/evil.js', 'scriptSrc')).toThrow(
+            /scriptSrc "\.\.\/\.\.\/etc\/evil\.js" resolves outside/
+        );
+    });
+
+    it('rejects an absolute path outside root', () => {
+        expect(() => resolveContained('/build/out', '/etc/passwd', 'spaFallbackSource')).toThrow(
+            /resolves outside/
+        );
+    });
+
+    it('allows root itself (empty relative path)', () => {
+        const abs = resolveContained('/build/out', '.', 'manifestPath');
+        expect(abs).toBe(path.resolve('/build/out'));
     });
 });

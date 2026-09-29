@@ -34,7 +34,7 @@ import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
 
 const _require = createRequire(import.meta.url);
 const { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } = _require('@dappfence/manifest-tools');
-const { buildScriptTag } = _require('@dappfence/manifest-tools/manifest');
+const { buildScriptTag, resolveContained } = _require('@dappfence/manifest-tools/manifest');
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
@@ -216,7 +216,7 @@ export default function dappfence(options = {}) {
                 const outDir = fileURLToPath(dir);
 
                 const destRel = opts.scriptSrc.replace(/^\//, '');
-                const destAbs = path.join(outDir, destRel);
+                const destAbs = resolveContained(outDir, destRel, '[@dappfence/astro] scriptSrc');
                 await fs.mkdir(path.dirname(destAbs), { recursive: true });
                 await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
                 logger.info(`DappFence: copied dappfence.js → ${destRel}`);
@@ -275,6 +275,8 @@ export default function dappfence(options = {}) {
                         );
                     }
                 }
+
+                resolveContained(outDir, opts.manifestPath, '[@dappfence/astro] manifestPath');
 
                 await generateManifest({
                     ...opts,
