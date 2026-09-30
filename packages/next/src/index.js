@@ -23,7 +23,7 @@
  *   // Next.js: <Script strategy="beforeInteractive" {...attrs} />
  *   // React:   <script {...attrs} />
  */
-import { deriveIdentity } from '@dappfence/manifest-tools';
+import { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } from '@dappfence/manifest-tools';
 import { buildScriptAttrs } from '@dappfence/manifest-tools/manifest';
 import { DappfenceWebpackPlugin } from './webpack-plugin.js';
 
@@ -44,6 +44,18 @@ export const ATTRS_ENV_KEY = '_DAPPFENCE_SCRIPT_ATTRS';
 
 export function withDappfence(options = {}) {
     const opts = { ...DEFAULTS, ...options };
+
+    // signManifest only ever produces one signature type — a manifest signed
+    // with a manifestSignatureType this package can't actually sign would
+    // declare a different type in the script tag than the one the manifest
+    // was really signed with, and the SW would reject it as an unsupported
+    // or mismatched signature.
+    if (!SUPPORTED_SIGNATURE_TYPES.includes(opts.manifestSignatureType)) {
+        throw new Error(
+            `[@dappfence/next] manifestSignatureType "${opts.manifestSignatureType}" is not ` +
+                `supported by the build-time signer (supported: ${SUPPORTED_SIGNATURE_TYPES.join(', ')}).`
+        );
+    }
 
     // Translate the config option into the env var the preload and
     // instrumentation actually consult. Env var wins if already set.

@@ -6,7 +6,7 @@ import { TRANSFORM } from '@dappfence/core/constants';
 import { readDynamicRoutes } from '../routes.js';
 import { routePatternToProbeUrl, routePatternToPrefixKey } from '../ssr.js';
 import { withDappfence, getDappfenceScriptAttrs, ATTRS_ENV_KEY } from '../index.js';
-import { buildContentRules } from '../webpack-plugin.js';
+import { buildContentRules, DappfenceWebpackPlugin } from '../webpack-plugin.js';
 import {
     buildScriptAttrs,
     buildScriptTag,
@@ -505,5 +505,24 @@ describe('withDappfence', () => {
         const wrapped = withDappfence({ scriptSrc: '/dappfence.js' })({});
         expect(wrapped.env?.[ATTRS_ENV_KEY]).toBeDefined();
         expect(JSON.parse(wrapped.env[ATTRS_ENV_KEY]).scriptSrc).toBe('/dappfence.js');
+    });
+
+    it('rejects a manifestSignatureType the build-time signer cannot produce', () => {
+        expect(() => withDappfence({ manifestSignatureType: 'personal-sign-alt' })).toThrow(
+            /manifestSignatureType "personal-sign-alt" is not supported/
+        );
+    });
+});
+
+describe('DappfenceWebpackPlugin._copyDappfenceJs path containment', () => {
+    it('rejects a scriptSrc that escapes the public/ directory', async () => {
+        const projectRoot = await setup();
+        const plugin = new DappfenceWebpackPlugin(
+            { scriptSrc: '/../../evil.js' },
+            { isServer: false, dev: false, config: {} }
+        );
+        await expect(plugin._copyDappfenceJs(projectRoot)).rejects.toThrow(
+            /scriptSrc ".*evil\.js" resolves outside/
+        );
     });
 });

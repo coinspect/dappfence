@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { buildNetlifyContentRules } from '@dappfence/manifest-tools/manifest';
+import { buildNetlifyContentRules, resolveContained } from '@dappfence/manifest-tools/manifest';
 
 const DEFAULT_PATH_RULES = [{ type: 'directory-index' }, { type: 'html-extension' }];
 
@@ -40,7 +40,7 @@ export class DappfenceWebpackPlugin {
             const isStaticExport = this.nextConfig.output === 'export';
 
             if (isStaticExport) {
-                await this._writeConfig();
+                await this._writeConfig({ basePath: this._basePath });
                 console.log(
                     'DappFence: static export detected — run `dappfence-next` as a postbuild step to generate the manifest.'
                 );
@@ -70,7 +70,7 @@ export class DappfenceWebpackPlugin {
         const publicDir = path.join(projectRoot, 'public');
         await fs.mkdir(publicDir, { recursive: true });
         const destRel = this.opts.scriptSrc.replace(/^\//, '');
-        const destAbs = path.join(publicDir, destRel);
+        const destAbs = await resolveContained(publicDir, destRel, '[@dappfence/next] scriptSrc');
         await fs.copyFile(dappfenceJsPath, destAbs);
         logger.info(`DappFence: copied dappfence.js → public/${destRel}`);
     }

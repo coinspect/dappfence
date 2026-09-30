@@ -38,6 +38,7 @@ import {
     generateManifest,
     buildNetlifyContentRules,
     resolveNetlifyCdpHashes,
+    resolveContained,
 } from '@dappfence/manifest-tools/manifest';
 
 // Probe URL for the unmatched-route body. Anything not matching a real
@@ -176,9 +177,18 @@ async function runSSR(opts, projectRoot) {
         ssrPathRules.push({ type: 'error-page', status: 404, url: notFoundUrl });
     }
 
+    // The manifest is written into public/, not nextStaticDir (the walk root
+    // used for hashing .next/static) — the real containment boundary here is
+    // publicDir, so validate against that directly rather than nextStaticDir.
+    const manifestAbs = await resolveContained(
+        publicDir,
+        opts.manifestPath,
+        '[@dappfence/next] manifestPath'
+    );
+
     await generateManifest({
         outDir: nextStaticDir,
-        manifestPath: path.relative(nextStaticDir, path.join(publicDir, opts.manifestPath)),
+        manifestPath: path.relative(nextStaticDir, manifestAbs),
         pathPrefix: basePath + '/_next/static',
         exclude: opts.exclude,
         secretKey,
@@ -196,6 +206,7 @@ async function runSSR(opts, projectRoot) {
 
 async function runStaticExport(opts, projectRoot) {
     const outDir = path.join(projectRoot, opts.distDir || 'out');
+    const basePath = opts.basePath || '';
 
     const outDirExists = await fs
         .stat(outDir)
@@ -207,7 +218,7 @@ async function runStaticExport(opts, projectRoot) {
     }
 
     const destRel = opts.scriptSrc.replace(/^\//, '');
-    const destAbs = path.join(outDir, destRel);
+    const destAbs = await resolveContained(outDir, destRel, '[@dappfence/next] scriptSrc');
     await fs.mkdir(path.dirname(destAbs), { recursive: true });
     await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
     console.log(`DappFence: copied dappfence.js → ${destRel}`);
@@ -225,7 +236,9 @@ async function runStaticExport(opts, projectRoot) {
     const cspRules = [];
     const seenPrefixes = new Set();
     for (const route of dynamicRoutes) {
-        const key = routePatternToPrefixKey(route);
+        const key = basePath
+            ? basePath + routePatternToPrefixKey(route)
+            : routePatternToPrefixKey(route);
         if (!seenPrefixes.has(key)) {
             seenPrefixes.add(key);
             cspRules.push({
@@ -235,6 +248,8 @@ async function runStaticExport(opts, projectRoot) {
         }
     }
 
+    await resolveContained(outDir, opts.manifestPath, '[@dappfence/next] manifestPath');
+
     await generateManifest({
         outDir,
         manifestPath: opts.manifestPath,
@@ -243,7 +258,15 @@ async function runStaticExport(opts, projectRoot) {
         mode: opts.mode,
         pathRules: STATIC_EXPORT_PATH_RULES,
         contentRules: [...cspRules, ...(isNetlify ? buildNetlifyContentRules() : [])],
-        scriptAttrs: opts,
+        // Manifest keys and the injected <script> tag's src/data-manifest must
+        // both resolve against the site's base path, or a non-root basePath
+        // deployment 404s on its own bootstrap script.
+        pathPrefix: basePath,
+        scriptAttrs: {
+            ...opts,
+            scriptSrc: basePath + opts.scriptSrc,
+            manifestUrl: opts.manifestUrl && basePath + opts.manifestUrl,
+        },
         logger,
         ...(cdpHashes && { extraHashes: { '/.netlify/scripts/cdp': cdpHashes } }),
     });

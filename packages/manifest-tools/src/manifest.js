@@ -8,6 +8,107 @@ import { calculateFileHash, signManifest } from './build.js';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { extractInlineHashesFromHtml } from './inline-scripts.js';
 
+function isEscaping(root, target) {
+    const rel = path.relative(root, target);
+    return rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel);
+}
+
+// Walks up from `p` to the nearest path component that actually exists on
+// disk (lstat, so a dangling symlink still counts as "exists"). Everything
+// below that point is guaranteed not-yet-created, so it can't itself be a
+// symlink — only the existing prefix needs a realpath check.
+async function nearestExistingAncestor(p) {
+    let current = p;
+    for (;;) {
+        try {
+            await fs.lstat(current);
+            return current;
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+            const parent = path.dirname(current);
+            if (parent === current) return current; // reached filesystem root
+            current = parent;
+        }
+    }
+}
+
+/**
+ * Resolve `relativePath` against `root` and throw if the result would land
+ * outside `root` — e.g. a `..` segment smuggled into a configurable option
+ * like `scriptSrc`/`spaFallback`/`manifestPath`. Returns the resolved
+ * absolute path on success.
+ *
+ * A purely lexical check isn't enough: a symlink already sitting inside
+ * `root` (planted by an earlier, possibly-compromised build step) can make
+ * a path that *looks* contained actually read/write outside it once the
+ * real fs.readFile/writeFile/copyFile call follows it. So after the lexical
+ * check, this also realpath()s the nearest existing ancestor of the target
+ * (following any symlinks in its chain) and re-checks containment against
+ * root's own realpath.
+ *
+ * Every integration must validate its own user-configurable output paths
+ * with this before any filesystem read/write. It is deliberately NOT
+ * applied inside `generateManifest` itself to `outDir`/`manifestPath`:
+ * `@dappfence/next`'s SSR mode legitimately writes the manifest into
+ * `public/`, outside the `outDir` used for hashing `.next/static` — that
+ * caller validates against `public/` itself instead (see bin/dappfence-next.js).
+ */
+export async function resolveContained(root, relativePath, label) {
+    const abs = path.resolve(root, relativePath);
+    if (isEscaping(root, abs)) {
+        throw new Error(
+            `${label} "${relativePath}" resolves outside "${root}" — refusing to read/write there.`
+        );
+    }
+    const [realRoot, realAncestor] = await Promise.all([
+        fs.realpath(root),
+        fs.realpath(await nearestExistingAncestor(abs)),
+    ]);
+    if (isEscaping(realRoot, realAncestor)) {
+        throw new Error(
+            `${label} "${relativePath}" resolves outside "${root}" via a symlink — refusing to read/write there.`
+        );
+    }
+    return abs;
+}
+
+/**
+ * Normalize a bundler's `base`/`basePath` config option into the absolute
+ * path prefix this pipeline's `pathPrefix` (manifest keys) and injected
+ * script tag (`scriptSrc`/`manifestUrl`) both assume — empty string for a
+ * site at the origin root, otherwise an absolute path with no trailing
+ * slash (e.g. `/app`).
+ *
+ * Only an absolute-path base (`/app/`, or `/` itself) can be represented
+ * this way. A full URL (`https://cdn.example.com/assets/`) doesn't fit —
+ * manifest keys are same-origin pathnames, not full URLs, and DappFence's
+ * per-file verification model doesn't extend to a separate asset origin. A
+ * relative base (`''`, `'./'`) doesn't fit either — the SW matches absolute
+ * request pathnames, and a relative base's actual resolved path depends on
+ * which page loaded it, so there's no single prefix to bake into the
+ * manifest. Both would otherwise silently produce a manifest whose keys
+ * can never match a real request — reject them instead.
+ */
+export function normalizeBase(rawBase, label) {
+    if (rawBase === '/' || rawBase === undefined) return '';
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawBase) || rawBase.startsWith('//')) {
+        throw new Error(
+            `${label} base "${rawBase}" is a full URL — DappFence's manifest keys are same-origin ` +
+                `pathnames, not full URLs. Serve DappFence-protected assets from the site's own origin ` +
+                `with an absolute-path base (e.g. "/app/"), or omit base entirely.`
+        );
+    }
+    if (!rawBase.startsWith('/')) {
+        throw new Error(
+            `${label} base "${rawBase}" is relative — DappFence needs an absolute-path base (e.g. ` +
+                `"/app/") to build manifest keys that match real request pathnames. A relative base ` +
+                `like "./" or "" produces asset URLs whose final path depends on where the page was ` +
+                `loaded from, which can't be captured in a single signed manifest.`
+        );
+    }
+    return rawBase.replace(/\/$/, '');
+}
+
 const CDP_SCRIPT_PATH = '/.netlify/scripts/cdp';
 
 // Pre-computed hashes for known Netlify CDP script versions.

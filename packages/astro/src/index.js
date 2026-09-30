@@ -30,8 +30,12 @@ import {
     sriHash,
 } from './manifest.js';
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
-import { deriveIdentity } from '@dappfence/manifest-tools';
-import { buildScriptTag } from '@dappfence/manifest-tools/manifest';
+import { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } from '@dappfence/manifest-tools';
+import {
+    buildScriptTag,
+    resolveContained,
+    normalizeBase,
+} from '@dappfence/manifest-tools/manifest';
 
 const MIDDLEWARE_URL = new URL('./inject/middleware.js', import.meta.url);
 
@@ -81,6 +85,15 @@ const resolveDappfenceJsPath = (scriptSrc) =>
         )
     );
 
+// The injected <script> tag's src/data-manifest must be resolved against the
+// site's base path, or the browser requests them at the domain root instead
+// of where the build is actually deployed (config.base).
+const baseScriptAttrs = (o, base) => ({
+    ...o,
+    scriptSrc: base + o.scriptSrc,
+    manifestUrl: o.manifestUrl && base + o.manifestUrl,
+});
+
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
     manifestUrl: '/integrity-manifest.json',
@@ -98,6 +111,18 @@ export default function dappfence(options = {}) {
     // serialised output or script attributes.
     const { secretKey: explicitKey, ...publicOptions } = options;
     const opts = { ...DEFAULTS, ...publicOptions };
+
+    // signManifest only ever produces one signature type — a manifest signed
+    // with a manifestSignatureType this package can't actually sign would
+    // declare a different type in the script tag than the one the manifest
+    // was really signed with, and the SW would reject it as an unsupported
+    // or mismatched signature.
+    if (!SUPPORTED_SIGNATURE_TYPES.includes(opts.manifestSignatureType)) {
+        throw new Error(
+            `[@dappfence/astro] manifestSignatureType "${opts.manifestSignatureType}" is not ` +
+                `supported by the build-time signer (supported: ${SUPPORTED_SIGNATURE_TYPES.join(', ')}).`
+        );
+    }
 
     const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
 
@@ -130,11 +155,9 @@ export default function dappfence(options = {}) {
                 if (config.build?.server) {
                     resolvedServerDir = fileURLToPath(config.build.server);
                 }
-                // Normalize base: strip trailing slash; treat '/' as no prefix.
-                const rawBase = config.base ?? '/';
-                resolvedBase = rawBase === '/' ? '' : rawBase.replace(/\/$/, '');
+                resolvedBase = normalizeBase(config.base ?? '/', '[@dappfence/astro]');
 
-                const scriptTag = buildScriptTag(opts);
+                const scriptTag = buildScriptTag(baseScriptAttrs(opts, resolvedBase));
                 const vitePlugins = [dappfenceAttrsPlugin(scriptTag)];
                 if (opts.patchServerIslands) {
                     vitePlugins.push(serverIslandPatchPlugin());
@@ -194,7 +217,11 @@ export default function dappfence(options = {}) {
                 const outDir = fileURLToPath(dir);
 
                 const destRel = opts.scriptSrc.replace(/^\//, '');
-                const destAbs = path.join(outDir, destRel);
+                const destAbs = await resolveContained(
+                    outDir,
+                    destRel,
+                    '[@dappfence/astro] scriptSrc'
+                );
                 await fs.mkdir(path.dirname(destAbs), { recursive: true });
                 await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
                 logger.info(`DappFence: copied dappfence.js → ${destRel}`);
@@ -254,6 +281,12 @@ export default function dappfence(options = {}) {
                     }
                 }
 
+                await resolveContained(
+                    outDir,
+                    opts.manifestPath,
+                    '[@dappfence/astro] manifestPath'
+                );
+
                 await generateManifest({
                     ...opts,
                     // Exclude the dappfence script from the walk — it is added
@@ -266,7 +299,7 @@ export default function dappfence(options = {}) {
                     routes: resolvedRoutes,
                     buildFormat: resolvedBuildFormat,
                     base: resolvedBase,
-                    scriptAttrs: opts,
+                    scriptAttrs: baseScriptAttrs(opts, resolvedBase),
                     logger,
                     extraHashes: { ...scriptHash, ...(extraHashes || {}) },
                     enumerablePatterns,
