@@ -45,5 +45,9 @@
         "@dappfence/core": "*",
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0"
+    },
+    "homepage": "https://github.com/coinspect/dappfence/tree/main/packages/manifest-tools#readme",
+    "bugs": {
+        "url": "https://github.com/coinspect/dappfence/issues"
     }
 }

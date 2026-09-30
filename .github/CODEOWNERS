@@ -1,0 +1,27 @@
+# CODEOWNERS — enforces required review from the listed owners on changes to sensitive paths.
+# Enable "Require review from Code Owners" in the branch protection rule for `main` so this
+# actually gates merges. Without that setting, CODEOWNERS only suggests reviewers.
+#
+# Replace @coinspect/dappfence-admins with the actual maintainer team handle once created.
+# A team is preferred over individual users so membership changes don't require CODEOWNERS edits.
+
+# Release-critical files: any change here must be reviewed by an admin.
+.github/release-keys/**              @coinspect/dappfence-admins
+.github/workflows/release.yml        @coinspect/dappfence-admins
+.github/workflows/monitor.yml        @coinspect/dappfence-admins
+.github/SECURITY.md                  @coinspect/dappfence-admins
+.github/SECURITY_ADVISORY_TEMPLATE.md @coinspect/dappfence-admins
+.github/CODEOWNERS                   @coinspect/dappfence-admins
+.github/dependabot.yml               @coinspect/dappfence-admins
+
+# Release tooling: version bumps, dep audits, incident-response scripts.
+scripts/sync-versions.js             @coinspect/dappfence-admins
+scripts/deprecate.js                 @coinspect/dappfence-admins
+scripts/check-lock-integrity.js      @coinspect/dappfence-admins
+scripts/monitor/**                   @coinspect/dappfence-admins
+
+# Lockfile: unreviewed changes here are how supply-chain attacks slip in.
+package-lock.json                    @coinspect/dappfence-admins
+
+# Release documentation.
+docs/release-setup.md                @coinspect/dappfence-admins

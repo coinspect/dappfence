@@ -1,5 +1,11 @@
 # DappFence: Verifiable Web Frontends
 
+> ⚠️ **Alpha — not for production.** This project is under active development. The security model is
+> being iterated on, the release pipeline is being hardened, and interfaces may change without
+> notice. Do not use `@dappfence/*` packages in production applications yet. Prereleases are
+> published under the `alpha` npm dist-tag; `npm install @dappfence/core` returns nothing (or an
+> older stable) until we cut a `latest` release.
+
 An open-source client-side security layer that cryptographically verifies frontend code before
 execution, preventing frontend compromise attacks.
 

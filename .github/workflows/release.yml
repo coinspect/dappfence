@@ -1,0 +1,156 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - 'v*'
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Tag to publish (must already exist and be signed)'
+                required: true
+            dry_run:
+                description: 'Run full pipeline but skip the actual npm publish upload'
+                type: boolean
+                default: false
+
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        permissions:
+            contents: read
+        outputs:
+            tag: ${{ steps.resolve.outputs.tag }}
+            version: ${{ steps.resolve.outputs.version }}
+            dist_tag: ${{ steps.resolve.outputs.dist_tag }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+                  fetch-tags: true
+
+            - name: Resolve tag
+              id: resolve
+              run: |
+                  tag="${{ github.event.inputs.tag || github.ref_name }}"
+                  case "$tag" in
+                      v[0-9]*.[0-9]*.[0-9]*) ;;
+                      *) echo "::error::tag '$tag' does not match v<major>.<minor>.<patch>[-suffix]"; exit 1 ;;
+                  esac
+                  version="${tag#v}"
+                  # Prerelease suffix (after -) becomes the dist-tag; otherwise 'latest'.
+                  # e.g. v0.1.0-alpha.1 → alpha; v0.2.0 → latest.
+                  suffix="${version#*-}"
+                  if [ "$suffix" = "$version" ]; then
+                      dist_tag="latest"
+                  else
+                      dist_tag="${suffix%%.*}"
+                  fi
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+                  echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+                  echo "Resolved: tag=$tag  version=$version  dist_tag=$dist_tag"
+
+            - name: Build SSH allowed-signers file
+              run: |
+                  keys_dir=.github/release-keys
+                  if [ ! -d "$keys_dir" ] || [ -z "$(ls -A $keys_dir/*.pub 2>/dev/null)" ]; then
+                      echo "::error::no SSH signing keys enrolled in $keys_dir/*.pub"
+                      exit 1
+                  fi
+                  allowed=$(mktemp)
+                  for f in "$keys_dir"/*.pub; do
+                      handle=$(basename "$f" .pub)
+                      key=$(awk '{print $1" "$2}' "$f")
+                      echo "$handle@release namespaces=\"git\" $key" >> "$allowed"
+                  done
+                  echo "ALLOWED_SIGNERS=$allowed" >> "$GITHUB_ENV"
+                  echo "Enrolled signers:"
+                  awk '{print "  "$1}' "$allowed"
+
+            - name: Verify tag signature
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  git config --global gpg.format ssh
+                  git config --global gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+                  git verify-tag "$TAG"
+
+            - name: Verify package.json versions match tag
+              env:
+                  VERSION: ${{ steps.resolve.outputs.version }}
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  git checkout "$TAG" -- packages/
+                  mismatches=""
+                  for f in packages/*/package.json; do
+                      jq -e '.private == true' "$f" >/dev/null && continue
+                      name=$(jq -r '.name' "$f")
+                      v=$(jq -r '.version' "$f")
+                      if [ "$v" != "$VERSION" ]; then
+                          mismatches="$mismatches%0A  $name: $v (expected $VERSION)"
+                      fi
+                  done
+                  if [ -n "$mismatches" ]; then
+                      echo "::error::package.json versions do not match tag $TAG:$mismatches"
+                      echo "Fix: node scripts/sync-versions.js $VERSION --apply, commit, delete + re-sign the tag."
+                      exit 1
+                  fi
+
+    publish:
+        needs: verify
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        environment: production-publish
+        permissions:
+            contents: read
+            id-token: write
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.verify.outputs.tag }}
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  registry-url: 'https://registry.npmjs.org'
+
+            - name: Install
+              run: npm ci --ignore-scripts
+
+            - name: Check
+              run: npm run check
+
+            - name: Check package-lock integrity
+              run: node scripts/check-lock-integrity.js
+
+            - name: Audit dependencies for known vulnerabilities
+              run: npm audit --audit-level=high --omit=dev
+
+            - name: Audit dependency registry signatures
+              run: npm audit signatures
+
+            - name: Test
+              run: npm test
+
+            - name: Pin intra-workspace deps for publish
+              run: node scripts/sync-versions.js --pin-only --apply
+
+            - name: Publish
+              env:
+                  NPM_CONFIG_PROVENANCE: 'true'
+                  DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+                  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+              run: |
+                  extra=""
+                  if [ "$DRY_RUN" = "true" ]; then
+                      extra="--dry-run"
+                      echo "::notice::dry_run=true — no tarballs will be uploaded"
+                  fi
+                  echo "::notice::publishing under dist-tag: $DIST_TAG"
+                  npm publish --workspaces --access public --tag "$DIST_TAG" --foreground-scripts $extra
