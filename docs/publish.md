@@ -8,6 +8,11 @@
 | `@dappfence/manifest-tools` | `packages/manifest-tools` |
 | `@dappfence/astro`          | `packages/astro`          |
 | `@dappfence/next`           | `packages/next`           |
+| `@dappfence/vite`           | `packages/vite`           |
+
+This is also the authoritative allowlist enforced in code: `packages/publish.json`.
+`packages/test-app` is never published (internal dev/e2e harness); `packages/netlify` has no
+`package.json` (docs only).
 
 ---
 
@@ -35,7 +40,8 @@ Consumers place the `.tgz` files in a `vendor/` directory and reference them via
     "dependencies": {
         "@dappfence/core": "file:vendor/dappfence-core-0.1.0.tgz",
         "@dappfence/manifest-tools": "file:vendor/dappfence-manifest-tools-0.1.0.tgz",
-        "@dappfence/astro": "file:vendor/dappfence-astro-0.1.0.tgz"
+        "@dappfence/astro": "file:vendor/dappfence-astro-0.1.0.tgz",
+        "@dappfence/vite": "file:vendor/dappfence-vite-0.1.0.tgz"
     }
 }
 ```
@@ -61,41 +67,26 @@ and must not be changed to a pinned version in a source.
 
 ## Version management
 
-All publishable packages are always kept at the same version. To bump versions before a release:
+MAJOR.MINOR is kept in sync across every publishable package; PATCH moves independently per package.
+To bump versions before a `.tgz` build (or before a real release — see below):
 
 ```bash
-npm run sync-versions -- 0.2.0
+node scripts/sync-versions.js bump-major-minor 0.2 --apply   # every package, resets PATCH to 0
+node scripts/sync-versions.js bump-patch @dappfence/vite --apply   # one package's PATCH only
 ```
 
-This updates `version` in every non-private `package.json` and pins the `"*"` workspace deps to the
-exact version. It modifies files on disk — do not commit the result when distributing via `.tgz`.
-For `.tgz` distribution the version bump only matters so the filenames and `version` fields in the
-packed manifests are correct.
+This writes `version` directly into the affected `package.json` file(s) on disk. Cross-package `"*"`
+dependency ranges are left untouched by design — they're never rewritten, for `.tgz` distribution or
+for a real npm publish. See `docs/release-setup.md` for the full versioning policy and the `check`
+subcommand CI runs before publishing.
 
 ---
 
-## Future: publishing to npm
+## Publishing to npm
 
-Not yet active. When ready, publishing will be automated via GitHub Actions (workflow to be added at
-`.github/workflows/publish.yml`). The tag is the source of truth for the published version
-`sync-versions` will run inside the ephemeral CI workspace so no version-bump commit is needed in
-the repo.
-
-See the **Version management** section above for the `sync-versions` script that both workflows
-share.
-
-### Manual publish (when npm publishing is active)
-
-```bash
-npm test
-npm run sync-versions -- 0.2.0
-npm run build:prod -w @dappfence/core
-npm login
-npm publish -w @dappfence/core
-npm publish -w @dappfence/manifest-tools
-npm publish -w @dappfence/astro
-npm publish -w @dappfence/next
-```
-
-Publish in that order: `@dappfence/core` and `@dappfence/manifest-tools` have no inter-dependencies;
-`@dappfence/astro` and `@dappfence/next` depend on both and must go last.
+Active — see [`docs/release-setup.md`](release-setup.md) for the full setup and release ceremony.
+Short version: publishing is automated via `.github/workflows/release.yml`, triggered by a
+maintainer pushing an SSH-signed `release-*` tag, gated behind a GitHub Environment approval, and
+authenticated to npm via Trusted Publishing (OIDC — no stored token). Manual `npm publish` from a
+laptop is a policy violation, not a supported path; see `docs/release-setup.md`'s maintainer
+account-hardening section.
