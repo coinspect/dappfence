@@ -15,6 +15,17 @@ crypto wallets, admin dashboards, healthcare portals — anywhere a tampered UI 
 Users act based on what a frontend shows them, but have no way to verify the frontend itself is
 legitimate.
 
+## ⚠️ Alpha Release — Testing Only
+
+**DappFence is currently in alpha and is not production-ready.**
+
+This release is intended for **testing, evaluation, experimentation, and feedback only**.
+
+**Use at your own risk.**
+
+If you test DappFence, bug reports, security findings, compatibility issues, and other feedback are
+highly appreciated.
+
 ## What DappFence Does
 
 DappFence cryptographically verifies every file served to the browser before execution. If anything
