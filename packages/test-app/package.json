@@ -24,6 +24,11 @@
         "test:debug": "playwright test --config playwright.config.ts --debug",
         "publish:local": "npm pack --pack-destination ../../dist"
     },
+    "files": [
+        "src",
+        "assets",
+        "template"
+    ],
     "publishConfig": {
         "access": "public"
     },
@@ -34,5 +39,15 @@
     "devDependencies": {
         "@playwright/test": "1.60.0",
         "@types/node": "25.2.3"
-    }
+    },
+    "homepage": "https://github.com/coinspect/dappfence/tree/main/packages/test-app#readme",
+    "bugs": {
+        "url": "https://github.com/coinspect/dappfence/issues"
+    },
+    "keywords": [
+        "dappfence",
+        "security",
+        "testing",
+        "dev-server"
+    ]
 }

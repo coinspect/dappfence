@@ -1,0 +1,47 @@
+# Dependabot config.
+#
+# Policy per docs/release-setup.md and the internal dependency-upgrade-strategy:
+# security-driven upgrades only, one package per commit, changelog + npm diff + socket.dev
+# review before each merge. Dependabot opens the PRs; humans still gate every merge.
+#
+# Prod deps stay ungrouped (one PR each) so every upgrade gets individual review. DevDeps are
+# grouped weekly to reduce noise since they don't ship to consumers.
+version: 2
+updates:
+    # npm — @dappfence/* workspace (uses root package-lock.json)
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: weekly
+          day: monday
+          time: '13:00'
+          timezone: Etc/UTC
+      open-pull-requests-limit: 5
+      labels:
+          - dependencies
+          - needs-review
+      commit-message:
+          prefix: chore
+          include: scope
+      groups:
+          # Group devDependency patch + minor updates into one PR per week.
+          # Major devDep updates still get their own PR.
+          dev-deps-minor:
+              dependency-type: development
+              update-types:
+                  - patch
+                  - minor
+
+    # GitHub Actions — pin updates for actions/* refs in workflows.
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: monthly
+          day: monday
+      open-pull-requests-limit: 3
+      labels:
+          - dependencies
+          - github-actions
+      commit-message:
+          prefix: chore
+          include: scope

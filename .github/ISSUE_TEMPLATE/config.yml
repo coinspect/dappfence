@@ -1,0 +1,13 @@
+# Configures the new-issue picker. Blank issues stay enabled for now; add issue templates later
+# (bug, feature, docs) if the volume justifies it. The security link routes vuln reports through
+# the private advisory flow instead of a public issue.
+blank_issues_enabled: true
+contact_links:
+    - name: Report a security vulnerability (private)
+      url: https://github.com/coinspect/dappfence/security/advisories/new
+      about:
+          DO NOT open a public issue for security issues. Use the private advisory form — only
+          maintainers see it.
+    - name: Security policy
+      url: https://github.com/coinspect/dappfence/security/policy
+      about: Response times, scope, disclosure process.

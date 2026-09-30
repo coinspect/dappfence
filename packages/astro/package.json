@@ -40,5 +40,9 @@
     "dependencies": {
         "@dappfence/core": "*",
         "@dappfence/manifest-tools": "*"
+    },
+    "homepage": "https://github.com/coinspect/dappfence/tree/main/packages/astro#readme",
+    "bugs": {
+        "url": "https://github.com/coinspect/dappfence/issues"
     }
 }
