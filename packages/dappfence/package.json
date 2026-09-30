@@ -40,6 +40,7 @@
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
+        "prepublishOnly": "npm run build",
         "publish:local": "npm run build:prod && npm pack --pack-destination ../../dist"
     },
     "publishConfig": {

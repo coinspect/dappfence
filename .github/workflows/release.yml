@@ -1,0 +1,149 @@
+name: Release
+
+# Tags are opaque release markers (release-<anything>), not version numbers — this repo
+# keeps MAJOR.MINOR in sync across the published packages but lets PATCH move
+# independently per package (see scripts/sync-versions.js), so a single tag/release can
+# carry a bump for just one package. Whichever publishable packages actually changed
+# version get published; the rest are skipped as already-published.
+on:
+  push:
+    tags:
+      - 'release-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (must already exist and be signed)'
+        required: true
+      dry_run:
+        description: 'Run the full pipeline but skip the actual npm publish upload'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve tag
+        id: resolve
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$tag" in
+            release-*) ;;
+            *) echo "::error::tag '$tag' does not match release-*"; exit 1 ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $tag"
+
+      - name: Build SSH allowed-signers file from the RELEASE_SIGNING_KEYS variable
+        env:
+          RELEASE_SIGNING_KEYS: ${{ vars.RELEASE_SIGNING_KEYS }}
+        run: |
+          if [ -z "$RELEASE_SIGNING_KEYS" ]; then
+            echo "::error::the RELEASE_SIGNING_KEYS repository variable is empty or not set"
+            exit 1
+          fi
+          allowed=$(mktemp)
+          printf '%s\n' "$RELEASE_SIGNING_KEYS" > "$allowed"
+          echo "ALLOWED_SIGNERS=$allowed" >> "$GITHUB_ENV"
+          echo "Enrolled signers:"
+          awk '{print "  "$1}' "$allowed"
+
+      - name: Verify tag signature
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          git config --global gpg.format ssh
+          git config --global gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+          git verify-tag "$TAG"
+
+      - name: Check out the tagged commit
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: git checkout "$TAG"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify MAJOR.MINOR is in sync across publishable packages
+        run: node scripts/sync-versions.js check
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
+    # required reviewers configured -- the job pauses here for a human, different from
+    # whoever pushed the tag, to approve before anything below runs.
+    environment: production-publish
+    permissions:
+      contents: read
+      # Required to mint the OIDC token npm's Trusted Publishing exchanges for a
+      # short-lived publish credential -- no NPM_TOKEN secret needed.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure a recent enough npm CLI
+        run: npm install -g npm@latest
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Lint, format, lockfile integrity
+        run: npm run check
+
+      - name: Audit dependencies for known vulnerabilities
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Audit dependency registry signatures
+        run: npm audit signatures
+
+      - name: Unit tests (publishable packages)
+        run: |
+          npm test -w @dappfence/core -w @dappfence/manifest-tools \
+            -w @dappfence/astro -w @dappfence/next -w @dappfence/vite
+
+      - name: Publish whichever publishable packages changed version
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          extra=""
+          if [ "$DRY_RUN" = "true" ]; then
+            extra="--dry-run"
+            echo "::notice::dry_run=true — no tarballs will be uploaded"
+          fi
+          dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+          while IFS= read -r dir; do
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "::notice::$name@$version is already published, skipping"
+              continue
+            fi
+            echo "Publishing $name@$version"
+            npm publish --workspace "$dir" --access public --foreground-scripts $extra
+          done <<< "$dirs"
