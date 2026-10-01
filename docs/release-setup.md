@@ -268,6 +268,14 @@ The version bump has to land on `main` through a normal reviewed PR first — `r
 refuses to release a tag whose commit isn't reachable from `main` (Step 1's whole point), so tagging
 a local commit you haven't merged yet will fail at the `verify` job.
 
+**Tag names are single-use.** Step 4's ruleset restricts updates and deletions, so once a
+`release-*` tag is pushed, that name is spent permanently — it cannot be moved or removed, even by
+an admin, and even if the run it was created for failed. Every subsequent attempt needs a brand-new
+name. The `release-$(date +%Y%m%d)` convention below therefore collides on the second release of any
+given day: append a counter (`release-20261001-2`, `-3`, …) when the plain date is already taken. A
+spent tag left behind on the remote is harmless — dispatching is manual, so nothing fires from a
+tag's existence.
+
 **A coordinated release (MAJOR.MINOR bump, or several packages' PATCHes at once):**
 
 ```bash
@@ -327,17 +335,35 @@ Adding a package to `packages/` does not auto-enroll it in releases. Before it s
 
 ## If it goes wrong
 
+**First, the rule that governs every recovery below:** a pushed `release-*` tag can never be moved,
+deleted or reused (Step 4). Recovery is always "push a **new**, uniquely named signed tag", never
+"fix the old one". Deleting the bad tag from your _local_ clone is fine and unrestricted; it's the
+remote that's immutable. The spent tag stays on the remote for good, which costs nothing — runs are
+dispatched by hand, so an abandoned tag never triggers anything.
+
 -   **Tag signature verification fails** — your key isn't enrolled in the `RELEASE_SIGNING_KEYS`
     repository variable, the line for it doesn't match the exact `allowed_signers` format, or
-    `user.signingkey` points at a different key than the one enrolled. Fix locally, delete +
-    re-sign + re-push the tag (safe only if nothing has consumed it yet).
+    `user.signingkey` points at a different key than the one enrolled. The tagged commit is fine;
+    only the signature is bad. Fix the signing setup, then sign and push a new tag against the same
+    commit — no new PR needed:
+
+    ```bash
+    git tag -d release-20261001                       # local only
+    git tag -s release-20261001-2 -m "Release 0.2 line"
+    git push origin release-20261001-2
+    ```
+
 -   **`sync-versions.js check` fails** — a publishable package's MAJOR.MINOR doesn't match the rest.
-    Run `node scripts/sync-versions.js bump-major-minor <X.Y> --apply` to bring it back in line,
-    commit, re-tag.
+    This one needs a new commit, not just a new tag, and `release.yml` refuses any tag whose commit
+    isn't reachable from `main` — so the fix has to go through a reviewed PR before it can be
+    tagged. Run `node scripts/sync-versions.js bump-major-minor <X.Y> --apply`, open a PR, merge it,
+    then tag the merged commit with a new name.
 -   **Publish fails with "no matching Trusted Publisher"** — the workflow filename, environment
     name, org, or repo in the npm Trusted Publisher config doesn't match. Recheck Step 5.
 -   **Publish fails with "You cannot publish over the previously published versions"** — that
-    package's version isn't actually new. Bump it and re-tag.
+    package's version isn't actually new. Same shape as the `check` failure above: bump it with
+    `bump-patch`/`bump-major-minor`, land it on `main` via a reviewed PR, then tag that merged
+    commit with a new name.
 -   **Nothing published at all, workflow succeeded** — every publishable package was already at its
     current version on npm; nothing had actually changed. Not an error.
 
