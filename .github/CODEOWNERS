@@ -1,0 +1,34 @@
+# CODEOWNERS — requires review from the listed owners on changes to release-critical paths.
+#
+# This ONLY gates merges if "Require review from Code Owners" is enabled in main's branch
+# protection rule (Settings -> Branches -> main -> Require a pull request before merging ->
+# Require review from Code Owners). Without that setting enabled, this file only suggests
+# reviewers in the PR UI and enforces nothing — see docs/release-setup.md.
+#
+# Replace @coinspect/dappfence-admins with the actual maintainer team handle once created. A team
+# is preferred over individual users so membership changes don't require editing this file.
+
+# This file protects itself. Without this line, a single PR could both remove a restriction
+# below and exploit it, needing only an ordinary (non-admin) reviewer.
+.github/CODEOWNERS                @coinspect/dappfence-admins
+
+# The release workflow itself: what the verify/publish jobs check and do, which key(s) it
+# trusts (RELEASE_SIGNING_KEYS repo variable, admin-Settings-only to edit — see
+# docs/release-setup.md), and which environment/permissions gate the actual npm publish.
+.github/workflows/release.yml     @coinspect/dappfence-admins
+
+# What gets published, and how versions are allowed to move. Package manifests themselves are
+# release-critical too, not just the allowlist/script: they control name, version, the `files`
+# allow-list, lifecycle scripts (prepublishOnly runs arbitrary code inside the privileged publish
+# job), and dependencies. sync-versions.js writes versions into these files directly, so without
+# this line the release gate could be bypassed by just editing a package.json by hand.
+packages/publish.json             @coinspect/dappfence-admins
+packages/*/package.json           @coinspect/dappfence-admins
+scripts/sync-versions.js          @coinspect/dappfence-admins
+
+# Describes the policy the paths above enforce; drift here is a documentation-trust problem,
+# not just a typo.
+docs/release-setup.md             @coinspect/dappfence-admins
+
+# Lockfile: unreviewed changes here are a common way a supply-chain attack slips in.
+package-lock.json                 @coinspect/dappfence-admins

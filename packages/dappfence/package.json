@@ -40,7 +40,7 @@
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
-        "prepublishOnly": "git diff-index --quiet HEAD || (echo 'ERROR: uncommitted changes — commit before publishing' && exit 1)",
+        "prepublishOnly": "git diff-index --quiet HEAD || (echo 'ERROR: uncommitted changes — commit before publishing' && exit 1) && COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null) npm run build",
         "publish:local": "vite build --mode production && npm pack --pack-destination ../../dist"
     },
     "publishConfig": {

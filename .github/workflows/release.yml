@@ -1,0 +1,209 @@
+name: Release
+
+# Tags are opaque release markers (release-<anything>), not version numbers — this repo
+# keeps MAJOR.MINOR in sync across the published packages but lets PATCH move
+# independently per package (see scripts/sync-versions.js), so a single tag/release can
+# carry a bump for just one package. Whichever publishable packages actually changed
+# version get published; the rest are skipped as already-published.
+#
+# workflow_dispatch only, deliberately — no `push: tags:` trigger. Pushing the signed tag
+# only creates the artifact; it does not start a run. That's what makes a real dry run
+# possible: dispatch once with dry_run=true, then again with dry_run=false, as two
+# separate, deliberate actions against the same already-pushed tag. A push-triggered run
+# would start for real the moment the tag lands, before a dry run ever had a chance to.
+on:
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Tag to publish (must already exist and be signed)'
+                required: true
+            dry_run:
+                description: 'Run the full pipeline but skip the actual npm publish upload'
+                type: boolean
+                default: false
+
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        permissions:
+            contents: read
+        outputs:
+            tag: ${{ steps.resolve.outputs.tag }}
+            # The immutable commit SHA the tag pointed to at verify time -- publish checks
+            # this out, not the tag name, so a tag force-moved during the environment
+            # approval pause can't swap in a commit that was never actually verified.
+            sha: ${{ steps.resolve.outputs.sha }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+                  fetch-tags: true
+
+            # The tag input is attacker-controllable by anyone who can dispatch this
+            # workflow, so it goes through env: and is never interpolated into the
+            # script text. A `${{ }}` expression here would be substituted before bash
+            # parses the line, so the validation below would run only after injected
+            # code had already executed -- and injected code can write to
+            # $GITHUB_OUTPUT, which is what publish trusts for the commit it ships.
+            - name: Resolve tag
+              id: resolve
+              env:
+                  INPUT_TAG: ${{ github.event.inputs.tag }}
+              run: |
+                  tag="$INPUT_TAG"
+                  # Deliberately strict, and anchored: every character after the
+                  # release- prefix must be in this set. Newlines especially --
+                  # an unanchored match would let "release-ok\nsha=<attacker sha>"
+                  # through, and the echo below would then write that second line
+                  # straight into $GITHUB_OUTPUT as its own key=value pair, which
+                  # is exactly what the publish job trusts for the commit it ships.
+                  if ! [[ "$tag" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+                    echo "::error::tag '$tag' is not a valid release-* tag name"
+                    exit 1
+                  fi
+                  sha=$(git rev-parse "$tag^{commit}")
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
+                  echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                  echo "Resolved tag: $tag -> $sha"
+
+            # A valid signature only proves a holder of an enrolled key consented to
+            # these bytes -- it says nothing about whether the commit itself went
+            # through review. Without this check, a signing-key holder could tag and
+            # release a commit that never went through a reviewed PR to main.
+            - name: Verify the tagged commit is reachable from main
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  if ! git merge-base --is-ancestor "$TAG" origin/main; then
+                    echo "::error::$TAG's commit is not reachable from main -- refusing to release a commit that bypassed normal review"
+                    exit 1
+                  fi
+
+            - name: Build SSH allowed-signers file from the RELEASE_SIGNING_KEYS variable
+              env:
+                  RELEASE_SIGNING_KEYS: ${{ vars.RELEASE_SIGNING_KEYS }}
+              run: |
+                  if [ -z "$RELEASE_SIGNING_KEYS" ]; then
+                    echo "::error::the RELEASE_SIGNING_KEYS repository variable is empty or not set"
+                    exit 1
+                  fi
+                  allowed=$(mktemp)
+                  printf '%s\n' "$RELEASE_SIGNING_KEYS" > "$allowed"
+                  echo "ALLOWED_SIGNERS=$allowed" >> "$GITHUB_ENV"
+                  echo "Enrolled signers:"
+                  awk '{print "  "$1}' "$allowed"
+
+            - name: Verify tag signature
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  git config --global gpg.format ssh
+                  git config --global gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+                  git verify-tag "$TAG"
+
+            - name: Check out the verified commit
+              env:
+                  SHA: ${{ steps.resolve.outputs.sha }}
+              run: git checkout "$SHA"
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+
+            - name: Verify MAJOR.MINOR is in sync across publishable packages
+              run: node scripts/sync-versions.js check
+
+    publish:
+        needs: verify
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
+        # required reviewers configured -- the job pauses here for a human, different from
+        # whoever pushed the tag, to approve before anything below runs.
+        environment: production-publish
+        permissions:
+            contents: read
+            # Required to mint the OIDC token npm's Trusted Publishing exchanges for a
+            # short-lived publish credential -- no NPM_TOKEN secret needed.
+            id-token: write
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  # The immutable SHA verify resolved, not the tag name -- if the tag was
+                  # force-moved during the environment approval pause, this still checks
+                  # out exactly the commit whose signature and main-ancestry were verified.
+                  ref: ${{ needs.verify.outputs.sha }}
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  registry-url: 'https://registry.npmjs.org'
+
+            # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
+            # exact npm CLI version running here should be a deliberate, reviewed choice (this
+            # one's confirmed to support Trusted Publishing) -- not whatever happens to be
+            # newest the moment a release runs. Bump intentionally via a reviewed PR.
+            - name: Install a known-good npm CLI version
+              run: npm install -g npm@11.19.0
+
+            - name: Install
+              run: npm ci --ignore-scripts
+
+            - name: Lint, format, lockfile integrity
+              run: npm run check
+
+            - name: Audit dependencies for known vulnerabilities
+              run: npm audit --audit-level=high --omit=dev
+
+            - name: Audit dependency registry signatures
+              run: npm audit signatures
+
+            - name: Unit tests (publishable packages)
+              run: |
+                  set -euo pipefail
+                  # Command substitution, not process substitution: `done < <(node ...)`
+                  # does not propagate node's exit status, so a crash in sync-versions.js
+                  # would leave args empty and this step would "pass" having tested
+                  # nothing it meant to. set -e does catch a failing `dirs=$(...)`.
+                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  if [ -z "$dirs" ]; then
+                    echo "::error::no publishable packages resolved — refusing to publish untested code"
+                    exit 1
+                  fi
+                  args=()
+                  while IFS= read -r dir; do
+                    args+=(-w "$dir")
+                  done <<< "$dirs"
+                  npm test "${args[@]}"
+
+            - name: Publish whichever publishable packages changed version
+              env:
+                  NPM_CONFIG_PROVENANCE: 'true'
+                  DRY_RUN: ${{ github.event.inputs.dry_run }}
+              run: |
+                  set -euo pipefail
+                  extra=""
+                  if [ "$DRY_RUN" = "true" ]; then
+                    extra="--dry-run"
+                    echo "::notice::dry_run=true — no tarballs will be uploaded"
+                  fi
+                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  if [ -z "$dirs" ]; then
+                    echo "::error::no publishable packages resolved — nothing to publish"
+                    exit 1
+                  fi
+                  while IFS= read -r dir; do
+                    name=$(node -p "require('./$dir/package.json').name")
+                    version=$(node -p "require('./$dir/package.json').version")
+                    if npm view "$name@$version" version >/dev/null 2>&1; then
+                      echo "::notice::$name@$version is already published, skipping"
+                      continue
+                    fi
+                    echo "Publishing $name@$version"
+                    npm publish --workspace "$dir" --access public --foreground-scripts $extra
+                  done <<< "$dirs"
