@@ -26,6 +26,13 @@ packages/publish.json             @coinspect/dappfence-admins
 packages/*/package.json           @coinspect/dappfence-admins
 scripts/sync-versions.js          @coinspect/dappfence-admins
 
+# The root manifest, anchored with a leading slash so this means the root one specifically.
+# It is release-critical for a different reason than the package manifests above: the publish
+# job runs `npm run check` and `npm test`, both defined here, while holding the OIDC token that
+# carries publish authority. Editing one of those scripts is arbitrary code execution inside the
+# privileged job, so without this line it would need only an ordinary reviewer.
+/package.json                     @coinspect/dappfence-admins
+
 # Describes the policy the paths above enforce; drift here is a documentation-trust problem,
 # not just a typo.
 docs/release-setup.md             @coinspect/dappfence-admins
