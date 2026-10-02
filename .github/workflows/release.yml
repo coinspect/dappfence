@@ -231,18 +231,35 @@ jobs:
                   # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
                   COMMIT_HASH=$(git rev-parse --short HEAD) npm run build -w @dappfence/core
 
+                  # The build is itself repository code (packages/dappfence/vite.config.js and
+                  # whatever it loads), so it runs *after* the check above and could edit another
+                  # package's tracked src or manifest on its way past. Everything but core is
+                  # packed straight from the working tree, so re-check before the pack loop --
+                  # the earlier check covers the test step, this one covers the build.
+                  if [ -n "$(git status --porcelain)" ]; then
+                    echo "::error::the build modified the working tree — refusing to pack code that is not the verified commit"
+                    git status --porcelain
+                    exit 1
+                  fi
+
+                  # Pack outside the repository. The two checks above assert the working tree
+                  # still matches the verified commit, so packing must not be what dirties it --
+                  # a staging/ directory inside the checkout would show up as untracked and
+                  # trip the guard it is supposed to pass.
+                  staging="${RUNNER_TEMP:-/tmp}/release-staging"
+                  rm -rf "$staging" && mkdir -p "$staging"
+
                   # --ignore-scripts so the tarball contents are decided by the explicit build
                   # above rather than by whatever lifecycle scripts happen to be checked in.
-                  mkdir -p staging
                   while IFS= read -r dir; do
-                    npm pack --workspace "$dir" --pack-destination staging --ignore-scripts
+                    npm pack --workspace "$dir" --pack-destination "$staging" --ignore-scripts
                   done <<< "$dirs"
-                  ls -l staging
+                  ls -l "$staging"
 
             - uses: actions/upload-artifact@v4
               with:
                   name: release-tarballs
-                  path: staging/*.tgz
+                  path: ${{ runner.temp }}/release-staging/*.tgz
                   if-no-files-found: error
                   retention-days: 7
 
