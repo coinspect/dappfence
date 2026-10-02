@@ -33,6 +33,15 @@ scripts/sync-versions.js          @coinspect/dappfence-admins
 # privileged job, so without this line it would need only an ordinary reviewer.
 /package.json                     @coinspect/dappfence-admins
 
+# Build and tooling code that executes during a release. Splitting the workflow keeps this out
+# of the job holding the npm credential, so none of it can mint publish authority any more --
+# but it still runs in the build job and still decides what ends up inside the tarballs.
+# vite.config.js shapes the published @dappfence/core bundle directly; scripts/ runs during
+# `npm run check` and the build.
+packages/*/vite.config.js         @coinspect/dappfence-admins
+scripts/                          @coinspect/dappfence-admins
+/eslint.config.js                 @coinspect/dappfence-admins
+
 # Describes the policy the paths above enforce; drift here is a documentation-trust problem,
 # not just a typo.
 docs/release-setup.md             @coinspect/dappfence-admins
