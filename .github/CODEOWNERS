@@ -18,19 +18,24 @@
 .github/workflows/release.yml     @coinspect/dappfence-admins
 
 # What gets published, and how versions are allowed to move. Package manifests themselves are
-# release-critical too, not just the allowlist/script: they control name, version, the `files`
-# allow-list, lifecycle scripts (prepublishOnly runs arbitrary code inside the privileged publish
-# job), and dependencies. sync-versions.js writes versions into these files directly, so without
-# this line the release gate could be bypassed by just editing a package.json by hand.
+# release-critical too, not just the allowlist/script: `name` and `version` are the identity npm
+# registers the upload under, the `files` allow-list decides what ends up inside the tarball, and
+# `dependencies` is what consumers then install. Their `test` script also runs in the build job.
+# sync-versions.js writes versions into these files directly, so without this line the release
+# gate could be bypassed by just editing a package.json by hand.
+#
+# Note lifecycle scripts no longer run while the npm credential is reachable: publish uploads
+# prebuilt tarballs with --ignore-scripts and has no checkout at all. See "Why the pipeline is
+# three jobs" in docs/release-setup.md.
 packages/publish.json             @coinspect/dappfence-admins
 packages/*/package.json           @coinspect/dappfence-admins
 scripts/sync-versions.js          @coinspect/dappfence-admins
 
 # The root manifest, anchored with a leading slash so this means the root one specifically.
-# It is release-critical for a different reason than the package manifests above: the publish
-# job runs `npm run check` and `npm test`, both defined here, while holding the OIDC token that
-# carries publish authority. Editing one of those scripts is arbitrary code execution inside the
-# privileged job, so without this line it would need only an ordinary reviewer.
+# It is release-critical for a different reason than the package manifests above: `check` and
+# `test` are defined here and are what the build job runs to decide a release is fit to ship, in
+# the same workspace the tarballs are then packed from. Editing either is arbitrary code
+# execution inside the release, so without this line it would need only an ordinary reviewer.
 /package.json                     @coinspect/dappfence-admins
 
 # Build and tooling code that executes during a release. Splitting the workflow keeps this out
