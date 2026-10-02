@@ -351,6 +351,13 @@ pushed → `dry_run: true`. The full pipeline runs for real — tag verify, main
 MAJOR.MINOR check, install, checks, audits, tests, pack, then `npm publish --dry-run` against the
 real tarballs — with no upload at the end. Confirm it's clean.
 
+Note the dry run **also pauses at the `production-publish` environment** and needs a second
+maintainer to approve it, exactly as the real run does: `dry_run` only decides whether `npm publish`
+is given `--dry-run`, and the job targets that environment unconditionally. So a release takes two
+approvals, and you cannot complete a dry run by yourself. That is deliberate — a dry run that
+skipped the gate would not be exercising the path the real run takes — but it does mean lining up
+your approver before you start, rather than discovering the pause halfway through.
+
 **Then the real run:** Actions → `Release` → **Run workflow** → the same tag → `dry_run: false`. It
 pauses at the `production-publish` environment — ask a second maintainer to approve. Once approved,
 whichever packages actually changed version publish with `--provenance`; everything already at its
@@ -368,14 +375,15 @@ Adding a package to `packages/` does not auto-enroll it in releases. Before it s
 -   Set `publishConfig.access: "public"` (scoped packages default to restricted).
 -   Set `repository.directory` to `packages/<dirname>` so provenance attestation points at the right
     subdirectory.
--   Add a `prepublishOnly` script if it needs a build step to produce shippable output (see
-    `@dappfence/core`'s `prepublishOnly: "npm run build"` for the pattern) — it fires automatically
-    on `npm publish`, and `--foreground-scripts` in the workflow shows its output in the Actions
-    log.
+-   If it needs a build step to produce shippable output, add that build explicitly to the `build`
+    job in `release.yml`, before the pack loop — the way `@dappfence/core`'s Vite build is invoked
+    there. A `prepublishOnly` script will **not** do it: `publish` uploads prebuilt tarballs with
+    `--ignore-scripts`, so package lifecycle scripts never run during a release.
 -   Configure an npm Trusted Publisher for it (Step 5 above) — the workflow fails with "no matching
     Trusted Publisher" on its first publish otherwise.
--   Make sure it's covered by `npm run check` and the workspace list in the release workflow's "Unit
-    tests" step — anything reachable from there runs, and blocks, every release.
+-   Make sure it's covered by `npm run check`. Its unit tests are picked up automatically — the
+    workflow derives that list from `packages/publish.json`, so adding it there is enough. Anything
+    reachable from those runs, and blocks, every release.
 
 ## If it goes wrong
 
