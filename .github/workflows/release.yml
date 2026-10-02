@@ -204,6 +204,30 @@ jobs:
                       echo "::notice::$name@$version is already published, skipping"
                       continue
                     fi
+
+                    # An unused version is not automatically a safe one. `npm publish` with no
+                    # --tag repoints `latest` at whatever it just uploaded even if that is older
+                    # than what is live, so a stale or hand-edited manifest could downgrade every
+                    # consumer. sync-versions.js enforces this at bump time; this is the gate that
+                    # still holds when the manifest was edited by hand instead.
+                    # `npm view <name> version` resolves the `latest` dist-tag, and exits non-zero
+                    # for a package that has never been published -- the expected first-release case.
+                    if latest=$(npm view "$name" version 2>/dev/null); then
+                      if ! node -e '
+                        const re = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+                        const parse = (label, v) => {
+                          const m = re.exec(v);
+                          if (!m) { console.error(`${label} version "${v}" is not a plain X.Y.Z`); process.exit(2); }
+                          return m.slice(1, 4).map(Number);
+                        };
+                        const [a, b] = [parse("target", process.argv[1]), parse("registry latest", process.argv[2])];
+                        process.exit((a[0] - b[0] || a[1] - b[1] || a[2] - b[2]) > 0 ? 0 : 1);
+                      ' "$version" "$latest"; then
+                        echo "::error::refusing to publish $name@$version — it must be a plain X.Y.Z strictly ahead of the published $name@$latest, or publishing it would move npm's latest tag backward (reason above)"
+                        exit 1
+                      fi
+                    fi
+
                     echo "Publishing $name@$version"
                     npm publish --workspace "$dir" --access public --foreground-scripts $extra
                   done <<< "$dirs"
