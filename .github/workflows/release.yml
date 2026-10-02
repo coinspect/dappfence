@@ -349,9 +349,19 @@ jobs:
                     name=$(jq -er .name <<< "$meta")
                     version=$(jq -er .version <<< "$meta")
 
-                    if npm view "$name@$version" version >/dev/null 2>&1; then
+                    # `npm view` exits non-zero for a genuine 404 AND for network, auth and
+                    # registry-side failures alike, so "it failed" must never be read as "it
+                    # isn't published". --json puts a machine-readable code on stdout; only
+                    # E404 may mean not-found, and anything else aborts rather than silently
+                    # skipping a check that exists to prevent a bad publish.
+                    if out=$(npm view "$name@$version" version --json 2>/dev/null); then
                       echo "::notice::$name@$version is already published, skipping"
                       continue
+                    fi
+                    code=$(printf '%s' "${out:-}" | jq -r '.error.code // "UNKNOWN"' 2>/dev/null || echo UNKNOWN)
+                    if [ "$code" != "E404" ]; then
+                      echo "::error::could not determine whether $name@$version is already published (npm view failed: $code) — refusing to publish on an unknown registry state"
+                      exit 1
                     fi
 
                     # An unused version is not automatically a safe one. `npm publish` with no
@@ -359,9 +369,14 @@ jobs:
                     # than what is live, so a stale or hand-edited manifest could downgrade every
                     # consumer. sync-versions.js enforces this at bump time; this is the gate that
                     # still holds when the manifest was edited by hand instead.
-                    # `npm view <name> version` resolves the `latest` dist-tag, and exits non-zero
-                    # for a package that has never been published -- the expected first-release case.
-                    if latest=$(npm view "$name" version 2>/dev/null); then
+                    # Same fail-closed rule as above: only a confirmed E404 is allowed to mean
+                    # "never published, so there is no latest to move backward". A transient
+                    # registry failure must not quietly skip the downgrade guard.
+                    if out=$(npm view "$name" version --json 2>/dev/null); then
+                      # Guard the shape too: `version` normally resolves to the single `latest`
+                      # string, but a package with no latest dist-tag yields an array, and
+                      # comparing against that would be meaningless.
+                      latest=$(printf '%s' "$out" | jq -er 'if type == "string" then . else error("not a single version") end')
                       if ! node -e '
                         const re = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
                         const parse = (label, v) => {
@@ -375,6 +390,13 @@ jobs:
                         echo "::error::refusing to publish $name@$version — it must be a plain X.Y.Z strictly ahead of the published $name@$latest, or publishing it would move npm's latest tag backward (reason above)"
                         exit 1
                       fi
+                    else
+                      code=$(printf '%s' "${out:-}" | jq -r '.error.code // "UNKNOWN"' 2>/dev/null || echo UNKNOWN)
+                      if [ "$code" != "E404" ]; then
+                        echo "::error::could not read the published latest version of $name (npm view failed: $code) — refusing to publish without the downgrade check"
+                        exit 1
+                      fi
+                      echo "::notice::$name has never been published — first release, no latest to move backward"
                     fi
 
                     echo "Publishing $name@$version from $tgz"
