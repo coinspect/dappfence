@@ -213,6 +213,18 @@ jobs:
                     exit 1
                   fi
 
+                  # Every step above ran repository code in this same workspace, and every
+                  # package except @dappfence/core publishes its `src/` straight from the
+                  # working tree -- so a unit test that rewrote a source file after passing
+                  # would be packed, shipped and signed as if it were the reviewed commit.
+                  # Nothing tracked may differ from the verified SHA at this point. Build
+                  # output is gitignored, so this stays quiet about dist/ and node_modules/.
+                  if [ -n "$(git status --porcelain)" ]; then
+                    echo "::error::the working tree was modified after checkout — refusing to pack code that is not the verified commit"
+                    git status --porcelain
+                    exit 1
+                  fi
+
                   # @dappfence/core is the only package whose published `files` include build
                   # output. That build used to happen via its prepublishOnly script during
                   # `npm publish`; the publish job no longer runs repo code, so it happens
