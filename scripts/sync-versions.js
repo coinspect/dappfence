@@ -84,6 +84,10 @@ async function main() {
         return aMaj !== bMaj ? aMaj - bMaj : aMin - bMin;
     }
 
+    function cmpVersion(a, b) {
+        return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    }
+
     async function existsOnRegistry(name, version) {
         const res = await fetch(
             `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`
@@ -91,6 +95,40 @@ async function main() {
         if (res.status === 200) return true;
         if (res.status === 404) return false;
         throw new Error(`registry check for ${name}@${version} failed — HTTP ${res.status}`);
+    }
+
+    // The version the `latest` dist-tag currently points at, or null if the package has
+    // never been published. null is the expected answer for a first release.
+    async function registryLatest(name) {
+        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`);
+        if (res.status === 404) return null;
+        if (res.status !== 200) {
+            throw new Error(`registry lookup for ${name} failed — HTTP ${res.status}`);
+        }
+        const packument = await res.json();
+        return packument['dist-tags']?.latest ?? null;
+    }
+
+    // `npm publish` without --tag points `latest` at whatever it just uploaded, regardless
+    // of whether that version is higher than the current one. So "this exact version is
+    // unused" is NOT enough to make a release safe: a stale or reverted manifest can pick an
+    // unused version that is *lower* than what's live (registry at 0.1.2, manifest at 0.1.0,
+    // bump-patch offers an unused 0.1.1) and publishing it would silently move `latest`
+    // backward for every consumer. Refuse anything that isn't strictly greater.
+    async function assertAheadOfRegistry(name, target) {
+        const latest = await registryLatest(name);
+        if (latest === null) return;
+        const latestParts = parseVersion(`${name} (registry \`latest\`)`, latest);
+        if (cmpVersion(parseVersion(name, target), latestParts) <= 0) {
+            console.error(
+                `sync-versions: ${name}@${target} is not ahead of the published ${name}@${latest}.`
+            );
+            console.error(
+                "Publishing it would move npm's `latest` tag backward. Your checked-out versions are\n" +
+                    'probably behind the registry — pull main and re-run.'
+            );
+            process.exit(1);
+        }
     }
 
     function listCommand() {
@@ -142,6 +180,7 @@ async function main() {
                     );
                     process.exit(1);
                 }
+                await assertAheadOfRegistry(pkg.name, targetVersion);
             }
         }
         console.log(
@@ -183,11 +222,14 @@ async function main() {
         const { pkgPath, pkg } = entry;
         const [major, minor, patch] = parseVersion(pkg.name, pkg.version);
         const targetVersion = `${major}.${minor}.${patch + 1}`;
-        if (apply && (await existsOnRegistry(pkg.name, targetVersion))) {
-            console.error(
-                `sync-versions: ${pkg.name}@${targetVersion} already exists on npm — cannot reuse.`
-            );
-            process.exit(1);
+        if (apply) {
+            if (await existsOnRegistry(pkg.name, targetVersion)) {
+                console.error(
+                    `sync-versions: ${pkg.name}@${targetVersion} already exists on npm — cannot reuse.`
+                );
+                process.exit(1);
+            }
+            await assertAheadOfRegistry(pkg.name, targetVersion);
         }
         console.log(`  ${pkg.name}  ${pkg.version} ${apply ? '→' : '(dry run)'} ${targetVersion}`);
         if (apply) {
