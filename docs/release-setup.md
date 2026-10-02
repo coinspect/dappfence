@@ -85,6 +85,50 @@ on npm, it publishes; if it's already live (unchanged since the last release), i
 skipped. This is what lets one release carry a single-package PATCH bump without needing to
 force-republish everything else.
 
+## Why the pipeline is three jobs
+
+`release.yml` is split into `verify` → `build` → `publish`, and the split is a security boundary
+rather than organisation. **Do not merge these back together.**
+
+npm Trusted Publishing has no stored token. The credential is minted on demand from two environment
+variables that `permissions: id-token: write` injects into a job:
+
+```
+ACTIONS_ID_TOKEN_REQUEST_URL
+ACTIONS_ID_TOKEN_REQUEST_TOKEN
+```
+
+Any process in that job can read them, request an OIDC JWT with the `npm:registry.npmjs.org`
+audience, and `POST` it to npm's `/-/npm/v1/oidc/token/exchange/package/<name>` endpoint to receive
+a real publish token. That is roughly ten lines of `curl` — it is not a privileged npm CLI path. The
+JWT's claims describe the repo, the workflow filename and the environment, so one minted by a unit
+test is indistinguishable from one minted by the publish step, and all the version/allowlist checks
+in that step are simply skipped by code that mints its own.
+
+GitHub scopes permissions per job, never per step. So the only control available is how little runs
+in the job that holds the token:
+
+| Job       | Holds the npm credential | Runs repository code                                                        |
+| --------- | ------------------------ | --------------------------------------------------------------------------- |
+| `verify`  | no                       | signature/ancestry checks, `sync-versions.js check`                         |
+| `build`   | no                       | **everything** — `npm run check`, 36 unit tests, the Vite build, `npm pack` |
+| `publish` | **yes**                  | nothing — no checkout at all                                                |
+
+`publish` deliberately has no `actions/checkout`. It consumes the tarballs `build` uploaded, reads
+each one's name and version out of the tarball itself with `tar` + `jq`, checks them against the
+allowlist `verify` exported, and uploads with `npm publish <file>.tgz --ignore-scripts`. Publishing
+a prebuilt tarball runs no lifecycle scripts, so `@dappfence/core`'s build happens in `build`
+instead (with `COMMIT_HASH` set exactly as its `prepublishOnly` used to set it).
+
+Note `id-token: write` cannot be avoided by going back to an `NPM_TOKEN` secret: sigstore reads the
+_same_ two variables to sign provenance, so `--provenance` needs it regardless. A token would
+reintroduce a long-lived secret and keep this exposure.
+
+What the split does **not** solve: `build` still runs unreviewed code and still produces the
+tarballs, so a malicious build config can shape what ends up inside them. That is inherent to
+building from source; the mitigation is CODEOWNERS covering build-affecting files (Step 1). The
+split is what stops that code from obtaining publish authority outright.
+
 ## One-time setup
 
 ### Step 1 — Protect release-critical paths with CODEOWNERS
@@ -304,8 +348,8 @@ git push origin release-$(date +%Y%m%d)
 
 **Then, always, dry run first:** Actions → `Release` → **Run workflow** → enter the tag you just
 pushed → `dry_run: true`. The full pipeline runs for real — tag verify, main-ancestry check,
-MAJOR.MINOR check, install, checks, audits, tests, `npm publish --dry-run` — with no upload at the
-end. Confirm it's clean.
+MAJOR.MINOR check, install, checks, audits, tests, pack, then `npm publish --dry-run` against the
+real tarballs — with no upload at the end. Confirm it's clean.
 
 **Then the real run:** Actions → `Release` → **Run workflow** → the same tag → `dry_run: false`. It
 pauses at the `production-publish` environment — ask a second maintainer to approve. Once approved,

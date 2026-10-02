@@ -34,10 +34,14 @@ jobs:
             contents: read
         outputs:
             tag: ${{ steps.resolve.outputs.tag }}
-            # The immutable commit SHA the tag pointed to at verify time -- publish checks
+            # The immutable commit SHA the tag pointed to at verify time -- build checks
             # this out, not the tag name, so a tag force-moved during the environment
             # approval pause can't swap in a commit that was never actually verified.
             sha: ${{ steps.resolve.outputs.sha }}
+            # The allowlisted package names, as JSON. publish uses this to confirm every
+            # tarball it was handed is one it is actually allowed to upload -- see the
+            # comment on that step for why it doesn't just trust the build job's output.
+            packages: ${{ steps.allowlist.outputs.names }}
         steps:
             - uses: actions/checkout@v6
               with:
@@ -118,36 +122,55 @@ jobs:
             - name: Verify MAJOR.MINOR is in sync across publishable packages
               run: node scripts/sync-versions.js check
 
-    publish:
+            # Resolved here, in the job with no credential, from two code-owner-protected
+            # files (packages/publish.json and each package.json). publish compares the
+            # tarballs it receives against this list.
+            - name: Export the publishable package allowlist
+              id: allowlist
+              run: |
+                  set -euo pipefail
+                  names=$(node -e "
+                    import('./scripts/sync-versions.js').then(async (m) => {
+                      const { readFileSync } = await import('fs');
+                      const names = m.PUBLISHABLE_PACKAGE_DIRS.map(
+                        (d) => JSON.parse(readFileSync(d + '/package.json', 'utf8')).name
+                      );
+                      console.log(JSON.stringify(names));
+                    });
+                  ")
+                  if [ -z "$names" ] || [ "$names" = "[]" ]; then
+                    echo "::error::no publishable packages resolved"
+                    exit 1
+                  fi
+                  echo "names=$names" >> "$GITHUB_OUTPUT"
+                  echo "Publishable packages: $names"
+
+    # Everything that runs code from the repository happens here, in a job that holds no
+    # publish credential. npm's Trusted Publishing credential is minted from the two
+    # ACTIONS_ID_TOKEN_REQUEST_* variables that `id-token: write` injects, and those are
+    # visible to every process in the job that has them -- so `npm run check` (eslint config),
+    # the unit tests, and the Vite build could each mint one and publish whatever they liked,
+    # bypassing every gate below. None of those files are code-owner protected. Keeping this
+    # job credential-free is what stops that; it hands the publish job finished tarballs and
+    # nothing else.
+    build:
         needs: verify
         runs-on: ubuntu-latest
         timeout-minutes: 15
-        # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
-        # required reviewers configured -- the job pauses here for a human, different from
-        # whoever pushed the tag, to approve before anything below runs.
-        environment: production-publish
         permissions:
             contents: read
-            # Required to mint the OIDC token npm's Trusted Publishing exchanges for a
-            # short-lived publish credential -- no NPM_TOKEN secret needed.
-            id-token: write
         steps:
             - uses: actions/checkout@v6
               with:
                   # The immutable SHA verify resolved, not the tag name -- if the tag was
-                  # force-moved during the environment approval pause, this still checks
-                  # out exactly the commit whose signature and main-ancestry were verified.
+                  # force-moved after verification, this still builds exactly the commit
+                  # whose signature and main-ancestry were checked.
                   ref: ${{ needs.verify.outputs.sha }}
 
             - uses: actions/setup-node@v6
               with:
                   node-version: 24
-                  registry-url: 'https://registry.npmjs.org'
 
-            # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
-            # exact npm CLI version running here should be a deliberate, reviewed choice (this
-            # one's confirmed to support Trusted Publishing) -- not whatever happens to be
-            # newest the moment a release runs. Bump intentionally via a reviewed PR.
             - name: Install a known-good npm CLI version
               run: npm install -g npm@11.19.0
 
@@ -181,10 +204,77 @@ jobs:
                   done <<< "$dirs"
                   npm test "${args[@]}"
 
+            - name: Build and pack the publishable packages
+              run: |
+                  set -euo pipefail
+                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  if [ -z "$dirs" ]; then
+                    echo "::error::no publishable packages resolved — nothing to pack"
+                    exit 1
+                  fi
+
+                  # @dappfence/core is the only package whose published `files` include build
+                  # output. That build used to happen via its prepublishOnly script during
+                  # `npm publish`; the publish job no longer runs repo code, so it happens
+                  # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
+                  COMMIT_HASH=$(git rev-parse --short HEAD) npm run build -w @dappfence/core
+
+                  # --ignore-scripts so the tarball contents are decided by the explicit build
+                  # above rather than by whatever lifecycle scripts happen to be checked in.
+                  mkdir -p staging
+                  while IFS= read -r dir; do
+                    npm pack --workspace "$dir" --pack-destination staging --ignore-scripts
+                  done <<< "$dirs"
+                  ls -l staging
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: release-tarballs
+                  path: staging/*.tgz
+                  if-no-files-found: error
+                  retention-days: 7
+
+    publish:
+        needs: [verify, build]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
+        # required reviewers configured -- the job pauses here for a human, different from
+        # whoever pushed the tag, to approve before anything below runs.
+        environment: production-publish
+        permissions:
+            contents: read
+            # Required to mint the OIDC token npm's Trusted Publishing exchanges for a
+            # short-lived publish credential -- no NPM_TOKEN secret needed. Note this is
+            # also what sigstore needs to sign provenance, so it cannot be dropped by
+            # switching back to a token; the only lever is how little runs while it is live.
+            id-token: write
+        steps:
+            # Deliberately no actions/checkout. This job must not have repo code on disk at
+            # all: anything it executed could mint the publish credential for itself. It
+            # works only from the tarballs build produced and from `npm view`.
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  registry-url: 'https://registry.npmjs.org'
+
+            # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
+            # exact npm CLI version running here should be a deliberate, reviewed choice (this
+            # one's confirmed to support Trusted Publishing) -- not whatever happens to be
+            # newest the moment a release runs. Bump intentionally via a reviewed PR.
+            - name: Install a known-good npm CLI version
+              run: npm install -g npm@11.19.0
+
+            - uses: actions/download-artifact@v4
+              with:
+                  name: release-tarballs
+                  path: staging
+
             - name: Publish whichever publishable packages changed version
               env:
                   NPM_CONFIG_PROVENANCE: 'true'
                   DRY_RUN: ${{ github.event.inputs.dry_run }}
+                  ALLOWLIST: ${{ needs.verify.outputs.packages }}
               run: |
                   set -euo pipefail
                   extra=""
@@ -192,14 +282,44 @@ jobs:
                     extra="--dry-run"
                     echo "::notice::dry_run=true — no tarballs will be uploaded"
                   fi
-                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
-                  if [ -z "$dirs" ]; then
-                    echo "::error::no publishable packages resolved — nothing to publish"
+
+                  shopt -s nullglob
+                  tarballs=(staging/*.tgz)
+                  if [ ${#tarballs[@]} -eq 0 ]; then
+                    echo "::error::no tarballs in the build artifact — nothing to publish"
                     exit 1
                   fi
-                  while IFS= read -r dir; do
-                    name=$(node -p "require('./$dir/package.json').name")
-                    version=$(node -p "require('./$dir/package.json').version")
+
+                  # First pass: vet the whole artifact before uploading any of it. The build
+                  # job runs repository code, so a tarball that shouldn't be here means that
+                  # job was compromised -- in which case none of its output is trustworthy.
+                  # npm publishes are irreversible, so this must fail before the first upload
+                  # rather than partway through the loop.
+                  declare -A seen=()
+                  for tgz in "${tarballs[@]}"; do
+                    # Read the name out of the tarball itself rather than from any side-channel
+                    # manifest: this is the exact metadata npm will register, so the checks
+                    # cannot be aimed at a different package than the one actually uploaded.
+                    # tar and jq only -- no repo code.
+                    name=$(tar -xzOf "$tgz" package/package.json | jq -er .name)
+                    if ! jq -e --arg n "$name" 'index($n) != null' <<< "$ALLOWLIST" >/dev/null; then
+                      echo "::error::$name ($tgz) is not in the publishable allowlist ($ALLOWLIST) — refusing to publish anything from this build"
+                      exit 1
+                    fi
+                    if [ -n "${seen[$name]:-}" ]; then
+                      echo "::error::two tarballs both claim to be $name (${seen[$name]}, $tgz) — refusing to publish anything from this build"
+                      exit 1
+                    fi
+                    seen[$name]=$tgz
+                  done
+                  echo "Artifact vetted: ${#tarballs[@]} tarball(s), all allowlisted."
+
+                  # Second pass: version checks and upload.
+                  for tgz in "${tarballs[@]}"; do
+                    meta=$(tar -xzOf "$tgz" package/package.json)
+                    name=$(jq -er .name <<< "$meta")
+                    version=$(jq -er .version <<< "$meta")
+
                     if npm view "$name@$version" version >/dev/null 2>&1; then
                       echo "::notice::$name@$version is already published, skipping"
                       continue
@@ -228,6 +348,9 @@ jobs:
                       fi
                     fi
 
-                    echo "Publishing $name@$version"
-                    npm publish --workspace "$dir" --access public --foreground-scripts $extra
-                  done <<< "$dirs"
+                    echo "Publishing $name@$version from $tgz"
+                    # --ignore-scripts belt-and-braces: publishing a prebuilt tarball does not
+                    # run the package's lifecycle scripts anyway, and nothing in this job
+                    # should ever execute code that came out of the repository.
+                    npm publish "$tgz" --access public --ignore-scripts $extra
+                  done
