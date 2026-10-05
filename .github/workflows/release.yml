@@ -191,20 +191,18 @@ jobs:
             - name: Unit tests (publishable packages)
               run: |
                   set -euo pipefail
-                  # Command substitution, not process substitution: `done < <(node ...)`
-                  # does not propagate node's exit status, so a crash in sync-versions.js
-                  # would leave args empty and this step would "pass" having tested
-                  # nothing it meant to. set -e does catch a failing `dirs=$(...)`.
-                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
-                  if [ -z "$dirs" ]; then
+                  # Assigned to a variable first, deliberately: `npm test $(cmd)` would run
+                  # npm with no workspaces if cmd failed, and this step would "pass" having
+                  # tested nothing. set -e does catch a failing `args=$(...)`.
+                  args=$(node scripts/sync-versions.js dirs --workspace-args)
+                  if [ -z "$args" ]; then
                     echo "::error::no publishable packages resolved — refusing to publish untested code"
                     exit 1
                   fi
-                  args=()
-                  while IFS= read -r dir; do
-                    args+=(-w "$dir")
-                  done <<< "$dirs"
-                  npm test "${args[@]}"
+                  # Unquoted on purpose, so the -w pairs split into separate arguments.
+                  # publish.json only admits [A-Za-z0-9._-] names, so no path here can
+                  # contain whitespace or a glob character.
+                  npm test $args
 
     # Builds and packs, holding no publish credential. npm's Trusted Publishing credential is
     # minted from the two ACTIONS_ID_TOKEN_REQUEST_* variables that `id-token: write` injects,
@@ -242,7 +240,7 @@ jobs:
             - name: Build and pack the publishable packages
               run: |
                   set -euo pipefail
-                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  dirs=$(node scripts/sync-versions.js dirs)
                   if [ -z "$dirs" ]; then
                     echo "::error::no publishable packages resolved — nothing to pack"
                     exit 1
