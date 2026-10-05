@@ -20,12 +20,23 @@ Step 2 below.
 
 ## What publishes, and what doesn't
 
-The list of publishable packages is an explicit allowlist in `packages/publish.json` — directory
-names under `packages/`, since every publishable package lives there:
+The list of publishable packages is an explicit allowlist in `packages/publish.json`. Each entry's
+`name` is a directory under `packages/`, since every publishable package lives there:
 
 ```json
-["dappfence", "manifest-tools", "astro", "next", "vite"]
+[
+    { "name": "dappfence" },
+    { "name": "manifest-tools" },
+    { "name": "astro" },
+    { "name": "next" },
+    { "name": "vite" }
+]
 ```
+
+Entries are objects so per-package fields can be added later without migrating the file again;
+unknown fields are ignored. The file is parsed strictly — a bare string, a missing or duplicated
+`name`, or a `name` that isn't a plain directory segment is a hard error, since this file decides
+what the release pipeline may upload.
 
 | Name             | Package                     |
 | ---------------- | --------------------------- |
@@ -412,7 +423,7 @@ current version on npm is skipped, not re-uploaded.
 
 Adding a package to `packages/` does not auto-enroll it in releases. Before it should ship:
 
--   Add its directory name to `packages/publish.json`.
+-   Add an entry to `packages/publish.json`: `{ "name": "<its directory under packages/>" }`.
 -   Set its `version` to match the current MAJOR.MINOR line of the other publishable packages.
 -   Give it a `files` allow-list covering exactly what consumers need — without one, `npm publish`
     ships everything not gitignored (tests, dotfiles, build caches). Verify with
