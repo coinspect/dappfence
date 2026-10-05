@@ -52,6 +52,37 @@ async function main() {
         return { rel, pkgPath, pkg };
     });
 
+    // Names of the packages that depend on each other inside this repo.
+    const publishableNames = new Set(packages.map(({ pkg }) => pkg.name));
+
+    // The range a publishable package uses for another one: "~X.Y.0" — any release from the
+    // same MAJOR.MINOR generation. That is the policy stated as a semver range, and it is
+    // what a consumer installing from npm actually gets to see; "*" published nothing at all
+    // about which versions belong together, so an old integration would happily resolve
+    // against a future, incompatible core.
+    //
+    // Pinned to .0 rather than to the current PATCH deliberately: PATCH moves independently,
+    // so raising the floor every time core patches would force republishing every
+    // integration to match. This range only changes on a MAJOR.MINOR bump.
+    function depRange(majorMinorLine) {
+        return `~${majorMinorLine}.0`;
+    }
+
+    // Returns [{ pkg, dep, actual, expected }] for every cross-package range that doesn't
+    // match the line it should be on.
+    function mismatchedRanges(line) {
+        const want = depRange(line);
+        const out = [];
+        for (const { pkg } of packages) {
+            for (const [dep, actual] of Object.entries(pkg.dependencies ?? {})) {
+                if (publishableNames.has(dep) && actual !== want) {
+                    out.push({ pkg, dep, actual, expected: want });
+                }
+            }
+        }
+        return out;
+    }
+
     // Plain X.Y.Z only — no prerelease or build metadata. The release pipeline has no
     // dist-tag support (it always publishes to `latest`), so a prerelease version here
     // would publish as if it were stable. Rejecting it is the honest behavior until
@@ -154,7 +185,26 @@ async function main() {
             console.error('\nFix: node scripts/sync-versions.js bump-major-minor <X.Y> --apply');
             process.exit(1);
         }
-        console.log(`OK — every publishable package is on the ${[...lines][0]} line.`);
+        const line = [...lines][0];
+
+        // Stale cross-package ranges are worse than no range at all: a 0.2 integration
+        // still asking for ~0.1.0 would resolve against the previous generation's core on
+        // every fresh install. CI runs this against the tagged commit, so it is the gate
+        // that catches a forgotten or hand-edited range before it ships.
+        const bad = mismatchedRanges(line);
+        if (bad.length > 0) {
+            console.error(
+                `sync-versions check: cross-package dependency ranges don't match the ${line} line:`
+            );
+            for (const { pkg, dep, actual, expected } of bad) {
+                console.error(`  ${pkg.name} -> ${dep}: "${actual}" (expected "${expected}")`);
+            }
+            console.error(`\nFix: node scripts/sync-versions.js bump-major-minor ${line} --apply`);
+            process.exit(1);
+        }
+        console.log(
+            `OK — every publishable package is on the ${line} line, and every cross-package range is "${depRange(line)}".`
+        );
     }
 
     async function bumpMajorMinorCommand(target) {
@@ -188,10 +238,21 @@ async function main() {
                 ? `Bumping every publishable package to ${targetVersion}:\n`
                 : `Dry run — would bump every publishable package to ${targetVersion}:\n`
         );
+        const range = depRange(target);
         for (const { pkgPath, pkg } of packages) {
             console.log(
                 `  ${pkg.name}  ${pkg.version} ${apply ? '→' : '(dry run)'} ${targetVersion}`
             );
+            // The cross-package ranges move with the line. Leaving them behind would point
+            // the new generation's packages at the old generation's core.
+            for (const [dep, actual] of Object.entries(pkg.dependencies ?? {})) {
+                if (publishableNames.has(dep) && actual !== range) {
+                    console.log(
+                        `      ${dep}: "${actual}" ${apply ? '→' : '(dry run)'} "${range}"`
+                    );
+                    if (apply) pkg.dependencies[dep] = range;
+                }
+            }
             if (apply) {
                 pkg.version = targetVersion;
                 writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');

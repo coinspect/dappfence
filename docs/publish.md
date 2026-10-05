@@ -48,20 +48,28 @@ Consumers place the `.tgz` files in a `vendor/` directory and reference them via
 
 ### How inter-package dependencies resolve
 
-Integration packages (`@dappfence/astro`, `@dappfence/next`) declare their cross-package
-dependencies as `"*"` in a source:
+Integration packages (`@dappfence/astro`, `@dappfence/next`, `@dappfence/vite`) declare their
+cross-package dependencies as the generation range `~X.Y.0`:
 
 ```json
 "dependencies": {
-    "@dappfence/core": "*",
-    "@dappfence/manifest-tools": "*"
+    "@dappfence/core": "~0.1.0",
+    "@dappfence/manifest-tools": "~0.1.0"
 }
 ```
 
-This works correctly in the `.tgz` distribution model: when the consumer installs all packages via
-`file:` references in the same `npm install`, npm resolves `"*"` against the `@dappfence/core`
-already present in the installation no registry lookup needed. The `"*"` constraint is intentional
-and must not be changed to a pinned version in a source.
+`~0.1.0` means `>=0.1.0 <0.2.0` — any PATCH from the same MAJOR.MINOR line, nothing from the next.
+`sync-versions.js` maintains these; don't edit them by hand.
+
+This works in the `.tgz` distribution model: when the consumer installs all packages via `file:`
+references in the same `npm install`, the `@dappfence/core` already present satisfies `~0.1.0`, so
+npm uses it with no registry lookup — the packages are distributed as a set from one generation, so
+the range is always satisfied locally.
+
+These used to be `"*"`. That also resolved locally, but it published no constraint at all, so a
+consumer installing `@dappfence/astro` from npm got whatever `core` was `latest` that day — a
+future, incompatible major included. `packages/test-app` keeps `"*"`: it is private and never
+published, so its ranges only need to satisfy local workspace linking.
 
 ---
 
@@ -75,10 +83,11 @@ node scripts/sync-versions.js bump-major-minor 0.2 --apply   # every package, re
 node scripts/sync-versions.js bump-patch @dappfence/vite --apply   # one package's PATCH only
 ```
 
-This writes `version` directly into the affected `package.json` file(s) on disk. Cross-package `"*"`
-dependency ranges are left untouched by design — they're never rewritten, for `.tgz` distribution or
-for a real npm publish. See `docs/release-setup.md` for the full versioning policy and the `check`
-subcommand CI runs before publishing.
+This writes `version` directly into the affected `package.json` file(s) on disk. `bump-major-minor`
+also rewrites the cross-package `~X.Y.0` ranges to the new line, since a package from the new
+generation must not keep asking for the old one; `bump-patch` leaves them alone, which is the whole
+point of pinning the range's floor at `.0`. See `docs/release-setup.md` for the full versioning
+policy and the `check` subcommand CI runs before publishing — it fails on a drifted range.
 
 ---
 

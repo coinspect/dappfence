@@ -66,12 +66,27 @@ Both bump commands refuse to reuse a version already on the npm registry (checke
 `--apply` is passed) and refuse to move backwards or sideways — npm versions are immutable, so
 catching this locally is far cheaper than failing mid-publish.
 
-Cross-package `dependencies` between the publishable packages stay as `"*"` in git — `astro`,
-`next`, and `vite` all depend on `@dappfence/core`/`@dappfence/manifest-tools` this way. That's
-intentional for the workspace (any locally-linked version satisfies it); it does mean a real npm
-consumer of `@dappfence/astro` gets whatever the latest published `@dappfence/core` is at install
-time, not a pinned range. Worth tightening once the first few releases have shipped and the
-dependency surface has stabilized — not addressed in this first cut.
+Cross-package `dependencies` between the publishable packages carry the generation they belong to:
+`~X.Y.0`, so every package on the 0.1 line depends on `~0.1.0` of the others. `~0.1.0` means
+`>=0.1.0 <0.2.0` — any PATCH from the same MAJOR.MINOR line, and nothing from the next one. That is
+this policy expressed as a semver range, which matters because the policy is otherwise invisible to
+consumers: a published package's own lockfile is never shipped, so the range in its `package.json`
+is the only thing constraining what npm resolves at install time.
+
+The floor is `.0` rather than the current PATCH on purpose. PATCH moves independently, so pinning
+`~0.1.2` would force republishing every integration each time `core` shipped a patch, which is
+exactly what independent PATCH versions exist to avoid.
+
+These ranges are maintained by `sync-versions.js`: `bump-major-minor` rewrites them along with the
+versions, and `check` fails if any has drifted — a `0.2` integration still asking for `~0.1.0` would
+resolve against the previous generation's `core` on every fresh install, which is worse than no
+constraint at all.
+
+They previously used `"*"`. That satisfied local workspace linking but published no information
+about which versions belong together, so a consumer installing `@dappfence/astro@0.1.2` resolved
+`core` to whatever was `latest` that day — with no upper bound, a future `core@2.0.0` included.
+`packages/test-app` keeps `"*"`; it is private and never published, so its ranges only ever need to
+satisfy local linking.
 
 ## Release trigger and versioning are decoupled from each other
 
