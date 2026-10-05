@@ -17,6 +17,7 @@
  *   node scripts/sync-versions.js                              list current versions
  *   node scripts/sync-versions.js check                        verify MAJOR.MINOR matches everywhere (used by CI)
  *   node scripts/sync-versions.js publish-map                  {name: version} as JSON (used by CI)
+ *   node scripts/sync-versions.js dirs [--workspace-args]      publishable dirs, one per line or as -w pairs (used by CI)
  *   node scripts/sync-versions.js bump-major-minor <X.Y>        preview a MAJOR.MINOR bump (dry run)
  *   node scripts/sync-versions.js bump-major-minor <X.Y> --apply   apply it (resets every PATCH to 0)
  *   node scripts/sync-versions.js bump-patch <pkg-name>         preview a PATCH+1 bump for one package
@@ -213,6 +214,17 @@ async function main() {
         }
     }
 
+    // The publishable package directories, one per line, for the release workflow's `test`
+    // and `build` jobs. With --workspace-args, emits them as `-w <dir>` pairs instead, ready
+    // to hand straight to npm.
+    //
+    // Both forms are safe to word-split: publish.json only accepts names matching
+    // [A-Za-z0-9._-]+, so a directory here can never contain whitespace or a glob character.
+    function dirsCommand(asWorkspaceArgs) {
+        const dirs = packages.map(({ rel }) => rel);
+        console.log(asWorkspaceArgs ? dirs.map((d) => `-w ${d}`).join(' ') : dirs.join('\n'));
+    }
+
     // {name: version} as one line of JSON, for the release workflow's `verify` job. That map
     // is what authorizes a release: `publish` refuses any tarball whose name and version are
     // not a pair from it, so an entry quietly going missing here would reject a legitimate
@@ -377,6 +389,9 @@ async function main() {
             break;
         case 'check':
             checkCommand();
+            break;
+        case 'dirs':
+            dirsCommand(args.includes('--workspace-args'));
             break;
         case 'publish-map':
             publishMapCommand();
