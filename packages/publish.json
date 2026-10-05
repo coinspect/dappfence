@@ -1,1 +1,17 @@
-["dappfence", "manifest-tools", "astro", "next", "vite"]
+[
+    {
+        "name": "dappfence"
+    },
+    {
+        "name": "manifest-tools"
+    },
+    {
+        "name": "astro"
+    },
+    {
+        "name": "next"
+    },
+    {
+        "name": "vite"
+    }
+]

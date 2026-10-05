@@ -141,17 +141,12 @@ jobs:
               id: allowlist
               run: |
                   set -euo pipefail
-                  names=$(node -e "
-                    import('./scripts/sync-versions.js').then(async (m) => {
-                      const { readFileSync } = await import('fs');
-                      const out = {};
-                      for (const d of m.PUBLISHABLE_PACKAGE_DIRS) {
-                        const pkg = JSON.parse(readFileSync(d + '/package.json', 'utf8'));
-                        out[pkg.name] = pkg.version;
-                      }
-                      console.log(JSON.stringify(out));
-                    });
-                  ")
+                  # The map is built by sync-versions.js rather than inline here: that file is
+                  # linted, formatted and code-owner protected, and it already holds this data,
+                  # whereas JS embedded in a YAML block scalar is none of those things. It also
+                  # keeps the shell out of it -- an inline script lives inside double quotes, so
+                  # any `${...}` added later would be expanded by bash before node ever saw it.
+                  names=$(node scripts/sync-versions.js publish-map)
                   if [ -z "$names" ] || [ "$names" = "{}" ]; then
                     echo "::error::no publishable packages resolved"
                     exit 1
