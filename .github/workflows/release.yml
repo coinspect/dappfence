@@ -1,0 +1,491 @@
+name: Release
+
+# Tags are opaque release markers (release-<anything>), not version numbers — this repo
+# keeps MAJOR.MINOR in sync across the published packages but lets PATCH move
+# independently per package (see scripts/sync-versions.js), so a single tag/release can
+# carry a bump for just one package. Whichever publishable packages actually changed
+# version get published; the rest are skipped as already-published.
+#
+# workflow_dispatch only, deliberately — no `push: tags:` trigger. Pushing the signed tag
+# only creates the artifact; it does not start a run. That's what makes a real dry run
+# possible: dispatch once with dry_run=true, then again with dry_run=false, as two
+# separate, deliberate actions against the same already-pushed tag. A push-triggered run
+# would start for real the moment the tag lands, before a dry run ever had a chance to.
+#
+# Every `uses:` here is pinned to a full commit SHA, with the human-readable version in a
+# trailing comment. A tag like @v6 is mutable — it can be retargeted at new code without the
+# reference here changing, so what gets reviewed is not necessarily what runs. That matters
+# most for setup-node and download-artifact, which execute inside the publish job while
+# `id-token: write` is live and could therefore mint the npm credential directly, exactly
+# the exposure the job split exists to remove. Keep these pinned: update a SHA only
+# together with its version comment, through a reviewed PR (CODEOWNERS gates this file).
+on:
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Tag to publish (must already exist and be signed)'
+                required: true
+            dry_run:
+                description: 'Run the full pipeline but skip the actual npm publish upload'
+                type: boolean
+                default: false
+
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        permissions:
+            contents: read
+        outputs:
+            tag: ${{ steps.resolve.outputs.tag }}
+            # The immutable commit SHA the tag pointed to at verify time -- build checks
+            # this out, not the tag name, so a tag force-moved during the environment
+            # approval pause can't swap in a commit that was never actually verified.
+            sha: ${{ steps.resolve.outputs.sha }}
+            # {name: version} for every allowlisted package, read from the verified commit.
+            # This is what authorizes a release: publish refuses any tarball whose name and
+            # version are not exactly a pair from this map, so the build job cannot decide
+            # either. See the comment on that step for why it cannot be trusted to.
+            packages: ${{ steps.allowlist.outputs.names }}
+        steps:
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+              with:
+                  fetch-depth: 0
+                  fetch-tags: true
+
+            # The tag input is attacker-controllable by anyone who can dispatch this
+            # workflow, so it goes through env: and is never interpolated into the
+            # script text. A `${{ }}` expression here would be substituted before bash
+            # parses the line, so the validation below would run only after injected
+            # code had already executed -- and injected code can write to
+            # $GITHUB_OUTPUT, which is what publish trusts for the commit it ships.
+            - name: Resolve tag
+              id: resolve
+              env:
+                  INPUT_TAG: ${{ github.event.inputs.tag }}
+              run: |
+                  tag="$INPUT_TAG"
+                  # Deliberately strict, and anchored: every character after the
+                  # release- prefix must be in this set. Newlines especially --
+                  # an unanchored match would let "release-ok\nsha=<attacker sha>"
+                  # through, and the echo below would then write that second line
+                  # straight into $GITHUB_OUTPUT as its own key=value pair, which
+                  # is exactly what the publish job trusts for the commit it ships.
+                  if ! [[ "$tag" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+                    echo "::error::tag '$tag' is not a valid release-* tag name"
+                    exit 1
+                  fi
+                  sha=$(git rev-parse "$tag^{commit}")
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
+                  echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                  echo "Resolved tag: $tag -> $sha"
+
+            # A valid signature only proves a holder of an enrolled key consented to
+            # these bytes -- it says nothing about whether the commit itself went
+            # through review. Without this check, a signing-key holder could tag and
+            # release a commit that never went through a reviewed PR to main.
+            - name: Verify the tagged commit is reachable from main
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  if ! git merge-base --is-ancestor "$TAG" origin/main; then
+                    echo "::error::$TAG's commit is not reachable from main -- refusing to release a commit that bypassed normal review"
+                    exit 1
+                  fi
+
+            - name: Build SSH allowed-signers file from the RELEASE_SIGNING_KEYS variable
+              env:
+                  RELEASE_SIGNING_KEYS: ${{ vars.RELEASE_SIGNING_KEYS }}
+              run: |
+                  if [ -z "$RELEASE_SIGNING_KEYS" ]; then
+                    echo "::error::the RELEASE_SIGNING_KEYS repository variable is empty or not set"
+                    exit 1
+                  fi
+                  allowed=$(mktemp)
+                  printf '%s\n' "$RELEASE_SIGNING_KEYS" > "$allowed"
+                  echo "ALLOWED_SIGNERS=$allowed" >> "$GITHUB_ENV"
+                  echo "Enrolled signers:"
+                  awk '{print "  "$1}' "$allowed"
+
+            - name: Verify tag signature
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  git config --global gpg.format ssh
+                  git config --global gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+                  git verify-tag "$TAG"
+
+            - name: Check out the verified commit
+              env:
+                  SHA: ${{ steps.resolve.outputs.sha }}
+              run: git checkout "$SHA"
+
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+              with:
+                  node-version: 24
+
+            - name: Verify MAJOR.MINOR is in sync across publishable packages
+              run: node scripts/sync-versions.js check
+
+            # Read here, in the job with no credential, from code-owner-protected files
+            # (packages/publish.json, scripts/sync-versions.js, each package.json) at the
+            # verified commit -- so this map is exactly what the signed tag authorizes.
+            # Both halves matter: the name says which packages may be published at all, and
+            # the version says which release of each. Without the version, the build job
+            # would still be choosing it, and that job deliberately runs repository code.
+            - name: Export the publishable packages and their verified versions
+              id: allowlist
+              run: |
+                  set -euo pipefail
+                  names=$(node -e "
+                    import('./scripts/sync-versions.js').then(async (m) => {
+                      const { readFileSync } = await import('fs');
+                      const out = {};
+                      for (const d of m.PUBLISHABLE_PACKAGE_DIRS) {
+                        const pkg = JSON.parse(readFileSync(d + '/package.json', 'utf8'));
+                        out[pkg.name] = pkg.version;
+                      }
+                      console.log(JSON.stringify(out));
+                    });
+                  ")
+                  if [ -z "$names" ] || [ "$names" = "{}" ]; then
+                    echo "::error::no publishable packages resolved"
+                    exit 1
+                  fi
+                  echo "names=$names" >> "$GITHUB_OUTPUT"
+                  echo "Publishable packages at the verified commit: $names"
+    # Validation runs here, in its own job, and deliberately produces nothing. Everything
+    # in it -- eslint's config, 36 unit test files, whatever those import -- is repository
+    # code that is not code-owner protected, and it executes with full write access to the
+    # workspace. Keeping it in a job that packs nothing means none of it can touch the
+    # files the release is actually built from: `build` starts from a fresh checkout.
+    test:
+        needs: verify
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+              with:
+                  ref: ${{ needs.verify.outputs.sha }}
+
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+              with:
+                  node-version: 24
+
+            - name: Install a known-good npm CLI version
+              run: npm install -g npm@11.19.0
+
+            - name: Install
+              run: npm ci --ignore-scripts
+
+            - name: Lint, format, lockfile integrity
+              run: npm run check
+
+            - name: Audit dependencies for known vulnerabilities
+              run: npm audit --audit-level=high --omit=dev
+
+            - name: Audit dependency registry signatures
+              run: npm audit signatures
+
+            - name: Unit tests (publishable packages)
+              run: |
+                  set -euo pipefail
+                  # Command substitution, not process substitution: `done < <(node ...)`
+                  # does not propagate node's exit status, so a crash in sync-versions.js
+                  # would leave args empty and this step would "pass" having tested
+                  # nothing it meant to. set -e does catch a failing `dirs=$(...)`.
+                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  if [ -z "$dirs" ]; then
+                    echo "::error::no publishable packages resolved — refusing to publish untested code"
+                    exit 1
+                  fi
+                  args=()
+                  while IFS= read -r dir; do
+                    args+=(-w "$dir")
+                  done <<< "$dirs"
+                  npm test "${args[@]}"
+
+    # Builds and packs, holding no publish credential. npm's Trusted Publishing credential is
+    # minted from the two ACTIONS_ID_TOKEN_REQUEST_* variables that `id-token: write` injects,
+    # and those are visible to every process in the job that has them -- so the Vite build
+    # could mint one and publish whatever it liked, bypassing every gate in `publish`. Keeping
+    # this job credential-free is what stops that; it hands `publish` finished tarballs and
+    # nothing else.
+    #
+    # It needs `test` only as a gate: nothing is carried over from that job, and this checkout
+    # is fresh, so no test code has ever run against the files packed here.
+    build:
+        needs: [verify, test]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+              with:
+                  # The immutable SHA verify resolved, not the tag name -- if the tag was
+                  # force-moved after verification, this still builds exactly the commit
+                  # whose signature and main-ancestry were checked.
+                  ref: ${{ needs.verify.outputs.sha }}
+
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+              with:
+                  node-version: 24
+
+            - name: Install a known-good npm CLI version
+              run: npm install -g npm@11.19.0
+
+            - name: Install
+              run: npm ci --ignore-scripts
+
+            - name: Build and pack the publishable packages
+              run: |
+                  set -euo pipefail
+                  dirs=$(node -e "import('./scripts/sync-versions.js').then(m => console.log(m.PUBLISHABLE_PACKAGE_DIRS.join('\n')))")
+                  if [ -z "$dirs" ]; then
+                    echo "::error::no publishable packages resolved — nothing to pack"
+                    exit 1
+                  fi
+
+                  # Nothing tracked may differ from the verified SHA. With tests in their own
+                  # job this is cheap insurance rather than the main control -- only the
+                  # install and the allowlist read have happened so far -- but it costs
+                  # nothing and catches an unexpected write before it can be packed.
+                  if [ -n "$(git status --porcelain)" ]; then
+                    echo "::error::the working tree was modified after checkout — refusing to pack code that is not the verified commit"
+                    git status --porcelain
+                    exit 1
+                  fi
+
+                  # Start from an empty output directory. @dappfence/core ships `files: ["dist"]`
+                  # -- the whole directory, whatever is in it -- and vite runs with
+                  # emptyOutDir:false, so anything already there survives the build and gets
+                  # packed. dist/ is gitignored, so the working-tree checks are structurally
+                  # blind to it: a stray file there passes every guard above, matches the
+                  # verified name and version, and still ships inside a provenance-signed
+                  # tarball. Core is the only package with an ignored path in `files`.
+                  rm -rf packages/dappfence/dist
+
+                  # @dappfence/core is the only package whose published `files` include build
+                  # output. That build used to happen via its prepublishOnly script during
+                  # `npm publish`; the publish job no longer runs repo code, so it happens
+                  # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
+                  COMMIT_HASH=$(git rev-parse --short HEAD) npm run build -w @dappfence/core
+
+                  # The build is itself repository code (packages/dappfence/vite.config.js and
+                  # whatever it loads), so it runs after the check above and could edit another
+                  # package's tracked src or manifest on its way past. Everything but core is
+                  # packed straight from the working tree, so re-check before the pack loop.
+                  if [ -n "$(git status --porcelain)" ]; then
+                    echo "::error::the build modified the working tree — refusing to pack code that is not the verified commit"
+                    git status --porcelain
+                    exit 1
+                  fi
+
+                  # Pack outside the repository. The checks above assert the working tree still
+                  # matches the verified commit, so packing must not be what dirties it -- a
+                  # staging/ directory inside the checkout would show up as untracked and trip
+                  # the guard it is supposed to pass.
+                  staging="${RUNNER_TEMP:-/tmp}/release-staging"
+                  rm -rf "$staging" && mkdir -p "$staging"
+
+                  # --ignore-scripts so the tarball contents are decided by the explicit build
+                  # above rather than by whatever lifecycle scripts happen to be checked in.
+                  while IFS= read -r dir; do
+                    npm pack --workspace "$dir" --pack-destination "$staging" --ignore-scripts
+                  done <<< "$dirs"
+                  ls -l "$staging"
+
+            - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: release-tarballs
+                  path: ${{ runner.temp }}/release-staging/*.tgz
+                  if-no-files-found: error
+                  retention-days: 7
+
+    publish:
+        needs: [verify, build]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
+        # required reviewers configured -- the job pauses here for a human, different from
+        # whoever pushed the tag, to approve before anything below runs.
+        environment: production-publish
+        permissions:
+            contents: read
+            # Required to mint the OIDC token npm's Trusted Publishing exchanges for a
+            # short-lived publish credential -- no NPM_TOKEN secret needed. Note this is
+            # also what sigstore needs to sign provenance, so it cannot be dropped by
+            # switching back to a token; the only lever is how little runs while it is live.
+            id-token: write
+        steps:
+            # Deliberately no actions/checkout. This job must not have repo code on disk at
+            # all: anything it executed could mint the publish credential for itself. It
+            # works only from the tarballs build produced and from `npm view`.
+            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+              with:
+                  node-version: 24
+                  registry-url: 'https://registry.npmjs.org'
+
+            # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
+            # exact npm CLI version running here should be a deliberate, reviewed choice (this
+            # one's confirmed to support Trusted Publishing) -- not whatever happens to be
+            # newest the moment a release runs. Bump intentionally via a reviewed PR.
+            - name: Install a known-good npm CLI version
+              run: npm install -g npm@11.19.0
+
+            - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+              with:
+                  name: release-tarballs
+                  path: staging
+
+            - name: Publish whichever publishable packages changed version
+              env:
+                  NPM_CONFIG_PROVENANCE: 'true'
+                  DRY_RUN: ${{ github.event.inputs.dry_run }}
+                  VERIFIED: ${{ needs.verify.outputs.packages }}
+              run: |
+                  set -euo pipefail
+                  extra=""
+                  if [ "$DRY_RUN" = "true" ]; then
+                    extra="--dry-run"
+                    echo "::notice::dry_run=true — no tarballs will be uploaded"
+                  fi
+
+                  shopt -s nullglob
+                  tarballs=(staging/*.tgz)
+                  if [ ${#tarballs[@]} -eq 0 ]; then
+                    echo "::error::no tarballs in the build artifact — nothing to publish"
+                    exit 1
+                  fi
+
+                  # First pass: vet the whole artifact against the verified commit before
+                  # uploading any of it. The build job runs repository code, so anything it
+                  # decided is untrusted here -- including the version. Note the build job's
+                  # own working-tree checks are not a substitute for this: they execute
+                  # inside the job being guarded, and code running there can simply hide its
+                  # edits from git (`git update-index --assume-unchanged`, say). Only a check
+                  # on this side of the boundary, against data verify read from the signed
+                  # commit, actually constrains what can be published.
+                  #
+                  # npm publishes are irreversible, so this fails before the first upload
+                  # rather than partway through the loop.
+                  declare -A seen=()
+                  for tgz in "${tarballs[@]}"; do
+                    # Read name and version out of the tarball itself rather than from any
+                    # side-channel manifest: this is the exact metadata npm will register, so
+                    # the checks cannot be aimed at a different package or version than the
+                    # one actually uploaded. tar and jq only -- no repo code.
+                    meta=$(tar -xzOf "$tgz" package/package.json)
+                    name=$(jq -er .name <<< "$meta")
+                    version=$(jq -er .version <<< "$meta")
+
+                    expected=$(jq -r --arg n "$name" '.[$n] // empty' <<< "$VERIFIED")
+                    if [ -z "$expected" ]; then
+                      echo "::error::$name ($tgz) is not a publishable package at the verified commit ($VERIFIED) — refusing to publish anything from this build"
+                      exit 1
+                    fi
+                    if [ "$version" != "$expected" ]; then
+                      echo "::error::$name@$version ($tgz) does not match the version in the verified commit ($name@$expected) — the signed tag does not authorize this release; refusing to publish anything from this build"
+                      exit 1
+                    fi
+                    if [ -n "${seen[$name]:-}" ]; then
+                      echo "::error::two tarballs both claim to be $name (${seen[$name]}, $tgz) — refusing to publish anything from this build"
+                      exit 1
+                    fi
+                    seen[$name]=$tgz
+                  done
+
+                  # The loop above proves every tarball present is one the verified commit
+                  # allows. This proves the other direction, giving set equality rather than
+                  # "some allowed subset": build packs all of them on every run, so a missing
+                  # one is either a failure or an omission by a job this one treats as
+                  # untrusted. Publishing the remainder would ship a partial generation -- and
+                  # because cross-package dependencies are pinned at "*", a 0.2 integration
+                  # whose core tarball went missing would silently resolve against the 0.1
+                  # core still on the registry, which is exactly what the synced MAJOR.MINOR
+                  # line exists to prevent. (Releasing only *some* packages is still normal:
+                  # that is decided below by skipping versions already on the registry, not by
+                  # leaving tarballs out of the artifact.)
+                  #
+                  # Command substitution, not `done < <(jq ...)`: process substitution does
+                  # not propagate jq's exit status, so a failure there would silently check
+                  # nothing.
+                  want=$(jq -er 'keys[]' <<< "$VERIFIED")
+                  while IFS= read -r n; do
+                    if [ -z "${seen[$n]:-}" ]; then
+                      echo "::error::no tarball for $n, which the verified commit lists as publishable — refusing to publish a partial release"
+                      exit 1
+                    fi
+                  done <<< "$want"
+
+                  echo "Artifact vetted: ${#tarballs[@]} tarball(s), exactly matching the verified commit."
+
+                  # Second pass: version checks and upload.
+                  for tgz in "${tarballs[@]}"; do
+                    meta=$(tar -xzOf "$tgz" package/package.json)
+                    name=$(jq -er .name <<< "$meta")
+                    version=$(jq -er .version <<< "$meta")
+
+                    # `npm view` exits non-zero for a genuine 404 AND for network, auth and
+                    # registry-side failures alike, so "it failed" must never be read as "it
+                    # isn't published". --json puts a machine-readable code on stdout; only
+                    # E404 may mean not-found, and anything else aborts rather than silently
+                    # skipping a check that exists to prevent a bad publish.
+                    if out=$(npm view "$name@$version" version --json 2>/dev/null); then
+                      echo "::notice::$name@$version is already published, skipping"
+                      continue
+                    fi
+                    code=$(printf '%s' "${out:-}" | jq -r '.error.code // "UNKNOWN"' 2>/dev/null || echo UNKNOWN)
+                    if [ "$code" != "E404" ]; then
+                      echo "::error::could not determine whether $name@$version is already published (npm view failed: $code) — refusing to publish on an unknown registry state"
+                      exit 1
+                    fi
+
+                    # An unused version is not automatically a safe one. `npm publish` with no
+                    # --tag repoints `latest` at whatever it just uploaded even if that is older
+                    # than what is live, so a stale or hand-edited manifest could downgrade every
+                    # consumer. sync-versions.js enforces this at bump time; this is the gate that
+                    # still holds when the manifest was edited by hand instead.
+                    # Same fail-closed rule as above: only a confirmed E404 is allowed to mean
+                    # "never published, so there is no latest to move backward". A transient
+                    # registry failure must not quietly skip the downgrade guard.
+                    if out=$(npm view "$name" version --json 2>/dev/null); then
+                      # Guard the shape too: `version` normally resolves to the single `latest`
+                      # string, but a package with no latest dist-tag yields an array, and
+                      # comparing against that would be meaningless.
+                      latest=$(printf '%s' "$out" | jq -er 'if type == "string" then . else error("not a single version") end')
+                      if ! node -e '
+                        const re = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+                        const parse = (label, v) => {
+                          const m = re.exec(v);
+                          if (!m) { console.error(`${label} version "${v}" is not a plain X.Y.Z`); process.exit(2); }
+                          return m.slice(1, 4).map(Number);
+                        };
+                        const [a, b] = [parse("target", process.argv[1]), parse("registry latest", process.argv[2])];
+                        process.exit((a[0] - b[0] || a[1] - b[1] || a[2] - b[2]) > 0 ? 0 : 1);
+                      ' "$version" "$latest"; then
+                        echo "::error::refusing to publish $name@$version — it must be a plain X.Y.Z strictly ahead of the published $name@$latest, or publishing it would move npm's latest tag backward (reason above)"
+                        exit 1
+                      fi
+                    else
+                      code=$(printf '%s' "${out:-}" | jq -r '.error.code // "UNKNOWN"' 2>/dev/null || echo UNKNOWN)
+                      if [ "$code" != "E404" ]; then
+                        echo "::error::could not read the published latest version of $name (npm view failed: $code) — refusing to publish without the downgrade check"
+                        exit 1
+                      fi
+                      echo "::notice::$name has never been published — first release, no latest to move backward"
+                    fi
+
+                    echo "Publishing $name@$version from $tgz"
+                    # --ignore-scripts belt-and-braces: publishing a prebuilt tarball does not
+                    # run the package's lifecycle scripts anyway, and nothing in this job
+                    # should ever execute code that came out of the repository.
+                    npm publish "$tgz" --access public --ignore-scripts $extra
+                  done

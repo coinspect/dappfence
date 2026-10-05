@@ -1,0 +1,56 @@
+# CODEOWNERS — requires review from the listed owners on changes to release-critical paths.
+#
+# This ONLY gates merges if "Require review from Code Owners" is enabled in main's branch
+# protection rule (Settings -> Branches -> main -> Require a pull request before merging ->
+# Require review from Code Owners). Without that setting enabled, this file only suggests
+# reviewers in the PR UI and enforces nothing — see docs/release-setup.md.
+#
+# Replace @coinspect/dappfence-admins with the actual maintainer team handle once created. A team
+# is preferred over individual users so membership changes don't require editing this file.
+
+# This file protects itself. Without this line, a single PR could both remove a restriction
+# below and exploit it, needing only an ordinary (non-admin) reviewer.
+.github/CODEOWNERS                @coinspect/dappfence-admins
+
+# The release workflow itself: what the verify/publish jobs check and do, which key(s) it
+# trusts (RELEASE_SIGNING_KEYS repo variable, admin-Settings-only to edit — see
+# docs/release-setup.md), and which environment/permissions gate the actual npm publish.
+.github/workflows/release.yml     @coinspect/dappfence-admins
+
+# What gets published, and how versions are allowed to move. Package manifests themselves are
+# release-critical too, not just the allowlist/script: `name` and `version` are the identity npm
+# registers the upload under, the `files` allow-list decides what ends up inside the tarball, and
+# `dependencies` is what consumers then install. Their `test` script also runs in the test job.
+# sync-versions.js writes versions into these files directly, so without this line the release
+# gate could be bypassed by just editing a package.json by hand.
+#
+# Note lifecycle scripts no longer run while the npm credential is reachable: publish uploads
+# prebuilt tarballs with --ignore-scripts and has no checkout at all. See "Why the pipeline is
+# four jobs" in docs/release-setup.md.
+packages/publish.json             @coinspect/dappfence-admins
+packages/*/package.json           @coinspect/dappfence-admins
+scripts/sync-versions.js          @coinspect/dappfence-admins
+
+# The root manifest, anchored with a leading slash so this means the root one specifically.
+# It is release-critical for a different reason than the package manifests above: `check` and
+# `test` are defined here and are what the test job runs to decide a release is fit to ship, and
+# `build:prod`/`build` is what produces the published @dappfence/core bundle. Editing any of them
+# is arbitrary code execution inside the release, so without this line it would need only an
+# ordinary reviewer.
+/package.json                     @coinspect/dappfence-admins
+
+# Build and tooling code that executes during a release. Splitting the workflow keeps this out
+# of the job holding the npm credential, so none of it can mint publish authority any more --
+# but it still runs in the build job and still decides what ends up inside the tarballs.
+# vite.config.js shapes the published @dappfence/core bundle directly; scripts/ runs during
+# `npm run check` and the build.
+packages/*/vite.config.js         @coinspect/dappfence-admins
+scripts/                          @coinspect/dappfence-admins
+/eslint.config.js                 @coinspect/dappfence-admins
+
+# Describes the policy the paths above enforce; drift here is a documentation-trust problem,
+# not just a typo.
+docs/release-setup.md             @coinspect/dappfence-admins
+
+# Lockfile: unreviewed changes here are a common way a supply-chain attack slips in.
+package-lock.json                 @coinspect/dappfence-admins
