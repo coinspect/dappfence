@@ -162,17 +162,20 @@ dappfence/
 -   `npm run test:unit` - Run `@dappfence/core` unit tests
 -   `npm run test:e2e` - Build all packages, then run the `@dappfence/test-app` Playwright suite
 -   `npm run build` - Build all packages (core + test-app manifests)
--   `npm run build:prod` - Production build of `@dappfence/core` (minified, obfuscated)
+-   `npm run build:prod` - Production build of `@dappfence/core` (minified, embeds the build commit
+    hash)
 -   `npm run build:watch` - Watch mode: auto-rebuild core + manifests on source changes
 -   `npm run clean` - Remove all build output from every package
 -   `npm run publish:local` - Pack each publishable package as a tarball into `dist/` for use by
     local consumers
--   `npm run publish:all` - Run `check` + `build:prod`, then `npm publish` each publishable package
 -   `npm run check` - Prettier + ESLint + lockfile integrity checks
 -   `npm run check:lock` - Verify `package-lock.json` integrity (supply-chain audit)
 -   `npm run lint` - Run ESLint with auto-fix
 -   `npm run format` - Format code with Prettier
--   `npm run sync-versions` - Bump all publishable packages to a single coordinated version
+-   `npm run sync-versions` - List/check/bump package versions — see `docs/release-setup.md` for the
+    `bump-major-minor`/`bump-patch`/`check` subcommands. There is no local `npm publish` path:
+    publishing only happens through the signed-tag `release.yml` workflow (see
+    `docs/release-setup.md`).
 -   `npm run update-consumer` - Refresh a downstream consumer that links via local `.tgz`
 
 ### Per-Package Scripts
