@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 
 import * as fs from 'node:fs';
-const LIB_FAKE_TIME_PATH = 'libfaketime.so.1'; // 'libfaketimeMT.so.1';
+const LIB_FAKE_TIME_PATH = 'libfaketimeMT.so.1'; // 'libfaketime.so.1' is not thread-safe; Chromium hangs during browser launch
 function findLibFakeTime(searchDir: string): string | undefined {
     try {
         const entries = fs.readdirSync(searchDir, { withFileTypes: true });
@@ -42,6 +42,14 @@ const projectsPerEnv = (env: string) => [
                               // FAKETIME_UPDATE_TIMESTAMP_FILE: '1',
                               // FAKETIME_CACHE_DURATION: '1',
                               FAKETIME_DONT_RESET: '1',
+                              // NO_CACHE is required despite the ~400x slowdown per navigation:
+                              // Chromium's SW 24h-update check runs in a non-renderer process
+                              // (browser/storage-partition). FAKETIME_CACHE_DURATION means each
+                              // process has its own cache window, so setFakeTime can appear to
+                              // land in the renderer (Date.now() shows the jump) while the
+                              // SW-update process still sees stale time, silently false-passing
+                              // or false-failing timing tests. NO_CACHE is the only mode where
+                              // every process sees the jump at the same moment.
                               FAKETIME_NO_CACHE: '1',
                               FAKETIME_DONT_FAKE_MONOTONIC: '1',
                               FAKETIME_TIMESTAMP_FILE: path.join(

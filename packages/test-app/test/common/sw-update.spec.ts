@@ -65,7 +65,7 @@ test.describe('should be able to reload the page from the test server after upgr
 
     test.fixme('should protect even after a call to update', async ({ page, swHelper }) => {
         await swHelper.setServerTestParameters({
-            appName: 'simple-app',
+            appName: 'simple-app-dev',
             appVersion: 'latest',
             saveResponses: true,
         });

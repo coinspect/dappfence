@@ -33,14 +33,22 @@ const matchCspPageEntry = (pages, fileKey) => {
  *     reportSample:            true,                           // include 40-char sample of blocked inline in reports
  *     reportUri:               "https://reports.example/csp", // external endpoint for CSP violation reports; null skips report-uri
  *     reportOnly:              false,                          // when reportUri set, switch to Content-Security-Policy-Report-Only (no enforcement)
+ *     workerSrc:               ["'self'", "https://cdn.example"], // worker-src tokens; null/unset → ["'self'"]. Pass-through: user supplies the exact source expressions (quoted keywords, bare URLs).
+ *     requireTrustedTypesFor:  true,                            // emit `require-trusted-types-for 'script'` — forces DOM sinks through a Trusted Types policy. Apps must call trustedTypes.createPolicy() or sinks throw.
+ *     trustedTypes:            ["default", "my-policy"],        // trusted-types policy allowlist; raw tokens (policy names bare, keywords like 'none' / 'allow-duplicates' quoted). Only emitted when set.
+ *     sandbox:                 ["allow-scripts", "allow-same-origin"], // emit `sandbox <tokens>` — applies iframe-sandbox restrictions to the response document itself. Only emitted when set (opt-in only — this directive cannot be reversed by document content).
  *     pages: { "/": { scripts: ["sha256-..."], attrs: [...] } }
  *   }
  *
  * Loosening model — every *Origins field is additive to a secure default that already
  * includes `'self'` (plus `data:` for img-src, `'unsafe-inline'` for style-src). The
  * manifest can widen origins but cannot introduce `'unsafe-*'` keywords or `*` wildcards.
- * Directives that are always-locked (`script-*`, `worker-src`, `object-src`, `base-uri`)
- * have no manifest knob because loosening them would undermine the model.
+ * Directives that are always-locked (`script-*`, `object-src`, `base-uri`) have no
+ * manifest knob because loosening them would undermine the model. `worker-src` is
+ * pass-through (default `'self'`): apps can tighten (e.g. `['none']` to block all
+ * worker/SW registration — note: this bricks our own SW's `registration.update()`
+ * calls but Chromium's 24h Soft Update bypasses CSP anyway, see crbug.com/40083537)
+ * or widen (allow specific worker URLs) at their own discretion.
  *
  * Emission rules:
  *   - `form-action` is always emitted (`'self' + formActionOrigins`). It does NOT fall
@@ -77,9 +85,11 @@ const matchCspPageEntry = (pages, fileKey) => {
  * (strict-dynamic ignores all origin allowlists), and the external-script trust that
  * strict-dynamic would otherwise propagate is already covered by SW-level verification.
  *
- * `worker-src 'self'` is required because DappFence registers its own service worker from
- * the page context. `'self'` cannot be tightened to a specific path portably; the browser
- * already enforces that service workers must be same-origin regardless of CSP.
+ * `worker-src` defaults to `'self'` because DappFence registers its own service worker
+ * from the page context. `csp.workerSrc` fully replaces the directive when set — the
+ * browser already enforces that service workers must be same-origin regardless of CSP,
+ * so narrowing to a specific URL list is only useful against sibling-SW registration
+ * attempts from attacker-controlled page JS.
  *
  * @param {string} fileKey - resolved manifest key for the requested page
  * @param {Response} response - origin response; its headers are copied, origin CSP
@@ -136,7 +146,7 @@ export function buildCspHeader(fileKey, response, manifest, nonce) {
         `font-src ${fontSrcParts.join(' ')}`,
         `connect-src ${connectSrcParts.join(' ')}`,
         `manifest-src ${manifestSrcParts.join(' ')}`,
-        "worker-src 'self'",
+        `worker-src ${(csp.workerSrc ?? ["'self'"]).join(' ')}`,
         "object-src 'none'",
         "base-uri 'none'",
         `frame-ancestors ${frameAncestorsParts.join(' ')}`,
@@ -162,6 +172,25 @@ export function buildCspHeader(fileKey, response, manifest, nonce) {
 
     if (upgradeInsecureRequests) {
         directives.push('upgrade-insecure-requests');
+    }
+
+    // Trusted Types — DOM-XSS defense-in-depth. require-trusted-types-for forces
+    // sinks (innerHTML, eval, etc.) through a Trusted Types policy; trusted-types
+    // allowlists which policy names createPolicy() may use. Both opt-in — adding
+    // either without the other is a valid partial deployment (allowlist a set of
+    // policies before flipping require on).
+    if (csp.requireTrustedTypesFor) {
+        directives.push("require-trusted-types-for 'script'");
+    }
+    if (csp.trustedTypes && csp.trustedTypes.length > 0) {
+        directives.push(`trusted-types ${csp.trustedTypes.join(' ')}`);
+    }
+
+    // sandbox — opt-in only, cannot be reversed by document content. Empty array
+    // is deliberate: `sandbox` with no tokens is the strictest form (no scripts,
+    // no same-origin, no forms, …). Non-empty takes raw allow-* tokens pass-through.
+    if (csp.sandbox) {
+        directives.push(`sandbox ${csp.sandbox.join(' ')}`.trimEnd());
     }
 
     // Reporting is opt-in: only emit `report-uri` when the manifest declares an

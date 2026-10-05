@@ -12,6 +12,7 @@ import type {
 } from '@playwright/test';
 import type { PageFunction } from 'playwright-core/types/structs';
 import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
 
 declare global {
     interface Window {
@@ -193,7 +194,13 @@ function initScript({ page_key, sw_url }) {
 }
 
 async function writeAndSync(file: string, content: string) {
-    fs.writeFileSync(file, content, { flush: true });
+    // libfaketime re-reads FAKETIME_TIMESTAMP_FILE on every clock syscall (FAKETIME_NO_CACHE=1).
+    // writeFileSync does open(O_TRUNC)+write, leaving the file 0 bytes between the two syscalls;
+    // a concurrent reader sees empty content, fails to parse, and crashes Chromium. Write to a
+    // sibling and rename for atomicity on the same filesystem.
+    const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+    fs.writeFileSync(tmp, content, { flush: true });
+    fs.renameSync(tmp, file);
 }
 
 async function swHelper(
