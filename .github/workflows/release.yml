@@ -188,6 +188,18 @@ jobs:
             - name: Audit dependency registry signatures
               run: npm audit signatures
 
+            # @dappfence/astro and @dappfence/vite copy core's built bundle during their
+            # tests, so dist/ has to exist first. It is gitignored, so a fresh checkout
+            # never has it. The root `npm test` script builds before testing for exactly
+            # this reason, but we invoke the workspaces directly to run only the
+            # publishable ones -- which bypasses that script.
+            #
+            # No TEST=1 here, unlike the root script: that flag only overlays e2e feature
+            # flags for the plain-HTTP dev server. These tests just need the file present,
+            # and a default build is closer to what actually gets released.
+            - name: Build @dappfence/core (its bundle is a test fixture)
+              run: npm run build -w @dappfence/core
+
             - name: Unit tests (publishable packages)
               run: |
                   set -euo pipefail
