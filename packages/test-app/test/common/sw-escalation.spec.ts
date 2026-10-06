@@ -172,3 +172,31 @@ test('tamper blocks even when multiple manifest versions are in history', async 
     await page.waitForURL(/.*\/sw-api/);
     await expect(page.getByText('Security Warning')).toBeVisible();
 });
+
+test('sub-resource mismatch after pinning deploy escalates to fresh manifest fetch', async ({
+    page,
+    swHelper,
+}, testInfo) => {
+    // Install SW at 1.0.1 and reload so the SW handles the navigation and pins
+    // the client to the 1.0.1 manifest.
+    await swHelper.setVersion('1.0.1');
+    await activateSW({ page, swHelper }, testInfo);
+    const r1 = await page.reload();
+    expect(r1?.fromServiceWorker()).toBeTruthy();
+
+    await swHelper.setVersion('latest');
+    // When we take a different version from a valid version, it still fails.
+    const result = await page.evaluate(
+        () =>
+            new Promise<string>((resolve) => {
+                const s = document.createElement('script');
+                s.src = '/dappfence.js';
+                s.onload = () => resolve('loaded');
+                s.onerror = () => resolve('error');
+                document.head.appendChild(s);
+            })
+    );
+    expect(result).toBe('loaded');
+    // Ensure the page is not redirected to the security warning page (fixed).
+    await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+});
