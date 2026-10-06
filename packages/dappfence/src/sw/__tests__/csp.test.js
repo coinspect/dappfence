@@ -407,4 +407,75 @@ describe('buildCspHeader — origin CSP stripping', () => {
         expect(headers.get('Content-Type')).toBe('text/html; charset=utf-8');
         expect(headers.get('Cache-Control')).toBe('no-store');
     });
+
+    describe('worker-src', () => {
+        it("defaults to 'self' when manifest.csp.workerSrc is unset", () => {
+            expect(csp({})).toContain("worker-src 'self'");
+        });
+
+        it('passes through a string value as-is', () => {
+            expect(csp({ csp: { workerSrc: "'none'" } })).toContain("worker-src 'none'");
+        });
+
+        it('passes through an array as space-joined tokens', () => {
+            const header = csp({
+                csp: { workerSrc: ["'self'", 'https://cdn.example.com'] },
+            });
+            expect(header).toContain("worker-src 'self' https://cdn.example.com");
+        });
+
+        it("falls back to 'self' when workerSrc is not a string or array", () => {
+            expect(csp({ csp: { workerSrc: 42 } })).toContain("worker-src 'self'");
+        });
+    });
+
+    describe('Trusted Types', () => {
+        it('omits both directives when neither manifest field is set', () => {
+            const header = csp({});
+            expect(header).not.toContain('require-trusted-types-for');
+            expect(header).not.toContain('trusted-types');
+        });
+
+        it("emits require-trusted-types-for 'script' when the manifest asks for it", () => {
+            expect(csp({ csp: { requireTrustedTypesFor: true } })).toContain(
+                "require-trusted-types-for 'script'"
+            );
+        });
+
+        it('emits trusted-types with pass-through tokens', () => {
+            const header = csp({
+                csp: { trustedTypes: ['default', 'my-policy', "'allow-duplicates'"] },
+            });
+            expect(header).toContain("trusted-types default my-policy 'allow-duplicates'");
+        });
+
+        it('allows one directive without the other (partial rollout)', () => {
+            const requireOnly = csp({ csp: { requireTrustedTypesFor: true } });
+            expect(requireOnly).toContain('require-trusted-types-for');
+            expect(requireOnly).not.toContain('trusted-types ');
+
+            const typesOnly = csp({ csp: { trustedTypes: ['default'] } });
+            expect(typesOnly).toContain('trusted-types default');
+            expect(typesOnly).not.toContain('require-trusted-types-for');
+        });
+    });
+
+    describe('sandbox', () => {
+        it('is not emitted when the manifest does not set it', () => {
+            expect(csp({})).not.toContain('sandbox');
+        });
+
+        it('emits a bare `sandbox` directive for an empty array (full lockdown)', () => {
+            // Empty tokens list is the strictest form of sandbox in the CSP spec.
+            const header = csp({ csp: { sandbox: [] } });
+            expect(header).toMatch(/(^|; )sandbox(;|$)/);
+        });
+
+        it('passes through allow-* tokens as space-joined', () => {
+            const header = csp({
+                csp: { sandbox: ['allow-scripts', 'allow-same-origin'] },
+            });
+            expect(header).toContain('sandbox allow-scripts allow-same-origin');
+        });
+    });
 });

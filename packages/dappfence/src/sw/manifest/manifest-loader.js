@@ -83,6 +83,41 @@ export const normalizeManifestData = (manifestData) => {
         fontOrigins: arr(rawCsp.fontOrigins),
         styleOrigins: arr(rawCsp.styleOrigins),
         frameAncestors: arr(rawCsp.frameAncestors),
+        // Pass-through: user supplies fully-formed CSP source tokens (keywords
+        // like 'self' / 'none' / 'strict-dynamic' include their own quotes; URLs
+        // and schemes are bare). Null = unset → csp.js defaults to `'self'`.
+        workerSrc:
+            typeof rawCsp.workerSrc === 'string'
+                ? [rawCsp.workerSrc]
+                : Array.isArray(rawCsp.workerSrc)
+                  ? rawCsp.workerSrc.filter((s) => typeof s === 'string')
+                  : null,
+        // DOM-XSS defense-in-depth. `require-trusted-types-for 'script'` forces
+        // every DOM sink (innerHTML, eval, etc.) through a Trusted Types policy
+        // before executing. The only currently-defined sink group is 'script',
+        // so this is a boolean. `trusted-types <names>` allowlists which policy
+        // names may be created with trustedTypes.createPolicy(). Pass-through:
+        // user supplies raw tokens (policy names bare, keywords like 'none' /
+        // 'allow-duplicates' quoted).
+        requireTrustedTypesFor:
+            rawCsp.requireTrustedTypesFor === true || rawCsp.requireTrustedTypesFor === 'script',
+        trustedTypes:
+            typeof rawCsp.trustedTypes === 'string'
+                ? [rawCsp.trustedTypes]
+                : Array.isArray(rawCsp.trustedTypes)
+                  ? rawCsp.trustedTypes.filter((s) => typeof s === 'string')
+                  : null,
+        // iframe-sandbox restrictions applied to the response document itself.
+        // Empty array → full lockdown; non-empty → whatever allow-* tokens the
+        // user provides. Only emitted when set (never-default: this directive
+        // cannot be reversed by anything in the document, so emission is strictly
+        // opt-in).
+        sandbox:
+            typeof rawCsp.sandbox === 'string'
+                ? [rawCsp.sandbox]
+                : Array.isArray(rawCsp.sandbox)
+                  ? rawCsp.sandbox.filter((s) => typeof s === 'string')
+                  : null,
         upgradeInsecureRequests:
             typeof rawCsp.upgradeInsecureRequests === 'boolean'
                 ? rawCsp.upgradeInsecureRequests

@@ -1,13 +1,17 @@
 import { expect, test } from '../sw-fixtures';
 import type { Page } from '@playwright/test';
 
+// libfaketime adds significant syscall overhead; Chromium launch + page setup
+// can exceed Playwright's 30s default. Give these tests headroom.
+test.setTimeout(120_000);
+
 test.describe('Fake Time - Basic Functionality', () => {
     ['once', 'again'].forEach((x) =>
         test(`verifies time manipulation can be performed ${x} - forward and backward time travel with validation`, async ({
             page,
             swHelper,
         }) => {
-            await swHelper.setVersion('latest', 'simple-app');
+            await swHelper.setVersion('latest', 'simple-app-dev');
             await page.goto('/sign.html');
 
             await expect(page).toHaveTitle('Personal Message Signing');
@@ -58,12 +62,12 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
         baseURL,
         swHelper,
     }) => {
-        await swHelper.setVersion('latest', 'simple-app');
+        await swHelper.setVersion('latest', 'simple-app-dev');
         const initial = await getBrowserFetch(page, baseURL);
-        await swHelper.setVersion('1.0.1', 'simple-app');
+        await swHelper.setVersion('1.0.1', 'simple-app-dev');
         const ver1 = await getBrowserFetch(page, baseURL);
         expect(ver1).not.toEqual(initial);
-        await swHelper.setVersion('latest', 'simple-app');
+        await swHelper.setVersion('latest', 'simple-app-dev');
         expect(await getBrowserFetch(page, baseURL)).not.toEqual(ver1);
     });
 
@@ -73,7 +77,7 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
         baseURL,
     }) => {
         await swHelper.setServerTestParameters({
-            appName: 'simple-app',
+            appName: 'simple-app-dev',
             appVersion: 'latest',
             responseHeaders: [
                 {
@@ -86,7 +90,7 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
         });
 
         const initial = await getBrowserFetch(page, baseURL);
-        await swHelper.setVersion('1.0.1', 'simple-app');
+        await swHelper.setVersion('1.0.1', 'simple-app-dev');
         const ver1 = await getBrowserFetch(page, baseURL);
         expect(ver1).toEqual(initial);
         await swHelper.setVersion('1.0.1', 'latest');
@@ -99,7 +103,7 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
         baseURL,
     }) => {
         await swHelper.setServerTestParameters({
-            appName: 'simple-app',
+            appName: 'simple-app-dev',
             appVersion: 'latest',
             responseHeaders: [
                 {
@@ -113,7 +117,7 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
         const initial = await getBrowserFetch(page, baseURL);
 
         await swHelper.setFakeTime('+30s');
-        await swHelper.setVersion('1.0.1', 'simple-app');
+        await swHelper.setVersion('1.0.1', 'simple-app-dev');
         const initial2 = await getBrowserFetch(page, baseURL);
         expect(initial).toEqual(initial2);
 
@@ -193,7 +197,7 @@ test.describe('Fake Time - HTTP Cache Behavior', () => {
             }
 
             await swHelper.setServerTestParameters({
-                appName: 'simple-app',
+                appName: 'simple-app-dev',
                 appVersion: 'latest',
                 saveResponses: true,
                 responseHeaders: [

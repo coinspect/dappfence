@@ -161,11 +161,17 @@ These tests are **opt-in** because they require libfaketime installed on the hos
 # Install libfaketime (Debian/Ubuntu)
 sudo apt-get install faketime
 
-# Run only the fake-time project
-RUN_FAKETIME_TESTS=1 npx playwright test --config packages/test-app/playwright.config.ts --project=fake-time
+# Run only the fake-time project (dev bundle; matches the default-env convention above)
+RUN_FAKETIME_TESTS=1 npx playwright test --config packages/test-app/playwright.config.ts --project=fake-time-dev
+
+# Prod variant (requires PW_TEST_PROD=1 so the prod projects are generated)
+RUN_FAKETIME_TESTS=1 PW_TEST_PROD=1 npx playwright test --config packages/test-app/playwright.config.ts --project=fake-time-prod
 ```
 
-Without `RUN_FAKETIME_TESTS=1`, the `fake-time` project is excluded from the Playwright config
+The project name is `fake-time-${env}` (see `projectsPerEnv` in `playwright.config.ts`), so bare
+`--project=fake-time` matches nothing.
+
+Without `RUN_FAKETIME_TESTS=1`, the `fake-time-*` projects are excluded from the Playwright config
 entirely, so regular `npm run test` is unaffected.
 
 ### Measurements and results
