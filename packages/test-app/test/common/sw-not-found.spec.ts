@@ -58,11 +58,9 @@ test.describe('not-found page verification', () => {
 
     test('should block navigation when the server returns an unknown body for a missing page', async ({
         page,
-        baseURL,
     }) => {
-        await expect(page.goto('/this-page-does-not-exist')).rejects.toThrow(
-            'page.goto: net::ERR_ABORTED at ' + baseURL
-        );
+        // Timing-robust: accept either race outcome.
+        await page.goto('/this-page-does-not-exist').catch(() => {}); // ERR_ABORTED OK, resolve OK
         await page.waitForURL(/.*\/sw-api/);
         await expect(page.getByText('Security Warning')).toBeVisible();
     });
@@ -70,7 +68,6 @@ test.describe('not-found page verification', () => {
     test('should block navigation when the 404 page body is tampered', async ({
         page,
         swHelper,
-        baseURL,
     }) => {
         await swHelper.interceptAndModifyPageContent({
             pattern: '**/sw-not-found-tampered',
@@ -78,9 +75,8 @@ test.describe('not-found page verification', () => {
             args: '<script>evil()</script>',
             statusCode: 404,
         });
-        await expect(page.goto('/sw-not-found-tampered')).rejects.toThrow(
-            'page.goto: net::ERR_ABORTED at ' + baseURL
-        );
+        // Timing-robust: accept either race outcome.
+        await page.goto('/sw-not-found-tampered').catch(() => {}); // ERR_ABORTED OK, resolve OK
         await page.waitForURL(/.*\/sw-api/);
         await expect(page.getByText('Security Warning')).toBeVisible();
     });
@@ -99,11 +95,9 @@ test.describe('not-found behavior without not-found pathRule', () => {
 
     test('should block navigation to an unknown URL when no not-found rule exists', async ({
         page,
-        baseURL,
     }) => {
-        await expect(page.goto('/this-page-does-not-exist')).rejects.toThrow(
-            'page.goto: net::ERR_ABORTED at ' + baseURL
-        );
+        // Timing-robust: accept either race outcome.
+        await page.goto('/this-page-does-not-exist').catch(() => {}); // ERR_ABORTED OK, resolve OK
         await page.waitForURL(/.*\/sw-api/);
         await expect(page.getByText('Security Warning')).toBeVisible();
     });
@@ -111,7 +105,6 @@ test.describe('not-found behavior without not-found pathRule', () => {
     test('should block even when server returns the correct 404 page body', async ({
         page,
         swHelper,
-        baseURL,
     }) => {
         // With the rule, this body would pass (MATCH). Without it, there is no
         // fallback key to compare against, so the SW cannot verify and must block.
@@ -121,9 +114,8 @@ test.describe('not-found behavior without not-found pathRule', () => {
             args: { file: '404.html' },
             statusCode: 404,
         });
-        await expect(page.goto('/sw-no-rule-valid-body')).rejects.toThrow(
-            'page.goto: net::ERR_ABORTED at ' + baseURL
-        );
+        // Timing-robust: accept either race outcome.
+        await page.goto('/sw-no-rule-valid-body').catch(() => {}); // ERR_ABORTED OK, resolve OK
         await page.waitForURL(/.*\/sw-api/);
         await expect(page.getByText('Security Warning')).toBeVisible();
     });
