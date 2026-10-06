@@ -364,7 +364,12 @@ jobs:
                   fi
 
                   shopt -s nullglob
-                  tarballs=(staging/*.tgz)
+                  # The leading ./ is load-bearing -- do not "tidy" it away. npm parses a
+                  # publish argument with npm-package-arg, which reads "staging/foo.tgz" as
+                  # the GitHub shorthand <owner>/<repo> and tries to clone
+                  # ssh://git@github.com/staging/foo.tgz.git. Only "./staging/foo.tgz" or an
+                  # absolute path is recognised as a file.
+                  tarballs=(./staging/*.tgz)
                   if [ ${#tarballs[@]} -eq 0 ]; then
                     echo "::error::no tarballs in the build artifact — nothing to publish"
                     exit 1
