@@ -50,6 +50,6 @@
         "@noble/hashes": "2.0.1",
         "@noble/secp256k1": "3.0.0",
         "terser": "5.24.0",
-        "vite": "7.3.2"
+        "vite": "7.3.7"
     }
 }
