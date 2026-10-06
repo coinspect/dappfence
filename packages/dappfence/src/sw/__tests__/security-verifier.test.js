@@ -1,46 +1,31 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createSecurityVerifier } from '../manifest/security-verifier.js';
+/**
+ * Security-specific tests:
+ *   - Leaf-level: securityVerifyAgainstManifest + ACTION_HANDLERS + withCspHeaders.
+ *   - Factory-level: security-only orchestration behaviors (allow-rule pre-check
+ *     in verifyResponse; DENIED_BY_RULE / CSP flows that depend on both the
+ *     action pipeline and the shared escalation).
+ *
+ * Shared factory behavior (pinning, escalation, gate checks, pruning) is tested
+ * in verifier.test.js against both strategies.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createVerifier, securityVerifyAgainstManifest } from '../manifest/security-verifier.js';
+import { isRequestAllowed } from '../manifest/rules.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
-
 const FILE_HASH = 'sha256-abc123';
-const MANIFEST_V1 = {
-    files: { '/index.html': [FILE_HASH] },
-    pathRules: [{ type: 'directory-index' }],
-    contentRules: [],
-    mode: 'protected',
-};
-const MANIFEST_V2 = {
-    files: { '/index.html': ['sha256-newHash'] },
-    pathRules: [{ type: 'directory-index' }],
-    contentRules: [],
-    mode: 'protected',
-};
-const INFO_V1 = { appVersion: 'v1', manifest: MANIFEST_V1 };
+const LOCATION_HREF = 'https://example.com/sw.js';
 
-// Mock calculateHash so we control what hash a buffer produces.
-// Use importOriginal so verification.js (also imported transitively) still gets
-// recoverEthereumAddress and recoverPersonalSign from the real module.
 vi.mock('../../core/crypto.js', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, calculateHash: vi.fn(() => Promise.resolve(FILE_HASH)) };
 });
 import { calculateHash } from '../../core/crypto.js';
 
-function makeSwContext({ clients = [{ id: 'client-1' }] } = {}) {
-    return {
-        getLocationHref: () => 'https://example.com/sw.js',
-        matchAllClients: vi.fn(() => Promise.resolve(clients)),
-    };
-}
-
-function makeAppStore() {
-    return {
-        verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
-        apiTokenStore: { getApiToken: vi.fn(() => Promise.resolve('test-token')) },
-    };
-}
+beforeEach(() => {
+    calculateHash.mockReset();
+    calculateHash.mockResolvedValue(FILE_HASH);
+});
 
 function makeNav(path = '/') {
     return {
@@ -60,6 +45,12 @@ function makeSubResource(path = '/app.js') {
     };
 }
 
+function makeLeafResponse(bytes = new Uint8Array([1, 2, 3])) {
+    return {
+        getBodyBytes: vi.fn(() => Promise.resolve({ value: bytes })),
+    };
+}
+
 function makeOkResponse() {
     const r = {
         ok: true,
@@ -70,364 +61,275 @@ function makeOkResponse() {
     return r;
 }
 
-function makeVerifier({
-    latestManifest = INFO_V1,
+function makeSwContext() {
+    return {
+        getLocationHref: () => LOCATION_HREF,
+        matchAllClients: vi.fn(() => Promise.resolve([{ id: 'client-1' }])),
+    };
+}
+
+function makeAppStore() {
+    return {
+        verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
+    };
+}
+
+const SECURITY_STRATEGY = {
+    verifyAgainstManifest: securityVerifyAgainstManifest,
+    isAllowed: isRequestAllowed,
+};
+
+function makeFactory({
+    latestManifest,
     historicManifests = [],
-    fetchResult = INFO_V1,
-    clients = [{ id: 'client-1' }],
+    fetchResult = latestManifest,
 } = {}) {
     const fetchAndStoreManifest = vi.fn(() =>
         Promise.resolve({ status: VERIFICATION_STATUS.MATCH, ...fetchResult })
     );
-    const storeManifestFromResponse = vi.fn(() =>
-        Promise.resolve({ status: VERIFICATION_STATUS.MATCH, ...fetchResult })
-    );
     const getManifestHistory = vi.fn(() => Promise.resolve(historicManifests));
-    const swContext = makeSwContext({ clients });
-    const appStore = makeAppStore();
-    const config = { manifestUrl: 'https://example.com/integrity-manifest.json' };
-    const manifestLoader = { fetchAndStoreManifest, storeManifestFromResponse, getManifestHistory };
-
-    const { verifyResponse } = createSecurityVerifier(
-        { swContext, appStore, config },
-        manifestLoader
+    const manifestLoader = {
+        storeManifestFromResponse: vi.fn(),
+        fetchAndStoreManifest,
+        getManifestHistory,
+    };
+    const { verifyResponse } = createVerifier(
+        {
+            swContext: makeSwContext(),
+            appStore: makeAppStore(),
+            config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
+        },
+        manifestLoader,
+        SECURITY_STRATEGY
     );
-
     const verify = (req, response, clientId = 'client-1') =>
         verifyResponse(req, response, clientId, latestManifest);
-
-    return {
-        verifyResponse,
-        verify,
-        fetchAndStoreManifest,
-        storeManifestFromResponse,
-        getManifestHistory,
-        appStore,
-        swContext,
-    };
+    return { verify, verifyResponse, fetchAndStoreManifest, getManifestHistory };
 }
 
-// ── gate checks ───────────────────────────────────────────────────────────────
+// ── leaf: action pipeline semantics ───────────────────────────────────────────
 
-describe('gate checks', () => {
-    it('skips non-GET requests', async () => {
-        const { verify } = makeVerifier();
-        const req = {
-            method: 'POST',
-            mode: 'same-origin',
-            destination: 'script',
-            url: 'https://example.com/api',
-        };
-        const result = await verify(req, makeOkResponse());
+describe('securityVerifyAgainstManifest — action pipeline', () => {
+    const run = (manifest, req = makeSubResource('/index.html'), response = makeLeafResponse()) =>
+        securityVerifyAgainstManifest(req, response, { appVersion: 'v1', manifest }, LOCATION_HREF);
+
+    it('verify action returns MATCH when the hash is in the manifest', async () => {
+        const result = await run({
+            files: { '/index.html': [FILE_HASH] },
+            contentRules: [],
+            pathRules: [{ type: 'directory-index' }],
+        });
+        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+    });
+
+    it('verify action returns MISMATCH when hash differs', async () => {
+        calculateHash.mockResolvedValueOnce('sha256-tampered');
+        const result = await run({
+            files: { '/index.html': [FILE_HASH] },
+            contentRules: [],
+            pathRules: [{ type: 'directory-index' }],
+        });
+        expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
+        expect(result.actualHash).toBe('sha256-tampered');
+        expect(result.expectedHashes).toEqual([FILE_HASH]);
+    });
+
+    it('verify action returns NOT_FOUND_IN_MANIFEST when the fileKey is unknown', async () => {
+        const result = await run(
+            {
+                files: { '/other.js': [FILE_HASH] },
+                contentRules: [],
+                pathRules: [{ type: 'directory-index' }],
+            },
+            makeSubResource('/nowhere.js')
+        );
+        expect(result.status).toBe(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST);
+    });
+
+    it('deny action returns DENIED_BY_RULE without hashing', async () => {
+        const response = makeLeafResponse();
+        const result = await run(
+            {
+                files: {},
+                contentRules: [{ action: { type: 'deny' } }],
+                pathRules: [{ type: 'directory-index' }],
+            },
+            makeSubResource('/anything.js'),
+            response
+        );
+        expect(result.status).toBe(VERIFICATION_STATUS.DENIED_BY_RULE);
+        expect(response.getBodyBytes).not.toHaveBeenCalled();
+    });
+
+    it('allow action returns SKIPPED', async () => {
+        const result = await run({
+            files: {},
+            contentRules: [{ action: { type: 'allow' } }],
+            pathRules: [{ type: 'directory-index' }],
+        });
         expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
     });
 
-    it('allows POST navigate (form submission)', async () => {
-        const { verify } = makeVerifier();
-        const req = {
-            method: 'POST',
-            mode: 'navigate',
-            destination: 'document',
-            url: 'https://example.com/',
-        };
-        const response = makeOkResponse();
-        const result = await verify(req, response);
-        expect(result.status).not.toBe(VERIFICATION_STATUS.SKIPPED);
+    it('rewrite action returns REWRITE', async () => {
+        const result = await run({
+            files: {},
+            contentRules: [{ action: { type: 'rewrite' } }],
+            pathRules: [{ type: 'directory-index' }],
+        });
+        expect(result.status).toBe(VERIFICATION_STATUS.REWRITE);
     });
 
-    it('skips when destination is empty (programmatic fetch)', async () => {
-        const { verify } = makeVerifier();
+    it('csp action returns CSP_PROTECTED (per-route verify opt-out)', async () => {
+        const result = await run(
+            {
+                files: {},
+                contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
+                pathRules: [{ type: 'directory-index' }],
+            },
+            makeNav('/')
+        );
+        expect(result.status).toBe(VERIFICATION_STATUS.CSP_PROTECTED);
+    });
+
+    it('transform action falls through on mismatch, allowing subsequent actions to run', async () => {
+        calculateHash
+            .mockResolvedValueOnce('sha256-stripped-no-match')
+            .mockResolvedValueOnce(FILE_HASH);
+        const result = await run(
+            {
+                files: { '/index.html': [FILE_HASH] },
+                contentRules: [
+                    { action: { type: 'transform', transform: 'netlify-cdp' } },
+                    { action: { type: 'verify' } },
+                ],
+                pathRules: [{ type: 'directory-index' }],
+            },
+            makeNav('/')
+        );
+        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+    });
+
+    it('unknown action is skipped and pipeline continues', async () => {
+        const result = await run(
+            {
+                files: { '/index.html': [FILE_HASH] },
+                contentRules: [
+                    { action: { type: 'unknown-action' } },
+                    { action: { type: 'verify' } },
+                ],
+                pathRules: [{ type: 'directory-index' }],
+            },
+            makeNav('/')
+        );
+        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+    });
+});
+
+// ── leaf: CSP header layering ─────────────────────────────────────────────────
+
+describe('securityVerifyAgainstManifest — CSP header layering', () => {
+    const cspManifest = (cspSection = {}) => ({
+        files: {},
+        contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
+        pathRules: [{ type: 'directory-index' }],
+        csp: cspSection,
+    });
+
+    const run = (manifest) =>
+        securityVerifyAgainstManifest(
+            makeNav('/'),
+            makeLeafResponse(),
+            { appVersion: 'v-csp', manifest },
+            LOCATION_HREF
+        );
+
+    it('document result carries a Content-Security-Policy header', async () => {
+        const result = await run(cspManifest());
+        expect(result.headers).toBeInstanceOf(Headers);
+        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
+    });
+
+    it('surfaces a per-response nonce referenced inside the CSP', async () => {
+        const result = await run(cspManifest());
+        expect(result.nonce).toEqual(expect.any(String));
+        expect(result.nonce.length).toBeGreaterThan(0);
+        expect(result.headers.get('Content-Security-Policy')).toContain(`'nonce-${result.nonce}'`);
+    });
+
+    it('uses script-src-elem with nonce + * for external scripts', async () => {
+        const result = await run(cspManifest());
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain('script-src-elem');
+        expect(csp).toContain(`'nonce-${result.nonce}'`);
+        expect(csp).toContain('*');
+        expect(csp).not.toContain('strict-dynamic');
+    });
+
+    it('includes inline hashes when the page entry matches the page key', async () => {
+        const result = await run(cspManifest({ pages: { '/': ['sha256-abc123'] } }));
+        const csp = result.headers.get('Content-Security-Policy');
+        expect(csp).toContain("'sha256-abc123'");
+    });
+
+    it('manifest.csp.enabled=false skips header injection entirely', async () => {
+        const result = await run(cspManifest({ enabled: false }));
+        expect(result.headers).toBeUndefined();
+        expect(result.nonce).toBeUndefined();
+    });
+
+    it('manifest.csp.enabled=true still emits headers', async () => {
+        const result = await run(cspManifest({ enabled: true }));
+        expect(result.headers).toBeInstanceOf(Headers);
+        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
+    });
+
+    it('CSP_PROTECTED is a non-violating status', () => {
+        expect(VERIFICATION_STATUS.CSP_PROTECTED.isViolation).toBe(false);
+    });
+});
+
+// ── factory: security-only orchestration behavior ─────────────────────────────
+
+describe('verifyResponse — allow-rule pre-check (security only)', () => {
+    it('returns SKIPPED when a content rule allows the request, bypassing opaque REWRITE', async () => {
+        const latestManifest = {
+            appVersion: 'v-allow',
+            manifest: {
+                files: {},
+                pathRules: [],
+                contentRules: [
+                    {
+                        condition: { urlFilter: 'https://cdn.example.com/' },
+                        action: { type: 'allow' },
+                    },
+                ],
+            },
+        };
+        const { verify } = makeFactory({ latestManifest });
+
+        // Opaque executable → shouldSkipVerification would return REWRITE if reached.
+        // The allow-rule pre-check must fire first → SKIPPED.
+        const opaqueResponse = {
+            ok: false,
+            type: 'opaque',
+            arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(8))),
+            clone: vi.fn(function () {
+                return this;
+            }),
+        };
         const req = {
             method: 'GET',
-            mode: 'same-origin',
-            destination: '',
-            url: 'https://example.com/app.js',
+            mode: 'no-cors',
+            destination: 'embed',
+            url: 'https://cdn.example.com/allowed-embed.pdf',
         };
-        const result = await verify(req, makeOkResponse());
+
+        const result = await verify(req, opaqueResponse);
         expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
     });
-
-    it('verifies the manifest file itself via storeManifestFromResponse', async () => {
-        const { verify, storeManifestFromResponse, fetchAndStoreManifest } = makeVerifier();
-        const req = makeSubResource('/integrity-manifest.json');
-        const response = makeOkResponse();
-        const result = await verify(req, response);
-        expect(response.clone).toHaveBeenCalled();
-        const clonedResponse = response.clone.mock.results[0].value;
-        expect(storeManifestFromResponse).toHaveBeenCalledWith(clonedResponse);
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
 });
 
-// ── manifest response clone ───────────────────────────────────────────────────
-
-describe('manifest self-verification — response clone', () => {
-    it('passes a clone to storeManifestFromResponse so the original body stays unconsumed', async () => {
-        // storeManifestFromResponse calls .json(), consuming whatever response it receives.
-        // Without .clone(), the original response body would be used up here, and
-        // the fetch handler's event.respondWith(response) would throw "body already used".
-        let originalConsumed = false;
-        let cloneConsumed = false;
-
-        const clonedResponse = {
-            ok: true,
-            type: 'basic',
-            json: vi.fn(async () => {
-                cloneConsumed = true;
-                return {};
-            }),
-        };
-        const response = {
-            ok: true,
-            type: 'basic',
-            clone: vi.fn(() => clonedResponse),
-            json: vi.fn(async () => {
-                originalConsumed = true;
-                return {};
-            }),
-            arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(8))),
-        };
-
-        const storeManifestFromResponse = vi.fn(async (r) => {
-            await r.json();
-            return { status: VERIFICATION_STATUS.MATCH, appVersion: 'v1', manifest: MANIFEST_V1 };
-        });
-
-        const { verifyResponse } = createSecurityVerifier(
-            {
-                swContext: makeSwContext(),
-                appStore: makeAppStore(),
-                config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
-            },
-            {
-                storeManifestFromResponse,
-                fetchAndStoreManifest: vi.fn(),
-                getManifestHistory: vi.fn(() => Promise.resolve([])),
-            }
-        );
-
-        await verifyResponse(
-            makeSubResource('/integrity-manifest.json'),
-            response,
-            'client-1',
-            null
-        );
-
-        expect(cloneConsumed).toBe(true);
-        expect(originalConsumed).toBe(false);
-    });
-});
-
-// ── step 2: latestManifest ────────────────────────────────────────────────────
-
-describe('step 2 — latestManifest', () => {
-    it('passes when file hash matches latestManifest', async () => {
-        const { verify, fetchAndStoreManifest, getManifestHistory } = makeVerifier();
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        expect(getManifestHistory).not.toHaveBeenCalled();
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-
-    it('pins client to latestManifest on step-2 success', async () => {
-        const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
-        const response = makeOkResponse();
-        await verifyResponse(makeNav('/'), response, 'client-1', INFO_V1);
-
-        // Second request (sub-resource, non-navigation) should use the pin without escalating.
-        fetchAndStoreManifest.mockClear();
-        const response2 = makeOkResponse();
-        const result = await verifyResponse(
-            makeSubResource('/index.html'),
-            response2,
-            'client-1',
-            INFO_V1
-        );
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-
-    it('does not pin when clientId is null', async () => {
-        const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
-        await verifyResponse(makeNav('/'), makeOkResponse(), null, INFO_V1);
-        await verifyResponse(makeSubResource('/index.html'), makeOkResponse(), null, INFO_V1);
-        // Without pinning, step 2 is always re-evaluated (no escalation needed here since it passes).
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-});
-
-// ── step 1: pinned client ─────────────────────────────────────────────────────
-
-describe('step 1 — pinned client', () => {
-    it('uses pinned manifest for sub-resources, no escalation', async () => {
-        const { verifyResponse, fetchAndStoreManifest, getManifestHistory } = makeVerifier();
-        // Pin the client via a navigation.
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-
-        fetchAndStoreManifest.mockClear();
-        getManifestHistory.mockClear();
-
-        // Sub-resource should use the pin directly.
-        const result = await verifyResponse(
-            makeSubResource('/index.html'),
-            makeOkResponse(),
-            'client-1',
-            INFO_V1
-        );
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        expect(getManifestHistory).not.toHaveBeenCalled();
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-
-    it('returns violation without escalating when pinned manifest fails', async () => {
-        const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-        fetchAndStoreManifest.mockClear();
-
-        // Simulate a file whose hash doesn't match the pinned manifest.
-        // applyAction returns null on verify failure so the pipeline falls through
-        // to NOT_FOUND_IN_MANIFEST — still a violation, just not escalated.
-        calculateHash.mockResolvedValueOnce('sha256-tampered');
-        const result = await verifyResponse(
-            makeSubResource('/index.html'),
-            makeOkResponse(),
-            'client-1',
-            INFO_V1
-        );
-        expect(result.status.isViolation).toBe(true);
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-
-    it('bypasses pin for navigation requests', async () => {
-        const { verifyResponse, fetchAndStoreManifest } = makeVerifier();
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-        fetchAndStoreManifest.mockClear();
-
-        // Navigation bypasses pin and re-evaluates (step 2 passes here).
-        const result = await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
-});
-
-// ── step 3: historic manifests ────────────────────────────────────────────────
-
-describe('step 3 — historic manifests', () => {
-    it('falls through to historic manifests when latestManifest fails', async () => {
-        const wrongManifest = { appVersion: 'v-wrong', manifest: MANIFEST_V2 };
-        const { verify, getManifestHistory } = makeVerifier({
-            latestManifest: wrongManifest,
-            historicManifests: [INFO_V1],
-        });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(getManifestHistory).toHaveBeenCalled();
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
-
-    it('skips historic manifest when its appVersion matches latestManifest (already tried)', async () => {
-        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
-            latestManifest: { appVersion: 'v-same', manifest: MANIFEST_V2 },
-            historicManifests: [{ appVersion: 'v-same', manifest: MANIFEST_V2 }],
-            fetchResult: INFO_V1,
-        });
-        // step 2 fails (MANIFEST_V2 has wrong hash), step 3 is same version so skipped,
-        // step 4 returns INFO_V1 which matches.
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(getManifestHistory).toHaveBeenCalled();
-        expect(fetchAndStoreManifest).toHaveBeenCalled();
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
-
-    it('pins client to historic manifest on step-3 success', async () => {
-        const wrongManifest = { appVersion: 'v-wrong', manifest: MANIFEST_V2 };
-        const { verifyResponse, fetchAndStoreManifest } = makeVerifier({
-            latestManifest: wrongManifest,
-            historicManifests: [INFO_V1],
-        });
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', wrongManifest);
-        fetchAndStoreManifest.mockClear();
-
-        const result = await verifyResponse(
-            makeSubResource('/index.html'),
-            makeOkResponse(),
-            'client-1',
-            wrongManifest
-        );
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-});
-
-// ── step 4: network fetch ─────────────────────────────────────────────────────
-
-describe('step 4 — fetchAndStoreManifest (terminal)', () => {
-    it('fetches from network when steps 2 and 3 fail', async () => {
-        const { verify, fetchAndStoreManifest } = makeVerifier({
-            latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
-            findByHashResult: null,
-            fetchResult: INFO_V1,
-        });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(fetchAndStoreManifest).toHaveBeenCalled();
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
-
-    it('returns violation when fresh manifest also fails', async () => {
-        const { verify } = makeVerifier({
-            latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
-            findByHashResult: null,
-            fetchResult: { appVersion: 'v-fresh', manifest: MANIFEST_V2 },
-        });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.status.isViolation).toBe(true);
-    });
-
-    it('falls through to latestManifest result when fetchAndStoreManifest fails', async () => {
-        const fetchAndStoreManifest = vi.fn(() =>
-            Promise.resolve({
-                status: VERIFICATION_STATUS.ERROR,
-                fileKey: '/integrity-manifest.json',
-            })
-        );
-        const { verifyResponse: verify } = createSecurityVerifier(
-            {
-                swContext: makeSwContext(),
-                appStore: makeAppStore(),
-                config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
-            },
-            { fetchAndStoreManifest, getManifestHistory: vi.fn(() => Promise.resolve([])) }
-        );
-        const result = await verify(makeNav('/'), makeOkResponse(), 'client-1', {
-            appVersion: 'v-stale',
-            manifest: MANIFEST_V2,
-        });
-        expect(result.status.isViolation).toBe(true);
-    });
-
-    it('pins client to fresh manifest after step 4', async () => {
-        const { verifyResponse, fetchAndStoreManifest: fetch1 } = makeVerifier({
-            latestManifest: { appVersion: 'v-stale', manifest: MANIFEST_V2 },
-            findByHashResult: null,
-            fetchResult: INFO_V1,
-        });
-        const staleInfo = { appVersion: 'v-stale', manifest: MANIFEST_V2 };
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', staleInfo);
-        fetch1.mockClear();
-
-        const result = await verifyResponse(
-            makeSubResource('/index.html'),
-            makeOkResponse(),
-            'client-1',
-            staleInfo
-        );
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        expect(fetch1).not.toHaveBeenCalled();
-    });
-});
-
-// ── pipeline action semantics ─────────────────────────────────────────────────
-
-describe('pipeline action semantics', () => {
+describe('factory + security leaf — orchestration semantics', () => {
     it('DENIED_BY_RULE stops escalation — does not try historic or fetched manifests', async () => {
         const denyManifest = {
             appVersion: 'v-deny',
@@ -438,7 +340,7 @@ describe('pipeline action semantics', () => {
                 mode: 'protected',
             },
         };
-        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
+        const { verify, getManifestHistory, fetchAndStoreManifest } = makeFactory({
             latestManifest: denyManifest,
         });
         const result = await verify(makeNav('/'), makeOkResponse());
@@ -447,176 +349,22 @@ describe('pipeline action semantics', () => {
         expect(fetchAndStoreManifest).not.toHaveBeenCalled();
     });
 
-    it('verify action returns MISMATCH (not NOT_FOUND_IN_MANIFEST) when hash does not match', async () => {
-        calculateHash.mockResolvedValueOnce('sha256-tampered');
-        const { verify } = makeVerifier();
-        const result = await verify(makeSubResource('/index.html'), makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
-        expect(result.actualHash).toBe('sha256-tampered');
-        expect(result.expectedHashes).toEqual([FILE_HASH]);
-    });
-
-    it('transform action falls through (null) on mismatch, allowing subsequent actions to run', async () => {
-        // The netlify-cdp transform finds no pattern to strip in the mock buffer,
-        // so the transformed hash does not match FILE_HASH → handleTransform returns
-        // null → pipeline continues to the verify action → MATCH.
-        calculateHash
-            .mockResolvedValueOnce('sha256-stripped-no-match') // hash after transform
-            .mockResolvedValueOnce(FILE_HASH); // hash for verify fallback
-
-        const transformManifest = {
-            appVersion: 'v-transform',
+    it('csp action is terminal — does not escalate to historic manifests', async () => {
+        const cspManifestInfo = {
+            appVersion: 'v-csp',
             manifest: {
-                files: { '/index.html': [FILE_HASH] },
-                contentRules: [
-                    { action: { type: 'transform', transform: 'netlify-cdp' } },
-                    { action: { type: 'verify' } },
-                ],
+                files: {},
+                contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
                 pathRules: [{ type: 'directory-index' }],
+                csp: {},
                 mode: 'protected',
             },
         };
-        const { verify } = makeVerifier({ latestManifest: transformManifest });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-    });
-});
-
-// ── csp action + layered CSP headers ─────────────────────────────────────────
-//
-// `csp` action is a per-route opt-out of hash-verify for SSR/dynamic routes:
-// the handler returns CSP_PROTECTED (distinct from SKIPPED, which means
-// "hands off entirely"). CSP headers are layered on document responses by
-// layerCsp when the manifest defines a `csp` section AND the decision is
-// not SKIPPED. See verifier.js § layerCsp.
-
-describe('csp action + layered CSP headers', () => {
-    const cspManifest = (cspSection = {}) => ({
-        appVersion: 'v-csp',
-        manifest: {
-            files: {},
-            contentRules: [{ resourceTypes: ['document'], action: { type: 'csp' } }],
-            pathRules: [{ type: 'directory-index' }],
-            csp: cspSection,
-            mode: 'protected',
-        },
-    });
-
-    it('csp action returns CSP_PROTECTED (route opts out of hash-verify but keeps CSP)', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest() });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.status).toBe(VERIFICATION_STATUS.CSP_PROTECTED);
-    });
-
-    it('CSP_PROTECTED is non-violating', () => {
-        expect(VERIFICATION_STATUS.CSP_PROTECTED.isViolation).toBe(false);
-    });
-
-    it('csp action is terminal — result does not set keepTryingActions', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest() });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.keepTryingActions).toBeFalsy();
-    });
-
-    it('document result carries a Content-Security-Policy header (Headers instance)', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest() });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.headers).toBeInstanceOf(Headers);
-        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
-    });
-
-    it('layered CSP surfaces a per-response nonce', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest() });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.nonce).toEqual(expect.any(String));
-        expect(result.nonce.length).toBeGreaterThan(0);
-        expect(result.headers.get('Content-Security-Policy')).toContain(`'nonce-${result.nonce}'`);
-    });
-
-    it('CSP header uses script-src-elem with nonce + * for external scripts', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest() });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        const csp = result.headers.get('Content-Security-Policy');
-        expect(csp).toContain('script-src-elem');
-        expect(csp).toContain(`'nonce-${result.nonce}'`);
-        expect(csp).toContain('*');
-        expect(csp).not.toContain('strict-dynamic');
-    });
-
-    it('CSP header includes inline hash and * when pages entry matches the page key', async () => {
-        const { verify } = makeVerifier({
-            latestManifest: cspManifest({
-                pages: { '/': ['sha256-abc123'] },
-            }),
-        });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        const csp = result.headers.get('Content-Security-Policy');
-        expect(csp).toContain("'sha256-abc123'");
-        expect(csp).toContain('*');
-        expect(csp).not.toContain('strict-dynamic');
-    });
-
-    it('does not escalate to historic manifests — csp action is terminal', async () => {
-        const { verify, getManifestHistory, fetchAndStoreManifest } = makeVerifier({
-            latestManifest: cspManifest(),
+        const { verify, getManifestHistory, fetchAndStoreManifest } = makeFactory({
+            latestManifest: cspManifestInfo,
         });
         await verify(makeNav('/'), makeOkResponse());
         expect(getManifestHistory).not.toHaveBeenCalled();
         expect(fetchAndStoreManifest).not.toHaveBeenCalled();
-    });
-
-    it('manifest.csp.enabled=false skips header injection entirely (origin CSP passes through)', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest({ enabled: false }) });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.headers).toBeUndefined();
-        expect(result.nonce).toBeUndefined();
-    });
-
-    it('manifest.csp.enabled=true (default) still emits headers', async () => {
-        const { verify } = makeVerifier({ latestManifest: cspManifest({ enabled: true }) });
-        const result = await verify(makeNav('/'), makeOkResponse());
-        expect(result.headers).toBeInstanceOf(Headers);
-        expect(result.headers.get('Content-Security-Policy')).toBeTruthy();
-    });
-});
-
-// ── stale client pruning ──────────────────────────────────────────────────────
-
-describe('stale client pruning', () => {
-    it('calls matchAllClients after pinning', async () => {
-        const { verifyResponse, swContext } = makeVerifier();
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-        await new Promise((r) => setTimeout(r, 0));
-        expect(swContext.matchAllClients).toHaveBeenCalled();
-    });
-
-    it('evicts inactive clients so they re-escalate on next request', async () => {
-        const swContext = makeSwContext({ clients: [] }); // client-1 not active
-        const fetchAndStoreManifest = vi.fn(() =>
-            Promise.resolve({ status: VERIFICATION_STATUS.MATCH, ...INFO_V1 })
-        );
-        const { verifyResponse } = createSecurityVerifier(
-            {
-                swContext,
-                appStore: makeAppStore(),
-                config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
-            },
-            { fetchAndStoreManifest, getManifestHistory: vi.fn(() => Promise.resolve([])) }
-        );
-
-        // First call pins client-1 (but pruning evicts it immediately).
-        await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
-        await new Promise((r) => setTimeout(r, 0));
-        fetchAndStoreManifest.mockClear();
-
-        // Second call (sub-resource) — client evicted, so no pin, escalates to step 4.
-        const staleInfo = { appVersion: 'v-stale', manifest: MANIFEST_V2 };
-        await verifyResponse(
-            makeSubResource('/index.html'),
-            makeOkResponse(),
-            'client-1',
-            staleInfo
-        );
-        expect(fetchAndStoreManifest).toHaveBeenCalled();
     });
 });
