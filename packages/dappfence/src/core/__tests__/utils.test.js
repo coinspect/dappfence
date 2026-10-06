@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createSingleFlight, isFeatureEnabled } from '../utils.js';
+import { createSingleFlight, isFeatureEnabled, once } from '../utils.js';
 
 describe('createSingleFlight', () => {
     it('returns the result of the function', async () => {
@@ -37,6 +37,42 @@ describe('createSingleFlight', () => {
         const result = await sf(fn);
         expect(result).toBe('ok');
         expect(fn).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('once', () => {
+    it('invokes the wrapped function the first time and returns its result', () => {
+        const fn = vi.fn(() => 'hello');
+        const wrapped = once(fn);
+        expect(wrapped()).toBe('hello');
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the same cached result on subsequent calls without re-invoking', () => {
+        const fn = vi.fn().mockReturnValueOnce('first').mockReturnValueOnce('second');
+        const wrapped = once(fn);
+        expect(wrapped()).toBe('first');
+        expect(wrapped()).toBe('first');
+        expect(wrapped()).toBe('first');
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('caches null / undefined / falsy results instead of re-invoking', () => {
+        const fn = vi.fn(() => null);
+        const wrapped = once(fn);
+        expect(wrapped()).toBeNull();
+        expect(wrapped()).toBeNull();
+        expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('caches the returned promise so async work runs once', async () => {
+        const fn = vi.fn().mockResolvedValue('async-result');
+        const wrapped = once(fn);
+        const [a, b, c] = await Promise.all([wrapped(), wrapped(), wrapped()]);
+        expect(a).toBe('async-result');
+        expect(b).toBe('async-result');
+        expect(c).toBe('async-result');
+        expect(fn).toHaveBeenCalledTimes(1);
     });
 });
 

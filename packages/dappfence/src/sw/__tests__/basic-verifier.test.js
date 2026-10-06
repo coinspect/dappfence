@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { basicVerifyAgainstManifest } from '../manifest/security-verifier.js';
+import { makeResponseWrapper } from '../manifest/html/response-wrapper.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 
 const FILE_HASH = 'sha256-abc123';
@@ -40,9 +41,17 @@ function makeReq(path = '/index.html') {
 }
 
 function makeResponse(bytes = new Uint8Array([1, 2, 3])) {
-    return {
-        getBodyBytes: vi.fn(() => Promise.resolve({ value: bytes })),
-    };
+    return makeResponseWrapper({
+        ok: true,
+        clone: () => ({ arrayBuffer: () => Promise.resolve(bytes.buffer) }),
+    });
+}
+
+function makeFailingResponse() {
+    return makeResponseWrapper({
+        ok: true,
+        clone: () => ({ arrayBuffer: () => Promise.reject(new Error('boom')) }),
+    });
 }
 
 describe('basicVerifyAgainstManifest', () => {
@@ -84,12 +93,9 @@ describe('basicVerifyAgainstManifest', () => {
     });
 
     it('propagates body-read errors as the error status', async () => {
-        const response = {
-            getBodyBytes: vi.fn(() => Promise.resolve({ status: VERIFICATION_STATUS.ERROR })),
-        };
         const result = await basicVerifyAgainstManifest(
             makeReq('/index.html'),
-            response,
+            makeFailingResponse(),
             MANIFEST_INFO,
             LOCATION_HREF
         );

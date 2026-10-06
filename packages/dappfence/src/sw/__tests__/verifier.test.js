@@ -480,6 +480,24 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
         });
     });
 
+    describe('body-hash caching across escalation', () => {
+        it('hashes the response body once per request even when escalating through multiple manifests', async () => {
+            // latest + 2 historic + fetched = 4 manifest attempts; only the fetched
+            // one has the right hash. Without caching, calculateHash fires per attempt.
+            const { verify } = makeFactoryVerifier({
+                latestManifest: { appVersion: 'v-stale-1', manifest: MANIFEST_V2 },
+                historicManifests: [
+                    { appVersion: 'v-stale-2', manifest: MANIFEST_V2 },
+                    { appVersion: 'v-stale-3', manifest: MANIFEST_V2 },
+                ],
+                fetchResult: INFO_V1,
+            });
+            const result = await verify(makeNav('/'), makeOkResponse());
+            expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+            expect(calculateHash).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('stale client pruning', () => {
         it('calls matchAllClients after pinning', async () => {
             const { verifyResponse, swContext } = makeFactoryVerifier();
