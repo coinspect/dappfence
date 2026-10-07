@@ -36,6 +36,27 @@ export function createSingleFlight() {
     };
 }
 
+/**
+ * Wraps a zero-arg function so it runs on the first call and every subsequent
+ * call returns the cached result — permanent cache for the wrapper's lifetime.
+ * Works for sync and async; unlike createSingleFlight, the cached value is NOT
+ * cleared on resolve.
+ * @template T
+ * @param {() => T} fn
+ * @returns {() => T}
+ */
+export function once(fn) {
+    let result;
+    let called = false;
+    return () => {
+        if (!called) {
+            result = fn();
+            called = true;
+        }
+        return result;
+    };
+}
+
 export function hasConfigManifest(config) {
     return !!(
         config.manifestUrl &&

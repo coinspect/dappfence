@@ -8,10 +8,11 @@
  * Shared factory behavior (pinning, escalation, gate checks, pruning) is tested
  * in verifier.test.js against both strategies.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createVerifier, securityVerifyAgainstManifest } from '../manifest/security-verifier.js';
 import { isRequestAllowed } from '../manifest/rules.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { calculateHash } from '../../core/crypto.js';
 
 const FILE_HASH = 'sha256-abc123';
 const LOCATION_HREF = 'https://example.com/sw.js';
@@ -20,7 +21,6 @@ vi.mock('../../core/crypto.js', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, calculateHash: vi.fn(() => Promise.resolve(FILE_HASH)) };
 });
-import { calculateHash } from '../../core/crypto.js';
 
 beforeEach(() => {
     calculateHash.mockReset();
@@ -48,6 +48,7 @@ function makeSubResource(path = '/app.js') {
 function makeLeafResponse(bytes = new Uint8Array([1, 2, 3])) {
     return {
         getBodyBytes: vi.fn(() => Promise.resolve({ value: bytes })),
+        calculateBodyHash: vi.fn(async () => ({ value: await calculateHash(bytes) })),
     };
 }
 

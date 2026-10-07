@@ -26,7 +26,6 @@ import { isFeatureEnabled } from '../../core/utils.js';
 import { toPathname } from './verification.js';
 import { buildCspHeader } from './csp.js';
 import { createLogger } from '../../core/logger.js';
-import { calculateHash } from '../../core/crypto.js';
 import { makeResponseWrapper } from './html/response-wrapper.js';
 import { handleTransform } from './html/transforms.js';
 
@@ -63,12 +62,12 @@ const ACTION_HANDLERS = {
         return { status: VERIFICATION_STATUS.CSP_PROTECTED };
     },
     verify: async (fileKey, response, manifestInfo) => {
-        const bytes = await response.getBodyBytes();
-        if (bytes.status) {
-            return bytes;
+        const hash = await response.calculateBodyHash();
+        if (hash.status) {
+            return hash;
         }
+        const actualHash = hash.value;
         const { appVersion, manifest } = manifestInfo;
-        const actualHash = await calculateHash(bytes.value);
         const expectedHashes = manifest.files[fileKey] ?? [];
         logger.log(
             `Using manifest ${appVersion} for ${fileKey} hash ${actualHash} expected: ${expectedHashes.join(', ')}`
@@ -372,14 +371,14 @@ export const createVerifier = (
 };
 
 export const basicVerifyAgainstManifest = async (req, response, manifestInfo, locationHref) => {
-    const bytes = await response.getBodyBytes();
-    if (bytes.status) {
-        return { status: bytes.status, fileKey: toPathname(req.url, locationHref) };
+    const hash = await response.calculateBodyHash();
+    if (hash.status) {
+        return { status: hash.status, fileKey: toPathname(req.url, locationHref) };
     }
+    const actualHash = hash.value;
     const { manifest, appVersion } = manifestInfo;
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
     const expectedHashes = manifest.files[fileKey] ?? [];
-    const actualHash = await calculateHash(bytes.value);
     logger.log(
         `Using manifest ${appVersion} for ${fileKey} hash ${actualHash} expected: ${expectedHashes.join(', ')}`
     );
