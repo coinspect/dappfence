@@ -71,8 +71,8 @@ export const VERIFICATION_STATUS = Object.freeze({
 /**
  * @typedef {'NULL_RESPONSE'
  *         | 'BODY_UNREADABLE'
- *         | 'FETCH_NOT_OK'
- *         | 'FETCH_FAILED'
+ *         | 'FETCH_BAD_STATUS'
+ *         | 'FETCH_EXCEPTION'
  *         } AssetErrorReason
  */
 

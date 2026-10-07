@@ -142,7 +142,7 @@ export async function verifyLocation({ swContext, manifestService }, url) {
             logger.error(`Failed to fetch ${url}: ${response.status}`);
             return {
                 status: VERIFICATION_STATUS.ERROR,
-                reason: 'FETCH_NOT_OK',
+                reason: 'FETCH_BAD_STATUS',
                 httpStatus: response.status,
             };
         }
@@ -150,7 +150,7 @@ export async function verifyLocation({ swContext, manifestService }, url) {
     } catch (error) {
         logger.error(`Error verifying ${url}:`, error);
     }
-    return { status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_FAILED' };
+    return { status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_EXCEPTION' };
 }
 
 /**

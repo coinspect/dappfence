@@ -16,8 +16,8 @@ import { createLogger } from '../../core/logger.js';
  *         | 'UNSUPPORTED_SIGNATURE'
  *         | 'SIGNATURE_ERROR'
  *         | 'MANIFEST_PARSE_ERROR'
- *         | 'MANIFEST_FETCH_NOT_OK'
- *         | 'MANIFEST_FETCH_FAILED'
+ *         | 'MANIFEST_FETCH_BAD_STATUS'
+ *         | 'MANIFEST_FETCH_EXCEPTION'
  *         | 'CONFIG_ERROR'
  *         } ManifestLoadReason
  */
@@ -244,7 +244,7 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             logger.error(`Failed to load manifest: ${response?.status} ${response?.statusText}`);
             return manifestResult({
                 status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
-                reason: 'MANIFEST_FETCH_NOT_OK',
+                reason: 'MANIFEST_FETCH_BAD_STATUS',
                 httpStatus: response?.status,
             });
         } catch (error) {
@@ -252,7 +252,7 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
         }
         return manifestResult({
             status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
-            reason: 'MANIFEST_FETCH_FAILED',
+            reason: 'MANIFEST_FETCH_EXCEPTION',
         });
     };
 

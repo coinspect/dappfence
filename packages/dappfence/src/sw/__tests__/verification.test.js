@@ -122,12 +122,12 @@ describe('verifyLocation', () => {
         expect(verifyResponse).not.toHaveBeenCalled();
         expect(result).toEqual({
             status: VERIFICATION_STATUS.ERROR,
-            reason: 'FETCH_NOT_OK',
+            reason: 'FETCH_BAD_STATUS',
             httpStatus: 500,
         });
     });
 
-    it('returns ERROR with FETCH_FAILED reason when fetch throws', async () => {
+    it('returns ERROR with FETCH_EXCEPTION reason when fetch throws', async () => {
         const verifyResponse = vi.fn();
         const deps = {
             swContext: {
@@ -139,7 +139,7 @@ describe('verifyLocation', () => {
 
         const result = await verifyLocation(deps, '/lib.js');
 
-        expect(result).toEqual({ status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_FAILED' });
+        expect(result).toEqual({ status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_EXCEPTION' });
     });
 });
 

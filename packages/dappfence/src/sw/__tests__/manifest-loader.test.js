@@ -86,30 +86,30 @@ describe('fetchAndStoreManifest', () => {
     });
 
     describe('fetch errors', () => {
-        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_NOT_OK reason when response is not ok', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_BAD_STATUS reason when response is not ok', async () => {
             const swContext = makeSwContext({
                 fetchResult: { ok: false, status: 404, statusText: 'Not Found' },
             });
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
             expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
-            expect(result.reason).toBe('MANIFEST_FETCH_NOT_OK');
+            expect(result.reason).toBe('MANIFEST_FETCH_BAD_STATUS');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_NOT_OK reason when response is null', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_BAD_STATUS reason when response is null', async () => {
             const swContext = makeSwContext({ fetchResult: null });
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
             expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
-            expect(result.reason).toBe('MANIFEST_FETCH_NOT_OK');
+            expect(result.reason).toBe('MANIFEST_FETCH_BAD_STATUS');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_FAILED reason when fetch throws', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_EXCEPTION reason when fetch throws', async () => {
             const swContext = makeSwContext();
             swContext.fetch.mockRejectedValue(new Error('network error'));
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
             expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
-            expect(result.reason).toBe('MANIFEST_FETCH_FAILED');
+            expect(result.reason).toBe('MANIFEST_FETCH_EXCEPTION');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
