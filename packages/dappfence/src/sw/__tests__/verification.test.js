@@ -57,9 +57,10 @@ describe('toPathname', () => {
 });
 
 describe('verifyManifestSignature', () => {
-    it('returns UNSUPPORTED_SIGNATURE for unknown signature types', () => {
+    it('returns MANIFEST_UNTRUSTED with UNSUPPORTED_SIGNATURE reason for unknown signature types', () => {
         const result = verifyManifestSignature('unknown-type', '0xABC', { pay: {}, sig: 'sig' });
-        expect(result.status).toBe(VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE);
+        expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+        expect(result.reason).toBe('UNSUPPORTED_SIGNATURE');
     });
 });
 
@@ -119,10 +120,14 @@ describe('verifyLocation', () => {
         const result = await verifyLocation(deps, '/missing.js');
 
         expect(verifyResponse).not.toHaveBeenCalled();
-        expect(result).toEqual({ status: VERIFICATION_STATUS.ERROR, httpStatus: 500 });
+        expect(result).toEqual({
+            status: VERIFICATION_STATUS.ERROR,
+            reason: 'FETCH_NOT_OK',
+            httpStatus: 500,
+        });
     });
 
-    it('returns ERROR when fetch throws', async () => {
+    it('returns ERROR with FETCH_FAILED reason when fetch throws', async () => {
         const verifyResponse = vi.fn();
         const deps = {
             swContext: {
@@ -134,7 +139,7 @@ describe('verifyLocation', () => {
 
         const result = await verifyLocation(deps, '/lib.js');
 
-        expect(result).toEqual({ status: VERIFICATION_STATUS.ERROR });
+        expect(result).toEqual({ status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_FAILED' });
     });
 });
 

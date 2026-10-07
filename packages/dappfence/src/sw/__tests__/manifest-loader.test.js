@@ -59,51 +59,57 @@ describe('fetchAndStoreManifest', () => {
     beforeEach(() => vi.clearAllMocks());
 
     describe('config validation', () => {
-        it('returns CONFIG_ERROR when manifestUrl is missing', async () => {
+        it('returns MANIFEST_UNTRUSTED with CONFIG_ERROR reason when manifestUrl is missing', async () => {
             const result = await makeLoader({
                 config: makeConfig({ manifestUrl: null }),
             }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.CONFIG_ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('CONFIG_ERROR');
             expect(result.assetType).toBe(ASSET_TYPE.MANIFEST);
         });
 
-        it('returns CONFIG_ERROR when manifestSignatureType is missing', async () => {
+        it('returns MANIFEST_UNTRUSTED with CONFIG_ERROR reason when manifestSignatureType is missing', async () => {
             const result = await makeLoader({
                 config: makeConfig({ manifestSignatureType: null }),
             }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.CONFIG_ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('CONFIG_ERROR');
         });
 
-        it('returns CONFIG_ERROR when manifestSignatureIdentity is missing', async () => {
+        it('returns MANIFEST_UNTRUSTED with CONFIG_ERROR reason when manifestSignatureIdentity is missing', async () => {
             const result = await makeLoader({
                 config: makeConfig({ manifestSignatureIdentity: null }),
             }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.CONFIG_ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('CONFIG_ERROR');
         });
     });
 
     describe('fetch errors', () => {
-        it('returns ERROR with fileKey when response is not ok', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_NOT_OK reason when response is not ok', async () => {
             const swContext = makeSwContext({
                 fetchResult: { ok: false, status: 404, statusText: 'Not Found' },
             });
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('MANIFEST_FETCH_NOT_OK');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('returns ERROR with fileKey when response is null', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_NOT_OK reason when response is null', async () => {
             const swContext = makeSwContext({ fetchResult: null });
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('MANIFEST_FETCH_NOT_OK');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('returns ERROR when fetch throws', async () => {
+        it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_FAILED reason when fetch throws', async () => {
             const swContext = makeSwContext();
             swContext.fetch.mockRejectedValue(new Error('network error'));
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('MANIFEST_FETCH_FAILED');
             expect(result.fileKey).toBe('/manifest.json');
         });
 
@@ -127,22 +133,26 @@ describe('fetchAndStoreManifest', () => {
     describe('signature verification', () => {
         it('returns violation enriched with assetType and fileKey when signature is a mismatch', async () => {
             verifyManifestSignature.mockReturnValue({
-                status: VERIFICATION_STATUS.MISMATCH,
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'SIGNATURE_MISMATCH',
                 expectedHashes: ['addr-expected'],
                 actualHash: 'addr-got',
             });
             const result = await makeLoader().fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('SIGNATURE_MISMATCH');
             expect(result.assetType).toBe(ASSET_TYPE.MANIFEST);
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('returns UNSUPPORTED_SIGNATURE violation with assetType and fileKey', async () => {
+        it('returns MANIFEST_UNTRUSTED violation with assetType and fileKey when signature type is unknown', async () => {
             verifyManifestSignature.mockReturnValue({
-                status: VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE,
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'UNSUPPORTED_SIGNATURE',
             });
             const result = await makeLoader().fetchAndStoreManifest();
-            expect(result.status).toBe(VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE);
+            expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+            expect(result.reason).toBe('UNSUPPORTED_SIGNATURE');
             expect(result.assetType).toBe(ASSET_TYPE.MANIFEST);
             expect(result.fileKey).toBe('/manifest.json');
         });

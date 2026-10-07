@@ -10,6 +10,39 @@ import { createSingleFlight, hasConfigManifest } from '../../core/utils.js';
 import { toPathname, verifyManifestSignature } from './verification.js';
 import { createLogger } from '../../core/logger.js';
 
+/**
+ * @typedef {'SIGNER_CHANGED'
+ *         | 'SIGNATURE_MISMATCH'
+ *         | 'UNSUPPORTED_SIGNATURE'
+ *         | 'SIGNATURE_ERROR'
+ *         | 'MANIFEST_PARSE_ERROR'
+ *         | 'MANIFEST_FETCH_NOT_OK'
+ *         | 'MANIFEST_FETCH_FAILED'
+ *         | 'CONFIG_ERROR'
+ *         } ManifestLoadReason
+ */
+
+/** @typedef {import('../../core/constants.js').AssetType} AssetType */
+
+/**
+ * Loader output. `.status.isViolation` is the branch check at call sites;
+ * producer code sets `manifest`/`appVersion` on MATCH and `reason` on
+ * MANIFEST_UNTRUSTED. Tests + runtime devAsserts guard the per-branch
+ * invariants.
+ * @typedef {{
+ *   status: typeof VERIFICATION_STATUS.MATCH | typeof VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+ *   url: string,
+ *   fileKey: string,
+ *   assetType: AssetType,
+ *   manifest?: object,
+ *   appVersion?: string,
+ *   reason?: ManifestLoadReason,
+ *   expectedHashes?: string[],
+ *   actualHash?: string,
+ *   httpStatus?: number,
+ * }} ManifestLoadResult
+ */
+
 const logger = createLogger();
 
 // Reads a build-time flag with a caller-supplied default. Not `isFeatureEnabled`
@@ -160,6 +193,10 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
 
     // Stamp every result with the manifest identity fields so callers never
     // have to repeat them and recordSecurityViolation can assert they're present.
+    /**
+     * @param {Omit<ManifestLoadResult, 'url' | 'fileKey' | 'assetType'>} fields
+     * @returns {ManifestLoadResult}
+     */
     const manifestResult = (fields) => ({
         url: manifestUrl,
         fileKey: manifestFileKey,
@@ -187,7 +224,10 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             return manifestResult({ status: VERIFICATION_STATUS.MATCH, manifest, appVersion });
         } catch (error) {
             logger.error('Error processing manifest:', error);
-            return manifestResult({ status: VERIFICATION_STATUS.ERROR });
+            return manifestResult({
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'MANIFEST_PARSE_ERROR',
+            });
         }
     };
 
@@ -203,18 +243,25 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             }
             logger.error(`Failed to load manifest: ${response?.status} ${response?.statusText}`);
             return manifestResult({
-                status: VERIFICATION_STATUS.ERROR,
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'MANIFEST_FETCH_NOT_OK',
                 httpStatus: response?.status,
             });
         } catch (error) {
             logger.error('Error loading manifest:', error);
         }
-        return manifestResult({ status: VERIFICATION_STATUS.ERROR });
+        return manifestResult({
+            status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+            reason: 'MANIFEST_FETCH_FAILED',
+        });
     };
 
     const fetchAndStoreManifest = async () => {
         if (!hasConfigManifest(config)) {
-            return manifestResult({ status: VERIFICATION_STATUS.CONFIG_ERROR });
+            return manifestResult({
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'CONFIG_ERROR',
+            });
         }
         return singleFlight(loadManifestFromUrl);
     };

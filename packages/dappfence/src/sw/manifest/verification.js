@@ -3,6 +3,10 @@ import { recoverEthereumAddress, recoverPersonalSign } from '../../core/crypto.j
 import { createLogger } from '../../core/logger.js';
 import { isFeatureEnabled } from '../../core/utils.js';
 
+/** @typedef {import('./manifest-loader.js').ManifestLoadReason} ManifestLoadReason */
+/** @typedef {import('../../core/constants.js').AssetErrorReason} AssetErrorReason */
+/** @typedef {import('../../core/constants.js').VerificationStatus} VerificationStatus */
+
 const logger = createLogger();
 
 const MANIFEST_SIGNATURE_TYPES = {
@@ -53,11 +57,18 @@ export const toPathname = (url, baseUrl) => {
 };
 
 /**
+ * Flat shape — `.status.isViolation` is the branch check at call sites.
+ * Producer code (verifyManifestSignature) is responsible for setting the right
+ * fields per branch; test coverage + runtime devAsserts catch drift.
+ * @typedef {{ status: typeof VERIFICATION_STATUS.MATCH | typeof VERIFICATION_STATUS.MANIFEST_UNTRUSTED, payload?: object, reason?: ManifestLoadReason, expectedHashes?: string[], actualHash?: string }} ManifestSignatureResult
+ */
+
+/**
  * Validate manifest data signature using Ethereum-style secp256k1 signature recovery.
  * @param {string} manifestSignatureType
  * @param {string} manifestSignatureIdentity
- * @param {object} manifestData - Manifest with .pay (payload) and .sig (signature)
- * @returns {{ status, payload?, expectedHashes?, actualHash? }}
+ * @param {{ pay: object, sig: string }} manifestData - Manifest with .pay (payload) and .sig (signature)
+ * @returns {ManifestSignatureResult}
  */
 export const verifyManifestSignature = (
     manifestSignatureType,
@@ -78,7 +89,8 @@ export const verifyManifestSignature = (
                     `Invalid signature, expected address: ${manifestSignatureIdentity} got ${recovered}`
                 );
                 return {
-                    status: VERIFICATION_STATUS.MISMATCH,
+                    status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                    reason: 'SIGNATURE_MISMATCH',
                     expectedHashes: [manifestSignatureIdentity],
                     actualHash: recovered,
                 };
@@ -87,11 +99,17 @@ export const verifyManifestSignature = (
             return { status: VERIFICATION_STATUS.MATCH, payload: manifestData.pay };
         } catch (error) {
             logger.error('error validating signature:', error);
-            return { status: VERIFICATION_STATUS.ERROR };
+            return {
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'SIGNATURE_ERROR',
+            };
         }
     } else {
         logger.error(`unsupported signature type ${manifestSignatureType}`);
-        return { status: VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE };
+        return {
+            status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+            reason: 'UNSUPPORTED_SIGNATURE',
+        };
     }
 };
 
@@ -103,7 +121,7 @@ export const verifyManifestSignature = (
  * @param {object} deps.swContext
  * @param {object} deps.manifestService
  * @param {string} url
- * @returns {Promise<{ status, httpStatus? }>}
+ * @returns {Promise<{ status: VerificationStatus, reason?: AssetErrorReason, httpStatus?: number }>}
  */
 export async function verifyLocation({ swContext, manifestService }, url) {
     try {
@@ -122,13 +140,17 @@ export async function verifyLocation({ swContext, manifestService }, url) {
                 );
             }
             logger.error(`Failed to fetch ${url}: ${response.status}`);
-            return { status: VERIFICATION_STATUS.ERROR, httpStatus: response.status };
+            return {
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'FETCH_NOT_OK',
+                httpStatus: response.status,
+            };
         }
         logger.error(`Failed to fetch ${url}: null response`);
     } catch (error) {
         logger.error(`Error verifying ${url}:`, error);
     }
-    return { status: VERIFICATION_STATUS.ERROR };
+    return { status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_FAILED' };
 }
 
 /**
