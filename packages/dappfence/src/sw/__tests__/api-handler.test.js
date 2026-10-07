@@ -31,6 +31,10 @@ function createMockAppStore() {
                 manifest: { files: { '/app.js': 'hash1' } },
             }),
         },
+        activeIdentityStore: {
+            getActiveIdentity: vi.fn().mockResolvedValue(undefined),
+            updateActiveIdentity: vi.fn().mockResolvedValue(undefined),
+        },
         verificationResultsStore: {
             get: vi.fn().mockResolvedValue([{ file: '/app.js', status: 'match' }]),
         },
@@ -60,7 +64,14 @@ describe('createApiHandler', () => {
     beforeEach(() => {
         appStore = createMockAppStore();
         onSecurityViolation = vi.fn();
-        handler = createApiHandler({ onSecurityViolation, appStore });
+        handler = createApiHandler({
+            onSecurityViolation,
+            appStore,
+            config: {
+                manifestSignatureType: 'ethereum-personal-sign',
+                manifestSignatureIdentity: '0xtest',
+            },
+        });
     });
 
     describe('authentication', () => {
@@ -263,7 +274,9 @@ describe('createApiHandler', () => {
             const { activeBlocks } = decodeInlinedConfig(await res.text());
 
             expect(activeBlocks[0].expectedHashes).toEqual([]);
-            expect(activeBlocks[0].actualHash).toBe('N/A');
+            // actualHash is null when unset; the template renders 'Not available'
+            // only for views that opt into the actual row.
+            expect(activeBlocks[0].actualHash).toBeNull();
             expect(activeBlocks[0].occurrenceCount).toBe(1);
         });
 

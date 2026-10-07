@@ -24,10 +24,11 @@ const directories = {
     templateDir: path.resolve(ROOT_DIR, 'template'),
 };
 
-// This key is used for TESTING only
-const secretKey = hexToBytes('46c88fcabce00eced90f15ceb9325fd879e44b43c623b174416a219a6103e05d');
-const publicKey = getPublicKey(secretKey);
-const keys = { publicKey, secretKey };
+// These keys are used for TESTING only
+const secretKeyA = hexToBytes('46c88fcabce00eced90f15ceb9325fd879e44b43c623b174416a219a6103e05d');
+const secretKeyB = hexToBytes('a1b2c3d4e5f6071829304a5b6c7d8e9f0011223344556677889900aabbccddee');
+const keyPairA = { publicKey: getPublicKey(secretKeyA), secretKey: secretKeyA };
+const keyPairB = { publicKey: getPublicKey(secretKeyB), secretKey: secretKeyB };
 
 const defaultManifest = {
     mode: MODE.PROTECTED,
@@ -62,6 +63,7 @@ const defaultManifest = {
             '/csp-test-denied': [],
         },
     },
+    keyPair: keyPairA,
 };
 
 const simpleAppPages = {
@@ -81,6 +83,14 @@ const simpleAppPages = {
     'csp-report-only.html': {
         template: 'simple-app.html',
         manifest: 'csp-report-only-manifest.json',
+    },
+    'signer-b.html': {
+        template: 'simple-app.html',
+        manifest: 'integrity-manifest-signer-b.json',
+    },
+    'revoke.html': {
+        template: 'simple-app.html',
+        manifest: 'integrity-manifest-revoke.json',
     },
 };
 
@@ -108,6 +118,8 @@ const simpleAppBase = {
                 reportSample: true,
             },
         },
+        'integrity-manifest-signer-b.json': { ...defaultManifest, keyPair: keyPairB },
+        'integrity-manifest-revoke.json': { ...defaultManifest, revokeManifests: true },
     },
     pages: simpleAppPages,
 };
@@ -130,6 +142,7 @@ const BUILD_CONFIGURATIONS = {
         description: 'Tampering Security Test',
         manifests: {
             'tampering-test-manifest.json': {
+                keyPair: keyPairA,
                 pathRules: [{ type: 'directory-index' }],
             },
         },
@@ -143,14 +156,10 @@ const BUILD_CONFIGURATIONS = {
     'reporting-test': {
         ...simpleAppBase,
         templateFlags: { USE_SW_REGISTER: true, USE_APP: false },
-        manifests: {
-            'integrity-manifest.json': { ...defaultManifest, mode: MODE.REPORTING },
-            'no-not-found-manifest.json': {
-                ...defaultManifest,
-                pathRules: [{ type: 'directory-index' }],
-                mode: MODE.REPORTING,
-            },
-        },
+        manifests: Object.entries(simpleAppBase.manifests).reduce((acc, [k, m]) => {
+            acc[k] = { ...m, mode: MODE.REPORTING };
+            return acc;
+        }, {}),
     },
 };
 
@@ -167,4 +176,4 @@ for (const env in DAPPFENCE_PACKAGES) {
         };
     }
 }
-export { OUT_DIR, BUILD_TARGETS, keys, EXTERNAL_ASSETS };
+export { OUT_DIR, BUILD_TARGETS, EXTERNAL_ASSETS };
