@@ -230,6 +230,9 @@ export const createVerifier = (
         }
 
         const fetched = await fetchAndStoreManifest();
+        if (fetched.status.isViolation) {
+            return fetched;
+        }
         const fetchedResult = await tryManifest(fetched);
         if (manifestDecidedAbout(fetchedResult)) {
             pinClient(clientId, fetched);
@@ -239,7 +242,10 @@ export const createVerifier = (
         return (
             [pinnedResult, latestResult, ...historicResults, fetchedResult].find(
                 (r) => r !== null
-            ) ?? fetched
+            ) ?? {
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NO_MANIFEST_AVAILABLE',
+            }
         );
     };
 

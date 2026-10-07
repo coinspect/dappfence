@@ -72,6 +72,7 @@ export const VERIFICATION_STATUS = Object.freeze({
  *         | 'BODY_UNREADABLE'
  *         | 'FETCH_BAD_STATUS'
  *         | 'FETCH_EXCEPTION'
+ *         | 'NO_MANIFEST_AVAILABLE'
  *         } AssetErrorReason
  */
 
