@@ -49,6 +49,9 @@ export const MODE = {
  * break `structuredClone` (used by IndexedDB), so persistence layers must
  * write `details.status.description`, not the object.
  */
+/** @typedef {Readonly<{description: string, isViolation: boolean}>} Verdict */
+
+/** @returns {Verdict} */
 const verdict = (description, isViolation) => Object.freeze({ description, isViolation });
 
 export const VERIFICATION_STATUS = Object.freeze({
