@@ -184,7 +184,7 @@ export const normalizeManifestData = (manifestData) => {
  * @param {object} deps.config - Must include manifestUrl, manifestSignatureType, manifestSignatureIdentity
  */
 export const createManifestLoader = ({ swContext, appStore, config }) => {
-    const { trustedManifestStore } = appStore;
+    const { trustedManifestStore, activeIdentityStore } = appStore;
     const singleFlight = createSingleFlight();
     const { manifestUrl, manifestSignatureType, manifestSignatureIdentity } = config;
     const manifestFileKey = manifestUrl
@@ -207,6 +207,30 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
     const storeManifestFromResponse = async (response) => {
         try {
             const json = await response.json();
+
+            let activeIdentity = await activeIdentityStore.getActiveIdentity();
+            if (!activeIdentity) {
+                // The first time we accept the identity
+                activeIdentity = await activeIdentityStore.updateActiveIdentity({
+                    signatureType: manifestSignatureType,
+                    identity: manifestSignatureIdentity,
+                });
+            }
+            if (
+                activeIdentity.signatureType !== manifestSignatureType ||
+                activeIdentity.identity !== manifestSignatureIdentity
+            ) {
+                logger.error(
+                    `Signer change: anchored ${activeIdentity.signatureType}:${activeIdentity.identity} but config declares ${manifestSignatureType}:${manifestSignatureIdentity}`
+                );
+                return manifestResult({
+                    status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                    reason: 'SIGNER_CHANGED',
+                    expectedHashes: [`${activeIdentity.signatureType}:${activeIdentity.identity}`],
+                    actualHash: `${manifestSignatureType}:${manifestSignatureIdentity}`,
+                });
+            }
+
             const signatureResult = verifyManifestSignature(
                 manifestSignatureType,
                 manifestSignatureIdentity,
@@ -216,7 +240,8 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
                 return manifestResult(signatureResult);
             }
             const { appVersion, manifest } = await trustedManifestStore.addLatest(
-                normalizeManifestData(signatureResult.payload)
+                normalizeManifestData(signatureResult.payload),
+                activeIdentity
             );
             logger.log(
                 `Loaded manifest, app version: ${appVersion.substring(0, 12)}... (${Object.keys(manifest.files).length} files)`

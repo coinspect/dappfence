@@ -2,7 +2,7 @@
 import securityWarningHtml from '../templates/security-warning.html?raw';
 import securityWarningCss from '../templates/security-warning.css?raw';
 import { isFeatureEnabled } from '../core/utils.js';
-import { API } from '../core/constants.js';
+import { API, ASSET_TYPE } from '../core/constants.js';
 
 // CSS and the build-time feature flag are static across all renders — fold
 // them into the template once at a module load instead of repeating the work
@@ -37,14 +37,98 @@ function renderConfigScript(config) {
     return `<script>const DAPPFENCE_CONFIG = JSON.parse(decodeURIComponent("${encoded}"));</script>`;
 }
 
+/**
+ * Per-status / per-reason view copy for the warning page. Mirrors the
+ * STATUS_LOG dispatch in sw/storage/index.js (view layer here, log layer
+ * there). A view entry resolves to `{ title, expectedLabel?, actualLabel? }`.
+ * When `expectedLabel` / `actualLabel` are omitted, the template omits the
+ * corresponding row — not every reason has hashes or identities to show
+ * (e.g. CONFIG_ERROR, DENIED_BY_RULE).
+ *
+ * @typedef {{ title: string, expectedLabel?: string, actualLabel?: string }} BlockView
+ */
+
+const HASH_LABELS = { expectedLabel: 'Expected hash', actualLabel: 'Actual hash' };
+const SIGNER_LABELS = { expectedLabel: 'Pinned signer', actualLabel: 'Current signer' };
+
+const MANIFEST_UNTRUSTED_VIEWS = {
+    SIGNER_CHANGED: { title: 'Manifest signer changed since pinning', ...SIGNER_LABELS },
+    SIGNATURE_MISMATCH: {
+        title: 'Manifest signature identity does not match pinned signer',
+        expectedLabel: 'Pinned signer',
+        actualLabel: 'Recovered signer',
+    },
+    UNSUPPORTED_SIGNATURE: { title: 'Manifest signature uses an unsupported algorithm' },
+    SIGNATURE_ERROR: { title: 'Manifest signature verification threw an error' },
+    MANIFEST_PARSE_ERROR: { title: 'Manifest could not be parsed' },
+    MANIFEST_FETCH_BAD_STATUS: { title: 'Manifest fetch returned a non-OK status' },
+    MANIFEST_FETCH_EXCEPTION: { title: 'Manifest fetch threw an exception' },
+    CONFIG_ERROR: { title: 'DappFence manifest is misconfigured' },
+};
+
+const ERROR_VIEWS = {
+    NULL_RESPONSE: { title: 'Verification failed: no response received' },
+    BODY_UNREADABLE: { title: 'Verification failed: response body unreadable' },
+    FETCH_BAD_STATUS: { title: 'Verification failed: non-OK HTTP status' },
+    FETCH_EXCEPTION: { title: 'Verification failed: fetch threw' },
+    NO_MANIFEST_AVAILABLE: { title: 'Verification failed: no trusted manifest available' },
+};
+
+/** @type {Record<string, (block: object) => BlockView>} */
+const BLOCK_VIEW = {
+    MISMATCH: () => ({ title: 'File content tampered', ...HASH_LABELS }),
+    NOT_FOUND_IN_MANIFEST: () => ({
+        title: 'File not listed in trusted manifest',
+        actualLabel: 'Actual hash',
+    }),
+    DENIED_BY_RULE: () => ({ title: 'File blocked by security rule' }),
+    ERROR: (b) =>
+        ERROR_VIEWS[b.reason] ?? { title: `Verification error (${b.reason ?? 'unspecified'})` },
+    MANIFEST_UNTRUSTED: (b) =>
+        MANIFEST_UNTRUSTED_VIEWS[b.reason] ?? {
+            title: `Manifest cannot be trusted (${b.reason ?? 'unspecified'})`,
+        },
+};
+
+const defaultView = (b) => ({ title: `Security violation (${b.status ?? 'unknown'})` });
+
+/**
+ * Top-of-page summary. Manifest-level blocks get distinct copy because the
+ * default "content modified" message is misleading when the failure is
+ * signer-rotation or a signature issue — nothing in the page itself has
+ * necessarily been tampered with, the trust anchor failed.
+ */
+function derivePageSummary(blocks) {
+    const hasManifestBlock = blocks.some((b) => b.assetType === ASSET_TYPE.MANIFEST);
+    if (hasManifestBlock) {
+        return {
+            subtitle: 'Manifest Trust Issue',
+            message:
+                "DappFence could not establish the authenticity of this site's manifest. " +
+                'This can indicate a signer change, a signature mismatch, or a manifest ' +
+                'configuration problem. Loading the site may expose you to untrusted content.',
+        };
+    }
+    return {
+        subtitle: 'Potentially Malicious Content Blocked',
+        message:
+            'DappFence has detected that content on this page has been modified and may be unsafe. ' +
+            'This protection prevents potentially malicious code from running in your browser.',
+    };
+}
+
 function enrichActiveBlocks(blocks) {
-    return blocks.map((block) => ({
-        ...block,
-        expectedHashes: block.expectedHashes || [],
-        actualHash: block.actualHash || 'N/A',
-        occurrenceCount: block.occurrenceCount || 1,
-        formattedTimestamp: new Date(block.timestamp).toLocaleString(),
-    }));
+    return blocks.map((block) => {
+        const view = (BLOCK_VIEW[block.status] ?? defaultView)(block);
+        return {
+            ...block,
+            view,
+            expectedHashes: block.expectedHashes || [],
+            actualHash: block.actualHash || null,
+            occurrenceCount: block.occurrenceCount || 1,
+            formattedTimestamp: new Date(block.timestamp).toLocaleString(),
+        };
+    });
 }
 
 /**
@@ -178,9 +262,11 @@ export function createRedirectResponse(location) {
  * @param {Array} activeBlocks
  */
 export function createSecurityPageResponse(apiToken, activeBlocks) {
+    const enriched = enrichActiveBlocks(activeBlocks);
     const configScript = renderConfigScript({
         apiToken,
-        activeBlocks: enrichActiveBlocks(activeBlocks),
+        activeBlocks: enriched,
+        summary: derivePageSummary(enriched),
         autoConfirmSiteLock: AUTO_CONFIRM_SITE_LOCK,
     });
     const html = HTML_PREFIX + configScript + HTML_SUFFIX;
