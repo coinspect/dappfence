@@ -47,6 +47,7 @@ export function createServices(swGlobal) {
     const core = {
         swContext,
         appStore,
+        config,
         manifestService,
         onSecurityViolation: messageBroker.broadcastSecurityViolation,
     };
@@ -59,7 +60,6 @@ export function createServices(swGlobal) {
         fetchHandler: createSecurityFetchHandler({ ...core, handleApiEndpoint }),
         installHandler: createInstallHandler({
             ...core,
-            config,
             onInstallDone: hookService.installEventDone,
         }),
         activateHandler: createActivateHandler(core),

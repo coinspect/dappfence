@@ -34,9 +34,10 @@ describe('createAppStore', () => {
 
     it('manifest stores are functional', async () => {
         const appStore = createAppStore(createInMemoryDatabase());
-        const { appVersion } = await appStore.trustedManifestStore.addLatest({
-            files: { '/a.js': 'h' },
-        });
+        const { appVersion } = await appStore.trustedManifestStore.addLatest(
+            { files: { '/a.js': 'h' } },
+            { signatureType: 'ethereum-personal-sign', identity: '0xmocksigner' }
+        );
         const latest = await appStore.trustedManifestStore.getLatest();
         expect(latest.appVersion).toBe(appVersion);
     });

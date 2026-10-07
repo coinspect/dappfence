@@ -18,8 +18,10 @@
                 </div>
 
                 <div class="security-content">
-                    <h2 class="security-subtitle">Potentially Malicious Content Blocked</h2>
-                    <p class="security-message">
+                    <h2 class="security-subtitle" id="security-subtitle">
+                        Potentially Malicious Content Blocked
+                    </h2>
+                    <p class="security-message" id="security-message">
                         DappFence has detected that content on this page has been modified and may
                         be unsafe. This protection prevents potentially malicious code from running
                         in your browser.
@@ -56,6 +58,7 @@
             const {
                 apiToken = null,
                 activeBlocks = [],
+                summary = null,
                 autoConfirmSiteLock = false,
             } = DAPPFENCE_CONFIG;
 
@@ -65,6 +68,7 @@
                 document.getElementById('security-timestamp').textContent =
                     'Blocked at ' + new Date().toLocaleString();
 
+                applySummary(summary);
                 renderBlocks(activeBlocks);
 
                 // Site unblock button — clears ALL active blocks at once
@@ -139,6 +143,18 @@
                     }
                 });
 
+                function applySummary(summary) {
+                    if (!summary) {
+                        return;
+                    }
+                    if (summary.subtitle) {
+                        document.getElementById('security-subtitle').textContent = summary.subtitle;
+                    }
+                    if (summary.message) {
+                        document.getElementById('security-message').textContent = summary.message;
+                    }
+                }
+
                 function renderBlocks(blocks) {
                     // Only show the Active Blocks section when we actually have
                     // blocks to show. In the normal flow there's always ≥1
@@ -161,32 +177,57 @@
                             card.open = true;
                         }
 
-                        const summary = document.createElement('summary');
-                        summary.className = 'block-summary';
+                        const view = block.view || {};
+                        const summaryEl = document.createElement('summary');
+                        summaryEl.className = 'block-summary';
 
+                        const heading = document.createElement('div');
+                        heading.className = 'block-heading';
+                        if (view.title) {
+                            const title = document.createElement('span');
+                            title.className = 'block-title';
+                            title.textContent = view.title;
+                            heading.appendChild(title);
+                        }
                         const name = document.createElement('span');
                         name.className = 'block-name';
                         name.textContent = block.fileKey || 'Unknown';
                         name.title = block.fileKey || 'Unknown';
-                        summary.appendChild(name);
+                        heading.appendChild(name);
+                        summaryEl.appendChild(heading);
 
                         const count = block.occurrenceCount || 1;
                         const badge = document.createElement('span');
                         badge.className = 'occurrence-badge';
                         badge.textContent = `${count}×`;
                         badge.title = `${count} occurrence${count > 1 ? 's' : ''}`;
-                        summary.appendChild(badge);
+                        summaryEl.appendChild(badge);
 
-                        card.appendChild(summary);
+                        card.appendChild(summaryEl);
 
                         const body = document.createElement('div');
                         body.className = 'block-body';
-                        body.appendChild(
-                            infoRow('Expected hash', block.expectedHash || 'Not available', 'hash')
-                        );
-                        body.appendChild(
-                            infoRow('Actual hash', block.actualHash || 'Not available', 'hash')
-                        );
+                        if (view.expectedLabel) {
+                            body.appendChild(
+                                infoRow(
+                                    view.expectedLabel,
+                                    formatList(block.expectedHashes),
+                                    'hash'
+                                )
+                            );
+                        }
+                        if (view.actualLabel) {
+                            body.appendChild(
+                                infoRow(
+                                    view.actualLabel,
+                                    block.actualHash || 'Not available',
+                                    'hash'
+                                )
+                            );
+                        }
+                        if (block.reason) {
+                            body.appendChild(infoRow('Reason', block.reason));
+                        }
                         body.appendChild(
                             infoRow('First seen', block.formattedTimestamp || 'Unknown')
                         );
@@ -194,6 +235,13 @@
 
                         listEl.appendChild(card);
                     });
+                }
+
+                function formatList(values) {
+                    if (!Array.isArray(values) || values.length === 0) {
+                        return 'Not available';
+                    }
+                    return values.join(', ');
                 }
 
                 function infoRow(label, value, extraValueClass) {

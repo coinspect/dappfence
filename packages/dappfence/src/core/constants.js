@@ -68,6 +68,18 @@ export const VERIFICATION_STATUS = Object.freeze({
 /** @typedef {typeof VERIFICATION_STATUS[keyof typeof VERIFICATION_STATUS]} VerificationStatus */
 
 /**
+ * The subset of status descriptions that actually reach the warning page.
+ * `recordSecurityViolation` short-circuits non-violation verdicts before
+ * recording a block, so MATCH / SKIPPED / REWRITE / CSP_PROTECTED /
+ * REDIRECT never appear on stored blocks. Dispatch tables that only
+ * handle violating cases key off this type.
+ * Hand-maintained because `verdict()` returns `isViolation: boolean` (not
+ * a literal), so tsc can't filter the enum by that flag automatically —
+ * if a new violating status is added to VERIFICATION_STATUS, extend here.
+ * @typedef {'FILE_UNTRUSTED' | 'DENIED_BY_RULE' | 'ERROR' | 'MANIFEST_UNTRUSTED'} ViolatingStatusName
+ */
+
+/**
  * @typedef {'NULL_RESPONSE'
  *         | 'BODY_UNREADABLE'
  *         | 'FETCH_BAD_STATUS'
