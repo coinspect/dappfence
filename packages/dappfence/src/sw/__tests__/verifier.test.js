@@ -338,11 +338,7 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
             expect(fetchAndStoreManifest).not.toHaveBeenCalled();
         });
 
-        // Characterizes the current pinning bug: pinned client + subresource MISMATCH
-        // returns the violation without ever calling fetchAndStoreManifest. When the
-        // bug is fixed (escalate on subresource MISMATCH), this test will flip to
-        // expect fetchAndStoreManifest to be called.
-        it('returns violation without escalating when pinned manifest fails', async () => {
+        it('escalates to fetchAndStoreManifest when pinned manifest fails on subresource', async () => {
             const { verifyResponse, fetchAndStoreManifest } = makeFactoryVerifier();
             await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
             fetchAndStoreManifest.mockClear();
@@ -355,7 +351,7 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
                 INFO_V1
             );
             expect(result.status.isViolation).toBe(true);
-            expect(fetchAndStoreManifest).not.toHaveBeenCalled();
+            expect(fetchAndStoreManifest).toHaveBeenCalled();
         });
 
         it('bypasses pin for navigation requests', async () => {

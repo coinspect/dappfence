@@ -1,18 +1,20 @@
 /**
  * File Verifier — hosts both basic (hash-compare) and security (rule engine
  * + action pipeline + CSP) verifier factories, sharing the same orchestration:
- * pinned-skip + manifest escalation.
+ * manifest escalation across pinned, cached, and freshly-fetched manifests.
  *
- * Manifest escalation for unpinned clients (MISMATCH / NOT_FOUND only):
- *   1. latestManifest (caller-supplied, IndexedDB cache)
- *   2. getManifestHistory — stored historic manifests, newest-first
- *   3. fetchAndStoreManifest — force network fetch (terminal)
+ * Manifest escalation (MISMATCH / NOT_FOUND / ERROR / UNSUPPORTED_SIGNATURE):
+ *   1. pinned manifest (sub-resources only; navigations skip to step 2)
+ *   2. latestManifest (caller-supplied, IndexedDB cache)
+ *   3. getManifestHistory — stored historic manifests, newest-first
+ *   4. fetchAndStoreManifest — force network fetch (terminal)
  *
- * Any other result (MATCH, SKIPPED, REWRITE, DENIED_BY_RULE, ERROR) stops
- * escalation immediately — see manifestDecided().
+ * Any other result (MATCH, SKIPPED, REWRITE, DENIED_BY_RULE, CSP_PROTECTED)
+ * stops escalation immediately — see manifestDecidedAbout().
  *
- * Pinned clients skip escalation entirely: their manifest is the truth for the
- * page load, so any failure is a genuine violation.
+ * Pinned clients escalate on sub-resource failure so a legitimate deploy that
+ * changes a sub-resource (and whose fresh signed manifest covers it) is not
+ * misreported as a violation. The pin updates to the manifest that decides.
  */
 
 import {
@@ -182,20 +184,11 @@ export const createVerifier = (
         return null;
     };
 
-    // For unpinned clients, escalate from the latest manifest → historic manifests → network fetch
-    // on MISMATCH / NOT_FOUND / ERROR only. All other results (MATCH, DENIED_BY_RULE, etc.) are final.
+    // Escalate pinned (sub-resources) → latest → historic → network-fetch on
+    // MISMATCH / NOT_FOUND / ERROR / UNSUPPORTED_SIGNATURE. All other results
+    // (MATCH, DENIED_BY_RULE, etc.) stop escalation immediately.
     const verifyWithManifestSearch = async (req, response, clientId, latestManifest) => {
         const isNavigation = req.mode === 'navigate';
-        if (clientId && !isNavigation) {
-            const pinned = clientIdXManifest.get(clientId);
-            if (pinned) {
-                logger.log(`[verifyResponse] clientId=${clientId} (pinned)`);
-                const result = await verifyAgainstManifest(req, response, pinned, locationHref);
-                onManifestResult(pinned, result);
-                return result;
-            }
-        }
-
         const triedVersions = new Set();
         const tryManifest = async (manifestInfo) => {
             if (
@@ -210,6 +203,18 @@ export const createVerifier = (
             onManifestResult(manifestInfo, result);
             return result;
         };
+
+        let pinnedResult = null;
+        if (clientId && !isNavigation) {
+            const pinned = clientIdXManifest.get(clientId);
+            if (pinned) {
+                logger.log(`[verifyResponse] clientId=${clientId} (pinned)`);
+                pinnedResult = await tryManifest(pinned);
+                if (manifestDecidedAbout(pinnedResult)) {
+                    return pinnedResult;
+                }
+            }
+        }
 
         const latestResult = await tryManifest(latestManifest);
         if (manifestDecidedAbout(latestResult)) {
@@ -236,7 +241,11 @@ export const createVerifier = (
             return fetchedResult;
         }
         // Nothing decided — return best available non-null result.
-        return [fetchedResult, latestResult, ...historicResults].find((r) => r !== null) ?? fetched;
+        return (
+            [pinnedResult, latestResult, ...historicResults, fetchedResult].find(
+                (r) => r !== null
+            ) ?? fetched
+        );
     };
 
     const verifyResponse = async (req, response, clientId, latestManifest) => {
