@@ -1,9 +1,18 @@
 {
-    "tagRuleset": {
-        "pattern": "refs/tags/release-*",
-        "rules": ["creation", "update", "deletion", "non_fast_forward"],
-        "allowBypassActors": false
-    },
+    "tagRulesets": [
+        {
+            "describedAs": "creation — maintainers only, so the release ceremony can push a tag",
+            "pattern": "refs/tags/release-*",
+            "rules": ["creation"],
+            "bypassActors": "allowed"
+        },
+        {
+            "describedAs": "protection — immutable for everyone, maintainers included",
+            "pattern": "refs/tags/release-*",
+            "rules": ["update", "deletion", "non_fast_forward"],
+            "bypassActors": "forbidden"
+        }
+    ],
     "environment": {
         "name": "production-publish",
         "requireReviewers": true,
@@ -12,13 +21,5 @@
     },
     "codeowners": {
         "requireNoErrors": true
-    },
-    "branchProtection": {
-        "branch": "main",
-        "requireCodeOwnerReviews": true
-    },
-    "workflowPermissions": {
-        "defaultPermissions": "read",
-        "canApprovePullRequests": false
     }
 }

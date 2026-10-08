@@ -307,16 +307,36 @@ approves.
 
 ### Step 4 — Protect the `release-*` tag namespace
 
-Repo → **Settings** → **Rules** → **Rulesets** → **New tag ruleset**:
+This needs **two** rulesets, not one. Bypass actors are scoped to a ruleset, never to an individual
+rule — and **Restrict creations** means _only bypass actors may create matching refs_. So a single
+ruleset carrying all the rules is self-defeating: with no bypass nobody can push a release tag at
+all, and with a maintainer bypass those same maintainers are exempted from the update and deletion
+restrictions too, leaving release tags mutable by exactly the people best placed to misuse that.
 
--   Target: tag pattern `release-*`
--   Enforcement: **Active**
--   Rules: **Restrict creations** (maintainer team only), **Restrict updates** and **Restrict
-    deletions** (disallow both for everyone — release tags are immutable). Restricting only creation
-    and deletion still lets an existing tag be force-moved to point at a different commit, which is
-    exactly the window the SHA-pinning in `release.yml` closes on the workflow side — this closes it
-    at the git level too. Leave GitHub's own **Require signatures** off — signatures are verified in
-    the workflow against the `RELEASE_SIGNING_KEYS` repository variable instead.
+Repo → **Settings** → **Rules** → **Rulesets** → **New tag ruleset**, twice:
+
+**1. Creation — maintainers only**
+
+-   Target: tag pattern `release-*`, Enforcement **Active**
+-   Rule: **Restrict creations**
+-   Bypass list: the maintainer team. This is what lets the release ceremony push a tag.
+
+**2. Protection — immutable for everyone**
+
+-   Target: tag pattern `release-*`, Enforcement **Active**
+-   Rules: **Restrict updates**, **Restrict deletions**, **Block force pushes**
+-   Bypass list: **empty**, maintainers included.
+
+Restricting only creation and deletion would still let an existing tag be force-moved onto a
+different commit — the window `release.yml` closes by pinning the verified SHA. The second ruleset
+closes it at the git level too.
+
+Leave GitHub's own **Require signatures** off in both: signatures are verified in the workflow
+against the `RELEASE_SIGNING_KEYS` variable, against the keys you enrolled rather than any key
+GitHub happens to know about.
+
+Neither ruleset may use **exclusions**. An excluded pattern wins over the include, so one exclusion
+silently unprotects the tags the ruleset appears to cover.
 
 ### Step 5 — Configure npm Trusted Publisher (per package)
 
@@ -351,9 +371,8 @@ can still `npm publish` directly, bypassing every gate in `release.yml`. Policy:
 
 Repo → **Settings** → **Actions** → **General** → **Workflow permissions**: leave at the default
 (**Read repository contents and packages permissions**); leave **Allow GitHub Actions to create and
-approve pull requests** off. `release.yml` explicitly requests only `id-token: write` (OIDC),
-`contents: read`, and `administration: read` in `verify` (so the settings check below can read
-branch protection) — nothing else to grant.
+approve pull requests** off. `release.yml` explicitly requests only `id-token: write` (OIDC) and
+`contents: read` where needed — nothing else to grant.
 
 ## Most of these settings are machine-checked
 
@@ -361,29 +380,44 @@ Every setting above lives outside the repository, so nothing in a pull request c
 weakened later. `scripts/check-release-config.js` runs in the `verify` job and fails the release if
 the repository has drifted from `.github/release-policy.json`:
 
-| Checked                       | What drift it catches                                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Tag ruleset (Step 4)          | pattern changed, enforcement dropped to Evaluate, a rule removed, or a **bypass actor** added                   |
-| Environment (Step 3)          | reviewers removed, **Prevent self-review** switched off, deployment branches widened or set to "No restriction" |
-| CODEOWNERS (Step 1)           | an owner that no longer resolves, or a team that lost write access                                              |
-| Branch protection (Step 1)    | **Require review from Code Owners** switched off, which makes CODEOWNERS inert                                  |
-| Workflow permissions (Step 7) | default token permissions widened, or Actions allowed to approve pull requests                                  |
+| Checked               | What drift it catches                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag rulesets (Step 4) | a ruleset missing or merged back into one, enforcement dropped to Evaluate, a rule removed, an **exclusion** added, or a **bypass actor** added to the protection ruleset |
+| Environment (Step 3)  | reviewers removed or emptied, **Prevent self-review** switched off, deployment branches widened, switched to "Protected branches only", or set to "No restriction"        |
+| CODEOWNERS (Step 1)   | an owner that no longer resolves, or a team that lost write access                                                                                                        |
 
 Run it locally against any repository:
 
 ```bash
-GITHUB_TOKEN=<pat> node scripts/check-release-config.js --repo coinspect/dappfence
+node scripts/check-release-config.js --repo coinspect/dappfence
 ```
 
-Without a token the first three still run; branch protection and workflow permissions report a
-failure rather than a skip, because an unverifiable setting must never read as a correct one. The
-script takes no repository-specific knowledge of its own — `.github/release-policy.json` holds all
-of that — so it can be copied to another repository, or extracted into a shared one, unchanged.
+The script holds no repository-specific knowledge — `.github/release-policy.json` holds all of it —
+so it can be copied to another repository, or extracted into a shared one, unchanged.
 
-**What it cannot check:** the npm Trusted Publisher configuration (Step 5). npm exposes no API for
-it, so that remains a manual verification. The same applies to the maintainer team having at least
-two members, which `GITHUB_TOKEN` has no org scope to read — and which matters, because **Prevent
-self-review** makes a one-person team unable to approve its own releases.
+**What it cannot check, and why.** `administration` is a fine-grained-token permission, not one a
+workflow's `GITHUB_TOKEN` can be granted. Anything needing it would mean storing a long-lived
+admin-scoped PAT — a worse trade than the gap it closes, in a pipeline built to avoid exactly that.
+These therefore stay manual:
+
+-   **Branch protection** (Step 1) — that `main` requires a pull request with code-owner review.
+    This one matters: without it CODEOWNERS only suggests reviewers and blocks nothing. Re-check it
+    whenever branch protection is edited.
+-   **Workflow permissions** (Step 7).
+-   **npm Trusted Publisher** (Step 5) — npm exposes no API for it at all.
+-   **The maintainer team having at least two members** — needs an org scope `GITHUB_TOKEN` lacks,
+    and matters because **Prevent self-review** makes a one-person team unable to approve its own
+    releases.
+
+The script still implements the branch-protection and workflow-permission checks; this repository's
+policy simply omits them. A repository willing to store an admin-scoped credential enables them by
+adding the corresponding policy keys.
+
+**On `bypassActors`.** Each ruleset entry declares `allowed`, `forbidden` or `unchecked`. GitHub
+omits the `bypass_actors` field entirely for callers without repository write access, so `forbidden`
+fails when the field is invisible rather than reading a missing field as an empty one. If the
+workflow's token cannot see it, set that entry to `unchecked` — a deliberate decision recorded in a
+code-owner-gated file and visible in a diff — and verify the bypass list by hand instead.
 
 ## Release ceremony
 

@@ -40,10 +40,6 @@ jobs:
         timeout-minutes: 5
         permissions:
             contents: read
-            # Read-only, and only so check-release-config.js can audit branch protection and
-            # the default workflow permissions. Confined to this job deliberately: verify
-            # holds no publish credential, and test/build/publish keep `contents: read`.
-            administration: read
         outputs:
             tag: ${{ steps.resolve.outputs.tag }}
             # The immutable commit SHA the tag pointed to at verify time -- build checks
