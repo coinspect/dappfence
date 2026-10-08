@@ -40,6 +40,10 @@ jobs:
         timeout-minutes: 5
         permissions:
             contents: read
+            # Read-only, and only so check-release-config.js can audit branch protection and
+            # the default workflow permissions. Confined to this job deliberately: verify
+            # holds no publish credential, and test/build/publish keep `contents: read`.
+            administration: read
         outputs:
             tag: ${{ steps.resolve.outputs.tag }}
             # The immutable commit SHA the tag pointed to at verify time -- build checks
@@ -127,6 +131,15 @@ jobs:
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
                   node-version: 24
+
+            # Everything this pipeline guarantees depends on settings that live outside the
+            # repository -- the tag ruleset, the environment's reviewers and deployment-branch
+            # restriction, branch protection. Nothing else would notice them being weakened,
+            # so a drifted repository fails the release here rather than publishing quietly.
+            - name: Verify the repository's release settings have not drifted
+              run: node scripts/check-release-config.js
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Verify MAJOR.MINOR is in sync across publishable packages
               run: node scripts/sync-versions.js check

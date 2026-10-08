@@ -351,8 +351,39 @@ can still `npm publish` directly, bypassing every gate in `release.yml`. Policy:
 
 Repo → **Settings** → **Actions** → **General** → **Workflow permissions**: leave at the default
 (**Read repository contents and packages permissions**); leave **Allow GitHub Actions to create and
-approve pull requests** off. `release.yml` explicitly requests only `id-token: write` (OIDC) and
-`contents: read` where needed — nothing else to grant.
+approve pull requests** off. `release.yml` explicitly requests only `id-token: write` (OIDC),
+`contents: read`, and `administration: read` in `verify` (so the settings check below can read
+branch protection) — nothing else to grant.
+
+## Most of these settings are machine-checked
+
+Every setting above lives outside the repository, so nothing in a pull request can notice one being
+weakened later. `scripts/check-release-config.js` runs in the `verify` job and fails the release if
+the repository has drifted from `.github/release-policy.json`:
+
+| Checked                       | What drift it catches                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Tag ruleset (Step 4)          | pattern changed, enforcement dropped to Evaluate, a rule removed, or a **bypass actor** added                   |
+| Environment (Step 3)          | reviewers removed, **Prevent self-review** switched off, deployment branches widened or set to "No restriction" |
+| CODEOWNERS (Step 1)           | an owner that no longer resolves, or a team that lost write access                                              |
+| Branch protection (Step 1)    | **Require review from Code Owners** switched off, which makes CODEOWNERS inert                                  |
+| Workflow permissions (Step 7) | default token permissions widened, or Actions allowed to approve pull requests                                  |
+
+Run it locally against any repository:
+
+```bash
+GITHUB_TOKEN=<pat> node scripts/check-release-config.js --repo coinspect/dappfence
+```
+
+Without a token the first three still run; branch protection and workflow permissions report a
+failure rather than a skip, because an unverifiable setting must never read as a correct one. The
+script takes no repository-specific knowledge of its own — `.github/release-policy.json` holds all
+of that — so it can be copied to another repository, or extracted into a shared one, unchanged.
+
+**What it cannot check:** the npm Trusted Publisher configuration (Step 5). npm exposes no API for
+it, so that remains a manual verification. The same applies to the maintainer team having at least
+two members, which `GITHUB_TOKEN` has no org scope to read — and which matters, because **Prevent
+self-review** makes a one-person team unable to approve its own releases.
 
 ## Release ceremony
 

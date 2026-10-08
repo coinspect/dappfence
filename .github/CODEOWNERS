@@ -17,6 +17,11 @@
 # docs/release-setup.md), and which environment/permissions gate the actual npm publish.
 .github/workflows/release.yml     @coinspect/dappfence-admins
 
+# The expected GitHub settings that scripts/check-release-config.js asserts in the verify job.
+# This file defines what "correctly configured" means, so leaving it unprotected would let one
+# PR weaken a setting and the check that would have caught it.
+.github/release-policy.json       @coinspect/dappfence-admins
+
 # What gets published, and how versions are allowed to move. Package manifests themselves are
 # release-critical too, not just the allowlist/script: `name` and `version` are the identity npm
 # registers the upload under, the `files` allow-list decides what ends up inside the tarball, and

@@ -1,0 +1,24 @@
+{
+    "tagRuleset": {
+        "pattern": "refs/tags/release-*",
+        "rules": ["creation", "update", "deletion", "non_fast_forward"],
+        "allowBypassActors": false
+    },
+    "environment": {
+        "name": "production-publish",
+        "requireReviewers": true,
+        "preventSelfReview": true,
+        "deploymentBranches": ["main"]
+    },
+    "codeowners": {
+        "requireNoErrors": true
+    },
+    "branchProtection": {
+        "branch": "main",
+        "requireCodeOwnerReviews": true
+    },
+    "workflowPermissions": {
+        "defaultPermissions": "read",
+        "canApprovePullRequests": false
+    }
+}
