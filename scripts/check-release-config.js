@@ -20,9 +20,13 @@
  *   node scripts/check-release-config.js --repo <owner>/<name>      audit a specific repository
  *   node scripts/check-release-config.js --policy <path>            use a different policy file
  *
- * Reads GITHUB_TOKEN from the environment when present. Branch protection and workflow
- * permissions require it (with `administration: read`); the rest are readable without one on a
- * public repository.
+ * Reads GITHUB_TOKEN from the environment when present.
+ *
+ * On credentials: `administration` is not a workflow permission -- the GITHUB_TOKEN cannot be
+ * granted it -- so the branchProtection and workflowPermissions checks below need a
+ * fine-grained PAT or App token supplied as a secret. This repository's policy therefore omits
+ * them and verifies those two settings by hand; the checks remain here for repositories that
+ * decide a stored admin-scoped credential is an acceptable trade.
  */
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -90,56 +94,113 @@ async function gh(path) {
 }
 
 const NEEDS_SCOPE =
-    'could not read this setting. A GITHUB_TOKEN with `administration: read` is required; ' +
-    'refusing to treat an unverifiable setting as correct';
+    'could not read this setting with the supplied credential. `administration` is not a ' +
+    'workflow permission, so this needs a fine-grained PAT or App token; refusing to treat ' +
+    'an unverifiable setting as correct';
 
 // ---------------------------------------------------------------------------
 // Checks
 // ---------------------------------------------------------------------------
 
-async function checkTagRuleset(expected) {
-    const label = 'tag ruleset';
+/**
+ * Fetches every tag ruleset once. The list endpoint omits conditions, rules and bypass
+ * actors, so each has to be read individually.
+ */
+async function loadTagRulesets() {
     const list = await gh(`/repos/${repo}/rulesets`);
-    if (list.state === 'forbidden') return fail(label, NEEDS_SCOPE);
-    if (list.state === 'absent') return fail(label, 'the repository has no rulesets');
+    if (list.state !== 'ok') return list;
 
-    // The list endpoint omits conditions and rules, so each tag ruleset has to be fetched.
-    const tagRulesets = list.body.filter((r) => r.target === 'tag');
-    let match;
-    for (const summary of tagRulesets) {
+    const details = [];
+    for (const summary of list.body.filter((r) => r.target === 'tag')) {
         const detail = await gh(`/repos/${repo}/rulesets/${summary.id}`);
-        if (detail.state !== 'ok') continue;
-        const include = detail.body.conditions?.ref_name?.include ?? [];
-        if (include.includes(expected.pattern)) {
-            match = detail.body;
-            break;
+        if (detail.state === 'ok') details.push(detail.body);
+    }
+    return { state: 'ok', body: details };
+}
+
+/**
+ * Each entry describes one ruleset by the rules it must carry, not by name -- names are
+ * editable and carry no meaning to GitHub.
+ *
+ * Creation and protection have to be separate rulesets, because bypass actors are scoped to
+ * a ruleset rather than to a rule. "Restrict creations" means *only* bypass actors may create
+ * matching tags, so maintainers need a bypass to push a release tag at all -- and granting it
+ * on a ruleset that also restricts updates and deletions would exempt them from those too,
+ * making the tags mutable by exactly the people most able to misuse that.
+ *
+ * If both entries end up matching a single combined ruleset, the protection entry's
+ * no-bypass assertion fails. That is the correct answer: a combined ruleset either cannot
+ * create tags or cannot protect them.
+ */
+async function checkTagRulesets(expectedList, all) {
+    for (const expected of expectedList) {
+        const label = `tag ruleset (${expected.rules.join('+')})`;
+
+        const match = all.find((r) => {
+            const include = r.conditions?.ref_name?.include ?? [];
+            const present = new Set((r.rules ?? []).map((x) => x.type));
+            return (
+                include.includes(expected.pattern) && expected.rules.every((x) => present.has(x))
+            );
+        });
+
+        if (!match) {
+            fail(
+                label,
+                `no tag ruleset over "${expected.pattern}" carries ${expected.rules.join(', ')}`
+            );
+            continue;
         }
-    }
 
-    if (!match) {
-        return fail(label, `no tag ruleset targets "${expected.pattern}"`);
-    }
-    if (match.enforcement !== 'active') {
-        fail(label, `"${match.name}" enforcement is "${match.enforcement}", expected "active"`);
-    }
+        if (match.enforcement !== 'active') {
+            fail(label, `"${match.name}" enforcement is "${match.enforcement}", expected "active"`);
+        }
 
-    const present = new Set((match.rules ?? []).map((r) => r.type));
-    const missing = expected.rules.filter((r) => !present.has(r));
-    if (missing.length > 0) {
-        fail(label, `"${match.name}" is missing rule(s): ${missing.join(', ')}`);
-    }
+        // Exclusions win over includes, so an excluded pattern silently unprotects the tags
+        // this ruleset appears to cover. This policy admits no exceptions, so require none.
+        const exclude = match.conditions?.ref_name?.exclude ?? [];
+        if (exclude.length > 0) {
+            fail(label, `"${match.name}" excludes ${exclude.join(', ')}, expected no exclusions`);
+        }
 
-    // A bypass actor silently exempts someone from every rule above, which is the most
-    // valuable thing to notice and the least visible in the UI.
-    const bypass = match.bypass_actors ?? [];
-    if (!expected.allowBypassActors && bypass.length > 0) {
-        fail(label, `"${match.name}" has ${bypass.length} bypass actor(s), expected none`);
-    }
+        // A bypass actor silently exempts someone from every rule in the ruleset, which is the
+        // most valuable thing to notice and the least visible in the UI. Three states rather
+        // than a boolean, because the API omits the field entirely for callers without
+        // repository write access, and a missing field must never read as an empty one:
+        //
+        //   allowed    expected to have them (the creation ruleset); not inspected
+        //   forbidden  must be visible AND empty; invisible is a failure, not a pass
+        //   unchecked  a deliberate, recorded decision not to verify it here
+        //
+        // "unchecked" exists so that skipping this is a visible choice in a code-owner-gated
+        // file, reviewable in a diff, rather than something the script quietly does.
+        if (expected.bypassActors === 'forbidden') {
+            if (!Array.isArray(match.bypass_actors)) {
+                fail(
+                    label,
+                    `"${match.name}" bypass actors are not visible to this caller, so "none" ` +
+                        'cannot be confirmed. Use a credential with repository write access, or ' +
+                        'record the decision not to check by setting bypassActors to "unchecked"'
+                );
+            } else if (match.bypass_actors.length > 0) {
+                const who = match.bypass_actors.map((a) => a.actor_type ?? 'actor').join(', ');
+                fail(
+                    label,
+                    `"${match.name}" has ${match.bypass_actors.length} bypass actor(s) (${who}), expected none`
+                );
+            }
+        }
 
-    if (problems.length === 0 || !problems.some((p) => p.startsWith(label))) {
-        pass(
-            `${label}: "${match.name}" active over ${expected.pattern}, ${present.size} rules, no bypass`
-        );
+        if (!problems.some((p) => p.startsWith(label))) {
+            const notes = {
+                allowed: 'bypass expected',
+                forbidden: 'no bypass actors',
+                unchecked: 'bypass actors NOT CHECKED',
+            };
+            pass(
+                `${label}: "${match.name}" active, no exclusions, ${notes[expected.bypassActors] ?? 'bypass unspecified'}`
+            );
+        }
     }
 }
 
@@ -190,23 +251,38 @@ async function checkDeploymentBranches(expected, label, env) {
         return fail(label, 'deployment branches are unrestricted ("No restriction")');
     }
 
+    // Non-null is not enough: "Protected branches only" is also non-null, and in that mode
+    // any protected branch can deploy regardless of the saved custom list. Only
+    // custom_branch_policies makes the list below the effective restriction.
+    const { protected_branches: protectedOnly, custom_branch_policies: custom } =
+        env.deployment_branch_policy;
+    if (protectedOnly !== false || custom !== true) {
+        return fail(
+            label,
+            'deployment branches are set to "Protected branches only"; any protected branch ' +
+                'can deploy. Expected "Selected branches and tags"'
+        );
+    }
+
     const res = await gh(
         `/repos/${repo}/environments/${encodeURIComponent(expected.name)}/deployment-branch-policies`
     );
     if (res.state === 'forbidden') return fail(label, NEEDS_SCOPE);
     if (res.state === 'absent') return fail(label, 'has no deployment branch policies');
 
-    const actual = (res.body.branch_policies ?? []).map((p) => p.name).sort();
-    const want = [...expected.deploymentBranches].sort();
+    // Compare the type too. A *tag* policy named "main" would otherwise satisfy a required
+    // branch named "main", while actually blocking deployment from the main branch.
+    const actual = (res.body.branch_policies ?? []).map((p) => `${p.type}:${p.name}`).sort();
+    const want = expected.deploymentBranches.map((name) => `branch:${name}`).sort();
 
     // Exact match, not a superset: an extra allowed branch is precisely the drift to catch.
-    if (actual.length !== want.length || actual.some((name, i) => name !== want[i])) {
+    if (actual.length !== want.length || actual.some((entry, i) => entry !== want[i])) {
         fail(
             label,
-            `deployment branches are [${actual.join(', ')}], expected exactly [${want.join(', ')}]`
+            `deployment policies are [${actual.join(', ')}], expected exactly [${want.join(', ')}]`
         );
     } else {
-        pass(`${label}: deployment branches exactly [${want.join(', ')}]`);
+        pass(`${label}: deployment branches exactly [${expected.deploymentBranches.join(', ')}]`);
     }
 }
 
@@ -277,7 +353,12 @@ async function checkWorkflowPermissions(expected) {
 async function main() {
     console.log(`Auditing ${repo} against ${policyPath.replace(ROOT + '/', '')}\n`);
 
-    if (policy.tagRuleset) await checkTagRuleset(policy.tagRuleset);
+    if (policy.tagRulesets) {
+        const all = await loadTagRulesets();
+        if (all.state === 'forbidden') fail('tag rulesets', NEEDS_SCOPE);
+        else if (all.state === 'absent') fail('tag rulesets', 'the repository has no rulesets');
+        else await checkTagRulesets(policy.tagRulesets, all.body);
+    }
     if (policy.environment) await checkEnvironment(policy.environment);
     if (policy.codeowners?.requireNoErrors) await checkCodeowners();
     if (policy.branchProtection) await checkBranchProtection(policy.branchProtection);
