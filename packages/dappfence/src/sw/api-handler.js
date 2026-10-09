@@ -12,6 +12,7 @@ const logger = createLogger();
  * @param {object} deps
  * @param {function} deps.onSecurityViolation - called to broadcast the active block condition
  * @param {object} deps.appStore
+ * @param {object} deps.config
  */
 export function createApiHandler({ onSecurityViolation, appStore, config }) {
     const {
