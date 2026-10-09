@@ -152,7 +152,7 @@ function localPackages() {
  * that looks like tampering but is only this script being wrong.
  */
 function rebuildAndPack(packages, outDir) {
-    const short = sh('git', ['rev-parse', '--short', 'HEAD']);
+    const short = sh('git', ['rev-parse', '--short=7', 'HEAD']);
 
     if (packages.some(({ name }) => name === '@dappfence/core')) {
         rmSync(resolve(ROOT, 'packages/dappfence/dist'), { recursive: true, force: true });

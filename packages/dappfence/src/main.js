@@ -25,17 +25,14 @@ if (isClient) {
     // Any ES export would leak `window.DappFence`; freezing an inert literal keeps
     // info in the closure. In the SW branch to hide from page-realm interception.
     Object.preventExtensions({
+        // Only values derived from the source. A build timestamp and the builder's Node
+        // version used to live here too; they made the bundle depend on the machine that
+        // produced it, so the same commit could not be rebuilt byte-for-byte by anyone else.
+        // Nothing is lost -- `commit` already determines them, via .nvmrc at that commit and
+        // the commit's own date, and provenance records the build environment signed.
         __DAPPFENCE_BUILD_INFO__: {
             version: __VERSION__,
             commit: __COMMIT__,
-            // Both of these are dropped from a release build so the published bundle depends
-            // only on the source, making it reproducible by anyone who checks out the tagged
-            // commit. __COMMIT__ is a define-substituted literal, so terser folds the
-            // comparison and eliminates the value entirely rather than shipping a null field.
-            // Nothing is lost: provenance records the build environment, signed, where it
-            // cannot be edited afterwards. A local build keeps both, for diagnosis.
-            buildDate: __COMMIT__ === 'not-for-release' ? __BUILD_DATE__ : null,
-            node: __COMMIT__ === 'not-for-release' ? __NODE_VERSION__ : null,
         },
     });
     initializeServiceWorker();

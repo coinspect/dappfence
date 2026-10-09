@@ -301,7 +301,7 @@ jobs:
                   # output. That build used to happen via its prepublishOnly script during
                   # `npm publish`; the publish job no longer runs repo code, so it happens
                   # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
-                  COMMIT_HASH=$(git rev-parse --short HEAD) npm run build -w @dappfence/core
+                  COMMIT_HASH=$(git rev-parse --short=7 HEAD) npm run build -w @dappfence/core
 
                   # The build is itself repository code (packages/dappfence/vite.config.js and
                   # whatever it loads), so it runs after the check above and could edit another
