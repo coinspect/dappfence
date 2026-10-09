@@ -62,16 +62,27 @@ export const VERIFICATION_STATUS = Object.freeze({
     MISMATCH: verdict('MISMATCH', true),
     NOT_FOUND_IN_MANIFEST: verdict('NOT_FOUND_IN_MANIFEST', true),
     DENIED_BY_RULE: verdict('DENIED_BY_RULE', true),
-    UNSUPPORTED_SIGNATURE: verdict('UNSUPPORTED_SIGNATURE', true),
     ERROR: verdict('ERROR', true),
-    CONFIG_ERROR: verdict('CONFIG_ERROR', true),
+    MANIFEST_UNTRUSTED: verdict('MANIFEST_UNTRUSTED', true),
 });
 
-export const ASSET_TYPE = {
+/** @typedef {typeof VERIFICATION_STATUS[keyof typeof VERIFICATION_STATUS]} VerificationStatus */
+
+/**
+ * @typedef {'NULL_RESPONSE'
+ *         | 'BODY_UNREADABLE'
+ *         | 'FETCH_BAD_STATUS'
+ *         | 'FETCH_EXCEPTION'
+ *         } AssetErrorReason
+ */
+
+export const ASSET_TYPE = Object.freeze({
     ASSET: 'asset',
     SERVICE_WORKER: 'service-worker',
     MANIFEST: 'manifest',
-};
+});
+
+/** @typedef {typeof ASSET_TYPE[keyof typeof ASSET_TYPE]} AssetType */
 
 // Known-inert destinations: responses that the browser never executes as code.
 // Unknown future destinations default to executable (fail-closed) — only

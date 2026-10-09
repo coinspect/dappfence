@@ -39,7 +39,6 @@ const ESCALATE_STATUSES = new Set([
     VERIFICATION_STATUS.MISMATCH,
     VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST,
     VERIFICATION_STATUS.ERROR,
-    VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE,
 ]);
 const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.has(result.status);
 
@@ -251,7 +250,10 @@ export const createVerifier = (
 
         if (!response) {
             logger.log(`⏭️  Error: null response`);
-            return result({ status: VERIFICATION_STATUS.ERROR });
+            return result({
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NULL_RESPONSE',
+            });
         }
 
         if (fileKey === manifestFileKey) {
@@ -391,6 +393,25 @@ export const basicVerifyAgainstManifest = async (req, response, manifestInfo, lo
     return { status: VERIFICATION_STATUS.MISMATCH, fileKey, expectedHashes, actualHash };
 };
 
+/**
+ * @typedef {{
+ *   status: import('../../core/constants.js').VerificationStatus,
+ *   fileKey: string,
+ *   expectedHashes?: string[],
+ *   actualHash?: string,
+ *   keepTryingActions?: boolean,
+ *   nonce?: string,
+ *   headers?: object,
+ * }} VerifyResult
+ */
+
+/**
+ * @param {{ url: string, destination: string, method?: string, mode?: string }} req
+ * @param {object} response
+ * @param {{ manifest: { contentRules?: object[], csp?: { enabled?: boolean } }, appVersion?: string }} manifestInfo
+ * @param {string} locationHref
+ * @returns {Promise<VerifyResult>}
+ */
 export const securityVerifyAgainstManifest = async (req, response, manifestInfo, locationHref) => {
     const { manifest } = manifestInfo;
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
