@@ -30,6 +30,12 @@ on:
                 type: boolean
                 default: false
 
+# Pinned once here rather than in each job. Must stay equal to the root package.json's
+# `packageManager` field, which is where a verifier outside CI reads it from -- the verify
+# job asserts they match, since the publish job has no checkout and cannot read the file.
+env:
+    NPM_VERSION: '11.19.0'
+
 concurrency:
     group: release
     cancel-in-progress: false
@@ -126,7 +132,21 @@ jobs:
 
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
+
+            # The npm version is pinned twice -- as NPM_VERSION above, and as packageManager in
+            # package.json where anyone rebuilding outside CI reads it. They have to agree, or a
+            # third party reproducing a release would pack with a different npm than built it.
+            # Checked here because publish has no checkout and cannot read the file itself.
+            - name: The pinned npm version must match packageManager
+              run: |
+                  set -euo pipefail
+                  declared=$(node -p "require('./package.json').packageManager")
+                  if [ "$declared" != "npm@${NPM_VERSION}" ]; then
+                    echo "::error::package.json packageManager is \"$declared\" but release.yml pins npm@${NPM_VERSION}"
+                    exit 1
+                  fi
+                  echo "npm pin agrees: $declared"
 
             - name: Verify MAJOR.MINOR is in sync across publishable packages
               run: node scripts/sync-versions.js check
@@ -171,10 +191,10 @@ jobs:
 
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
 
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - name: Install
               run: npm ci --ignore-scripts
@@ -241,10 +261,10 @@ jobs:
 
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
 
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - name: Install
               run: npm ci --ignore-scripts
@@ -335,7 +355,7 @@ jobs:
             # works only from the tarballs build produced and from `npm view`.
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
                   registry-url: 'https://registry.npmjs.org'
 
             # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
@@ -343,7 +363,7 @@ jobs:
             # one's confirmed to support Trusted Publishing) -- not whatever happens to be
             # newest the moment a release runs. Bump intentionally via a reviewed PR.
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:

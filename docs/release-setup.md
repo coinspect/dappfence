@@ -419,6 +419,51 @@ pauses at the `production-publish` environment — ask a second maintainer to ap
 whichever packages actually changed version publish with `--provenance`; everything already at its
 current version on npm is skipped, not re-uploaded.
 
+## Verifying a published release
+
+Provenance proves a tarball came from this repository and commit. Reproducibility proves the
+stronger thing: that the published bytes correspond to source you can read, trusting nothing but
+your own machine. Both are available to anyone — no access to this repo or to npm required.
+
+```bash
+git checkout <the commit the release was built from>
+npm ci
+npm run verify-published
+```
+
+The script reads npm's provenance attestation to learn which commit was published, refuses to run
+from any other checkout, rebuilds exactly as the `build` job does, and compares sha512 digests. It
+also confirms the tarball the registry served is the one the attestation covers.
+
+Four of the five packages ship raw committed source, so their tarballs are archives of files already
+in git — nothing can drift, and a sceptic can skip the script entirely:
+
+```bash
+tar -xzf dappfence-astro-0.1.2.tgz
+diff -r package/src packages/astro/src --exclude=__tests__
+```
+
+Only `@dappfence/core` ships built output, and only it depends on the toolchain. That is why
+`.nvmrc` and `package.json`'s `packageManager` field exist, and why the script refuses to continue
+when the local Node or npm does not match them: a mismatch makes a "differs" result uninterpretable,
+since you could not tell tampering from having built with a different compiler.
+
+**What makes this possible.** The published bundle must depend only on the source. `src/main.js`
+drops both the build timestamp and the Node version from a release build — `__COMMIT__` is a
+define-substituted literal, so terser folds the comparison and eliminates the values rather than
+shipping null fields. A local build keeps them for diagnosis. Nothing is lost by dropping them:
+provenance records the build environment, signed, where it cannot be edited afterwards.
+
+**Versions before `0.1.3` cannot reproduce.** `0.1.2` was published while the Node version was still
+baked into the bundle, so a rebuild on any other Node patch — and, after this change, on any Node at
+all — produces different bytes. That is expected, not tampering. It was verified reproducible on the
+toolchain that built it before the change landed.
+
+**Also complementary, and cheaper:** `npm audit signatures` verifies that the attestations
+themselves are authentic and publicly logged. The rebuild does not need it — the attestation's only
+job here is naming the commit, and a wrong commit would not reproduce — but it is one command and
+checks a different thing.
+
 ## Adding a new package to the repo
 
 Adding a package to `packages/` does not auto-enroll it in releases. Before it should ship:
