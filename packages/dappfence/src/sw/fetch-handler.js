@@ -15,6 +15,7 @@ const logger = createLogger();
  * @param {object} deps.manifestService - Manifest verification service
  * @param {function} deps.onSecurityViolation - Called to broadcast the block condition
  * @param {object} deps.appStore - App store facade
+ * @param {function} deps.handleApiEndpoint - Internal /sw-api/* request handler
  * @returns {function} Fetch event handler (event, callChildHandlers) => Promise<Response>
  */
 export function createSecurityFetchHandler({

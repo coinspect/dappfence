@@ -29,6 +29,7 @@ const BLOCKS_KEY = 'blocks';
  * Same violation content = same block ID (prevents duplicates).
  * @param {object} blockData
  * @param {string} blockData.status - Type of security violation
+ * @param {string} blockData.assetType - Asset classifier (asset / manifest / service-worker)
  * @param {string} blockData.fileKey - The file key that triggered the violation
  * @param {string[]} [blockData.expectedHashes] - Expected hashes from manifest
  * @param {string} blockData.actualHash - Actual hash of the file content

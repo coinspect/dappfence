@@ -15,8 +15,9 @@ const isServiceWorker = !isClient;
 if (isClient) {
     // Capture config synchronously — `document.currentScript` is null after the first
     // await. Remove the script tag immediately after, so DOM enumeration won't return it.
-    const config = getConfig(document.currentScript?.src);
-    document.currentScript?.remove();
+    const currentScript = /** @type {HTMLScriptElement | null} */ (document.currentScript);
+    const config = getConfig(currentScript?.src);
+    currentScript?.remove();
     logger.log('%c[DappFence] Starting optimized SW registration', 'color:green');
     initializeClient(config).catch((err) => {
         logger.error('SW initialization failed:', err);

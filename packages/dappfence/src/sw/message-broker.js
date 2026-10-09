@@ -97,6 +97,7 @@ export function createMessageBroker(swContext) {
 
 /**
  * @param {object} deps
+ * @param {object} deps.swContext
  * @param {function} deps.onClientReady
  */
 export function createMessageHandler({ swContext, onClientReady }) {

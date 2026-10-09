@@ -48,6 +48,10 @@ const STATUS_LOG = {
     ],
 };
 
+/**
+ * @param {object} db - Low-level Store backend from createDatabase()
+ * @param {{ userAgent?: string, origin?: string }} [env] - Environment info for log enrichment
+ */
 export function createAppStore(db, { userAgent, origin } = {}) {
     const activeBlocksStore = createActiveBlocksStore(db);
     const securityEventsStore = createSecurityEventsStore(db);
