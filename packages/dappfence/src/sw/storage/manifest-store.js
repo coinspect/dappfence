@@ -11,6 +11,7 @@ import { calculateHash } from '../../core/crypto.js';
 // Trusted Manifest System constants
 const TRUSTED_MANIFEST_KEY = 'trusted-manifest';
 const VERIFICATION_RESULTS_KEY = 'verification-results';
+const ACTIVE_IDENTITY_KEY = 'active-identity';
 
 // Trusted-manifest priority queue: newest-first.
 // Primary cleanup: entries older than MAX_AGE_MS are pruned on each addLatest.
@@ -58,18 +59,27 @@ export function createManifestStore(database) {
     };
 
     const trustedManifestStore = {
-        async addLatest(manifest) {
+        async addLatest(manifest, signer) {
             const appVersion = await createSyntheticAppVersion(manifest);
-            // Read-modify-write under a single transaction so concurrent
-            // addLatest calls can't clobber each other's updates.
             let newList;
             await database.withTx(async (tx) => {
-                const list = (await tx.get(TRUSTED_MANIFEST_KEY)) || [];
                 const now = Date.now();
-                const deduped = list.filter((m) => m.appVersion !== appVersion);
-                deduped.unshift({ appVersion, manifest, storedAt: now });
-                const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
-                newList = pruned.slice(0, MAX_MANIFESTS);
+                const newEntry = {
+                    appVersion,
+                    manifest,
+                    storedAt: now,
+                    signatureType: signer.signatureType,
+                    signerIdentity: signer.identity,
+                };
+                if (manifest.revokeManifests) {
+                    newList = [newEntry];
+                } else {
+                    const list = (await tx.get(TRUSTED_MANIFEST_KEY)) || [];
+                    const deduped = list.filter((m) => m.appVersion !== appVersion);
+                    deduped.unshift(newEntry);
+                    const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
+                    newList = pruned.slice(0, MAX_MANIFESTS);
+                }
                 await tx.set(TRUSTED_MANIFEST_KEY, newList);
             });
             cachedList = newList;
@@ -95,9 +105,28 @@ export function createManifestStore(database) {
         },
     };
 
-    /**
-     * Verification Results database Operations
-     */
+    let cachedActiveIdentity = null;
+
+    const activeIdentityStore = {
+        async getActiveIdentity() {
+            if (cachedActiveIdentity === null) {
+                cachedActiveIdentity = (await database.get(ACTIVE_IDENTITY_KEY)) || undefined;
+            }
+            return cachedActiveIdentity;
+        },
+
+        async updateActiveIdentity({ signatureType, identity }) {
+            const newIdentity = {
+                signatureType,
+                identity,
+                enrolledAt: Date.now(),
+            };
+            await database.set(ACTIVE_IDENTITY_KEY, newIdentity);
+            cachedActiveIdentity = newIdentity;
+            return newIdentity;
+        },
+    };
+
     const verificationResultsStore = {
         async get(appVersion) {
             const allResults = (await database.get(VERIFICATION_RESULTS_KEY)) || {};
@@ -137,6 +166,7 @@ export function createManifestStore(database) {
 
     return {
         trustedManifestStore,
+        activeIdentityStore,
         verificationResultsStore,
     };
 }
