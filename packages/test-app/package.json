@@ -22,7 +22,8 @@
         "build:watch": "node src/watch.js",
         "test": "playwright test --config playwright.config.ts",
         "test:headed": "playwright test --config playwright.config.ts --headed",
-        "test:debug": "playwright test --config playwright.config.ts --debug"
+        "test:debug": "playwright test --config playwright.config.ts --debug",
+        "preview:warning": "node --watch src/preview-security-warning.js"
     },
     "dependencies": {
         "@dappfence/core": "*",
