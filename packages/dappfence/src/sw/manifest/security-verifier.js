@@ -228,13 +228,20 @@ export const createVerifier = (
         }
 
         const fetched = await fetchAndStoreManifest();
+        if (fetched.status.isViolation) {
+            return fetched;
+        }
         const fetchedResult = await tryManifest(fetched);
         if (manifestDecidedAbout(fetchedResult)) {
             pinClient(clientId, fetched);
             return fetchedResult;
         }
-        // Nothing decided — return best available non-null result.
-        return [fetchedResult, latestResult, ...historicResults].find((r) => r !== null) ?? fetched;
+        return (
+            [fetchedResult, latestResult, ...historicResults].find((r) => r !== null) ?? {
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NO_MANIFEST_AVAILABLE',
+            }
+        );
     };
 
     const verifyResponse = async (req, response, clientId, latestManifest) => {
