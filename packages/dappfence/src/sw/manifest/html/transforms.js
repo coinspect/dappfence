@@ -33,8 +33,8 @@ export const TRANSFORMS = {
  * through to the next contentRule action.
  *
  * @param {string} fileKey
- * @param {{ getBodyBytes(): Promise<Uint8Array> }} wrappedResponse
- * @param {{ appVersion: string, manifest: object }} manifestInfo
+ * @param {{ getBodyBytes(): Promise<{ value: Uint8Array } | { status: object }> }} wrappedResponse
+ * @param {{ appVersion: string, manifest: { files: Record<string, string[]> } }} manifestInfo
  * @param {object} action - contentRule action with `transform` name
  * @returns {Promise<object|null>}
  */
@@ -45,7 +45,7 @@ export const handleTransform = async (fileKey, wrappedResponse, manifestInfo, ac
         return null;
     }
     const bytes = await wrappedResponse.getBodyBytes();
-    if (bytes.status) {
+    if ('status' in bytes) {
         return bytes;
     }
     const { appVersion, manifest } = manifestInfo;

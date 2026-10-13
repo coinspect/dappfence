@@ -19,7 +19,7 @@ const MANIFEST_SIGNATURE_TYPES = {
  * (e.g. a lone `%`) returns the raw pathname — the manifest lookup will miss,
  * which is the correct security outcome.
  *
- * @param {string} pathname.
+ * @param {string} pathname
  * @returns {string}
  */
 export const decodePathname = (pathname) => {
@@ -67,7 +67,8 @@ export const verifyManifestSignature = (
     if (manifestSignatureType in MANIFEST_SIGNATURE_TYPES) {
         try {
             logger.log('checking signature', manifestSignatureType, manifestData.sig);
-            const msg = new TextEncoder('utf-8').encode(JSON.stringify(manifestData.pay, null, 2));
+            // TextEncoder encodes to UTF-8.
+            const msg = new TextEncoder().encode(JSON.stringify(manifestData.pay, null, 2));
             const recovered = MANIFEST_SIGNATURE_TYPES[manifestSignatureType](
                 msg,
                 manifestData.sig

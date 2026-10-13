@@ -15,7 +15,7 @@ hashes.sha256 = sha256;
  * Output format: `sha256-${standard-base64-with-padding}` — matches what
  * the signer emits and what HTML's Subresource Integrity attribute uses,
  * so manifest values and runtime hashes can compare with `===` directly.
- * @param {ArrayBuffer|Uint8Array} buffer - Data to hash
+ * @param {BufferSource} buffer - Data to hash
  * @returns {Promise<string>} SRI hash, e.g. "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
  */
 export async function calculateHash(buffer) {
@@ -63,8 +63,9 @@ export function recoverPersonalSign(msg, signature) {
 
     // Message Hash
     const prefix = '\x19Ethereum Signed Message:\n';
+    // TextEncoder encodes to UTF-8.
     const messageHash = keccak_256(
-        etc.concatBytes(new TextEncoder('utf-8').encode(prefix + msgHash.length), msgHash)
+        etc.concatBytes(new TextEncoder().encode(prefix + msgHash.length), msgHash)
     );
     return ethereumAddress(recoverPublicKey(sigBytes, messageHash, { prehash: false }));
 }
