@@ -563,7 +563,17 @@ npm run verify-published
 
 The script reads npm's provenance attestation to learn which commit was published, refuses to run
 from any other checkout, rebuilds exactly as the `build` job does, and compares sha512 digests. It
-also confirms the tarball the registry served is the one the attestation covers.
+also confirms the tarball the registry served is the one the attestation covers — and refuses an
+attestation that names no commit or no subject digest, rather than skipping the comparison and
+reporting a pass that checked nothing.
+
+**Checking `@dappfence/core` needs linux x64**, for the same reason the release is built in a
+container: npm resolves the `@rollup/*` and `@esbuild/*` native binaries by platform, and they
+decide the bundle's bytes. On anything else the script says so up front rather than rebuilding and
+reporting a mismatch it cannot interpret — a false supply-chain alarm aimed at the people most
+likely to be running it. It prints a `docker run` line that rebuilds in the pinned image, which
+works from any host. The other four packages are platform-independent and can be checked anywhere
+with `--package`.
 
 There is a cheaper check available too, and it needs no toolchain at all. The release tag carries
 the signed per-file manifest, so anyone can unpack a published tarball, hash its files, and compare
@@ -591,11 +601,17 @@ Only `@dappfence/core` ships built output, and only it depends on the toolchain.
 when the local Node or npm does not match them: a mismatch makes a "differs" result uninterpretable,
 since you could not tell tampering from having built with a different compiler.
 
-**What makes this possible.** The published bundle must depend only on the source. `src/main.js`
-drops both the build timestamp and the Node version from a release build — `__COMMIT__` is a
-define-substituted literal, so terser folds the comparison and eliminates the values rather than
-shipping null fields. A local build keeps them for diagnosis. Nothing is lost by dropping them:
-provenance records the build environment, signed, where it cannot be edited afterwards.
+**What makes this possible.** The published bundle must depend only on the source. A build timestamp
+and `process.versions.node` used to be substituted into it by `vite.config.js` and shipped in
+`__DAPPFENCE_BUILD_INFO__`; both are gone, from every build rather than only release builds, so
+there is no longer any code path that reads the machine into the bundle. What remains is `version`
+and `commit`, both derived from the tagged source.
+
+Little is lost. For a published build the Node version is recoverable — `.nvmrc` at that commit
+names it, and provenance records the environment that actually ran, signed, where it cannot be
+edited afterwards. The timestamp is not recoverable from the bundle and was never a security
+property: provenance carries the real build time, and the commit date bounds it. A value a
+maintainer could overwrite in a text editor was the weaker of the two records anyway.
 
 **Versions before `0.1.3` cannot reproduce.** `0.1.2` was published while the Node version was still
 baked into the bundle, so a rebuild on any other Node patch — and, after this change, on any Node at

@@ -28,8 +28,9 @@ if (isClient) {
         // Only values derived from the source. A build timestamp and the builder's Node
         // version used to live here too; they made the bundle depend on the machine that
         // produced it, so the same commit could not be rebuilt byte-for-byte by anyone else.
-        // Nothing is lost -- `commit` already determines them, via .nvmrc at that commit and
-        // the commit's own date, and provenance records the build environment signed.
+        // Little is lost for a published build: .nvmrc at that commit names the Node version,
+        // and provenance records the environment and the real build time, signed, where
+        // neither can be edited afterwards -- a stronger record than a string in here.
         __DAPPFENCE_BUILD_INFO__: {
             version: __VERSION__,
             commit: __COMMIT__,

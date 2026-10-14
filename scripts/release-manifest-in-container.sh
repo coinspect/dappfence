@@ -11,6 +11,7 @@
 # What it does, mirroring the build job step for step:
 #
 #   - refuses to run with a dirty working tree, before spending anything on a container
+#   - pins the architecture to CI's, not the host's -- see the --platform comment below
 #   - clones HEAD into the container, so the build sees committed content only, exactly as
 #     actions/checkout gives CI. Your working tree is mounted read-only and never built from.
 #   - installs the pinned npm, then `npm ci --ignore-scripts`
@@ -50,7 +51,16 @@ echo "npm:    $npm_version"
 echo "Commit: $sha"
 echo
 
+# --platform is not redundant with the digest. The official node images are published as
+# multi-platform manifest lists, and a list digest resolves to whichever entry matches the
+# host -- so an Apple Silicon maintainer would pull linux/arm64 from this exact digest, install
+# the arm64 @rollup/* and @esbuild/* binaries, and sign a manifest CI cannot reproduce: the
+# failure this whole wrapper exists to prevent. Nothing else catches it either, since Node's
+# version is identical across architectures and that is all check-build-node.js can see.
+# GitHub-hosted ubuntu-24.04 runners are x64, so this is the architecture to match. On ARM it
+# runs emulated and is slow; that is the cost of signing hashes CI can actually reproduce.
 docker run --rm \
+    --platform linux/amd64 \
     -v "$PWD:/src:ro" \
     -v "$out:/out" \
     -e "NPM_VERSION=$npm_version" \
