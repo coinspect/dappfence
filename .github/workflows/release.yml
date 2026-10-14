@@ -60,6 +60,10 @@ jobs:
             # The per-file hashes the maintainer signed into the tag, base64-encoded. build
             # refuses to upload anything that does not reproduce them exactly.
             manifest: ${{ steps.manifest.outputs.b64 }}
+            # .nvmrc at the verified commit. publish has no checkout and so cannot read the
+            # file; passing it from here keeps one source of truth rather than adding a
+            # fourth, unpinned copy of the Node version to this workflow.
+            node: ${{ steps.toolchain.outputs.node }}
         steps:
             - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
@@ -164,6 +168,24 @@ jobs:
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
                   node-version-file: .nvmrc
+
+            # publish runs setup-node with no checkout, so it cannot use node-version-file --
+            # the file is simply not there and the action fails before anything else in that
+            # job runs. Export the value instead of hardcoding it there: a literal would be a
+            # fourth place the Node version lives, free to drift from .nvmrc, the image tag and
+            # the image itself, which is the whole class of problem check-build-node.js exists
+            # for. Read after the checkout above, so this is the verified commit's .nvmrc.
+            - name: Export the pinned Node version for the publish job
+              id: toolchain
+              run: |
+                  set -euo pipefail
+                  node_version=$(tr -d '[:space:]' < .nvmrc)
+                  if [ -z "$node_version" ]; then
+                    echo "::error::.nvmrc is empty at the verified commit"
+                    exit 1
+                  fi
+                  echo "node=$node_version" >> "$GITHUB_OUTPUT"
+                  echo "Node pin: $node_version"
 
             # The npm version is pinned twice -- as NPM_VERSION above, and as packageManager in
             # package.json where anyone rebuilding outside CI reads it. They have to agree, or a
@@ -439,9 +461,13 @@ jobs:
             # Deliberately no actions/checkout. This job must not have repo code on disk at
             # all: anything it executed could mint the publish credential for itself. It
             # works only from the tarballs build produced and from `npm view`.
+            #
+            # Which is why the version comes from verify rather than node-version-file: with
+            # no checkout there is no .nvmrc to read, and setup-node fails outright on a
+            # missing file. verify read it from the verified commit, under signature.
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version-file: .nvmrc
+                  node-version: ${{ needs.verify.outputs.node }}
                   registry-url: 'https://registry.npmjs.org'
 
             # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
