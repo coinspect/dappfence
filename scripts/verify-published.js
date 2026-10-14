@@ -10,7 +10,10 @@
  *
  * Four of the five packages ship raw committed source, so for them `npm pack` is a plain
  * archive of files already in git and nothing can drift. Only @dappfence/core is built, and
- * only it depends on the toolchain matching.
+ * only it depends on the toolchain -- including the platform, since npm resolves the
+ * @rollup/* and @esbuild/* native binaries by platform at install time. Checking core
+ * therefore requires linux x64, or the pinned image from .github/build-image; the other four
+ * can be checked anywhere with --package.
  *
  * Usage:
  *   node scripts/verify-published.js                     verify every publishable package
@@ -72,8 +75,39 @@ async function getJson(url) {
  * A toolchain mismatch makes a "differs" result uninterpretable -- you would not know whether
  * the package was tampered with or you simply built it with the wrong compiler. So this fails
  * rather than warning.
+ *
+ * The platform is part of the toolchain, not separate from it. package-lock.json pins the
+ * version and integrity of all 26 @esbuild/* and 25 @rollup/rollup-* packages but not *which*
+ * one installs -- npm picks that by platform at install time -- and both are on the critical
+ * path for @dappfence/core's bundle. So the same source on macOS arm64 and on CI's linux x64
+ * produces different bytes, and without this check a maintainer on an Apple laptop gets a
+ * mismatch and a report telling them to treat it as a supply-chain incident. That false alarm
+ * would land on exactly the people most likely to run this script.
  */
-function checkToolchain() {
+function checkToolchain(packages) {
+    // Only @dappfence/core is built; the other four pack committed source, which is identical
+    // everywhere. Scoping the check keeps `--package @dappfence/astro` usable off-platform.
+    const buildsCore = packages.some(({ name }) => name === '@dappfence/core');
+    if (buildsCore && (process.platform !== 'linux' || process.arch !== 'x64')) {
+        problems.push(
+            `toolchain: this is ${process.platform} ${process.arch}, but @dappfence/core is\n` +
+                `      built on linux x64 (see .github/build-image). Its bundle depends on which\n` +
+                `      @rollup/* and @esbuild/* native binaries npm installed, so a rebuild here\n` +
+                `      cannot match and a "differs" result would mean nothing.\n\n` +
+                `      Rebuild in the pinned image, the same one releases are built in:\n` +
+                `        docker run --rm --platform linux/amd64 -v "$PWD:/src:ro" \\\n` +
+                `          "$(cat .github/build-image)" bash -euo pipefail -c '\n` +
+                `            git config --global --add safe.directory /src\n` +
+                `            git clone -q /src /v && cd /v\n` +
+                `            npm ci -s && npm run verify-published\n` +
+                `          '\n` +
+                `      (if the image ships a different npm than package.json pins, the run says\n` +
+                `      so and gives the install command -- the check below this one.)\n\n` +
+                `      Or check the four source-only packages alone, which are platform-\n` +
+                `      independent: --package @dappfence/astro`
+        );
+    }
+
     const wantNode = readFileSync(resolve(ROOT, '.nvmrc'), 'utf8').trim();
     const haveNode = process.versions.node;
     if (haveNode !== wantNode) {
@@ -94,7 +128,9 @@ function checkToolchain() {
     }
 
     if (problems.length === 0) {
-        checked.push(`toolchain: node ${haveNode}, npm ${haveNpm}`);
+        checked.push(
+            `toolchain: node ${haveNode}, npm ${haveNpm}, ${process.platform} ${process.arch}`
+        );
     }
 }
 
@@ -105,26 +141,35 @@ function checkToolchain() {
 /**
  * Pulls the source commit and the expected tarball digest out of npm's SLSA provenance
  * attestation. Both live in the DSSE payload, which is base64 inside the bundle.
+ *
+ * Returns a state rather than a bare object, because "no attestation" and "an attestation
+ * missing the fields this script checks" need different messages: the first is usually a
+ * version published before provenance existed, the second is never normal.
  */
 async function attestation(name, version) {
     const url = `${REGISTRY}/-/npm/v1/attestations/${encodeURIComponent(name)}@${version}`;
     const res = await getJson(url);
-    if (res.state !== 'ok') return null;
+    if (res.state !== 'ok') return { state: 'absent' };
 
     const bundle = (res.body.attestations ?? []).find((a) =>
         /slsa\.dev\/provenance/.test(a.predicateType ?? '')
     );
-    if (!bundle?.bundle?.dsseEnvelope?.payload) return null;
+    if (!bundle?.bundle?.dsseEnvelope?.payload) return { state: 'absent' };
 
     const payload = JSON.parse(
         Buffer.from(bundle.bundle.dsseEnvelope.payload, 'base64').toString('utf8')
     );
     const build = payload.predicate?.buildDefinition ?? {};
-    return {
-        commit: build.resolvedDependencies?.[0]?.digest?.gitCommit,
-        workflow: build.externalParameters?.workflow,
-        subjectSha512: payload.subject?.[0]?.digest?.sha512,
-    };
+    const commit = build.resolvedDependencies?.[0]?.digest?.gitCommit;
+    const subjectSha512 = payload.subject?.[0]?.digest?.sha512;
+
+    // Both checks that consume these are written as `if (value && value !== expected)`, so a
+    // missing field would skip the comparison while the run still reported "matches the
+    // attestation". Refuse the attestation instead: an absent field must never read as a
+    // satisfied one. `workflow` is informational only and may legitimately be absent.
+    if (!commit || !subjectSha512) return { state: 'malformed' };
+
+    return { state: 'ok', commit, subjectSha512, workflow: build.externalParameters?.workflow };
 }
 
 async function fetchTarball(name, version) {
@@ -176,7 +221,14 @@ async function main() {
         process.exit(1);
     }
 
-    checkToolchain();
+    // Reported before the registry is touched. These are local, cheap, and decide whether a
+    // rebuild here could mean anything at all -- and the platform problem in particular would
+    // otherwise be hidden behind the commit check below, which exits on its own.
+    checkToolchain(packages);
+    if (problems.length > 0) {
+        report();
+        return;
+    }
 
     // Each package has its own attestation, carrying its own subject digest -- so they are
     // fetched per package rather than once. The commit they name should agree across a
@@ -184,10 +236,23 @@ async function main() {
     const atts = new Map();
     for (const { name, version } of packages) {
         const att = await attestation(name, version);
-        if (!att) {
+        if (att.state === 'absent') {
             console.error(`verify-published: no provenance attestation for ${name}@${version}.`);
             console.error(
                 '\nEither that version is not published, or it was published without provenance.'
+            );
+            process.exit(1);
+        }
+        if (att.state === 'malformed') {
+            console.error(
+                `verify-published: the provenance attestation for ${name}@${version} does not ` +
+                    'carry a source commit, a subject digest, or both.'
+            );
+            console.error(
+                '\nThose are the two things this script verifies against, so there is nothing to\n' +
+                    'check and a pass would mean nothing. Treat it as a supply-chain incident until\n' +
+                    'shown otherwise: an attestation that omits what it is meant to attest to is not\n' +
+                    'a normal state for a package published by this pipeline.'
             );
             process.exit(1);
         }
@@ -196,7 +261,7 @@ async function main() {
 
     const first = atts.get(packages[0].name);
     const head = sh('git', ['rev-parse', 'HEAD']);
-    if (first.commit && first.commit !== head) {
+    if (first.commit !== head) {
         console.error(`verify-published: this checkout is not the commit that was published.`);
         console.error(`  attested: ${first.commit}`);
         console.error(`  HEAD:     ${head}`);
@@ -210,10 +275,10 @@ async function main() {
 
     for (const { name } of packages) {
         const att = atts.get(name);
-        if (att.commit && att.commit !== first.commit) {
+        if (att.commit !== first.commit) {
             problems.push(
-                `${name}: attested commit ${att.commit?.slice(0, 12)} differs from ` +
-                    `${first.commit?.slice(0, 12)} — these packages were not built together`
+                `${name}: attested commit ${att.commit.slice(0, 12)} differs from ` +
+                    `${first.commit.slice(0, 12)} — these packages were not built together`
             );
         }
     }
@@ -256,8 +321,8 @@ async function main() {
             // Confirms the tarball the registry served is the one the attestation covers --
             // a different tarball under the same version would pass the rebuild check only
             // if it also matched our build, but this catches a mismatched attestation.
-            const attested = atts.get(name)?.subjectSha512;
-            if (attested && attested !== publishedDigest) {
+            const attested = atts.get(name).subjectSha512;
+            if (attested !== publishedDigest) {
                 problems.push(
                     `${name}@${version}: the registry's tarball is not the one the attestation ` +
                         `covers\n      attested:  ${attested.slice(0, 32)}…\n` +
@@ -294,13 +359,19 @@ function report() {
     for (const msg of problems) {
         console.error(`  ${msg}`);
     }
-    console.error(
-        '\nA mismatch means the published bytes were not produced by this source with this\n' +
-            'toolchain. Check the toolchain first. Note that versions published before the\n' +
-            'build was made machine-independent cannot reproduce -- see "Verifying a published\n' +
-            'release" in docs/release-setup.md for the first version that can. Otherwise, treat\n' +
-            'it as a supply-chain incident.'
-    );
+
+    // Nothing was compared yet when the only problems are toolchain ones, so the incident
+    // language below would be actively misleading -- it is the wrong machine, not a bad
+    // package, and that distinction is the difference between a fix and a false alarm.
+    if (!problems.every((p) => p.startsWith('toolchain:'))) {
+        console.error(
+            '\nA mismatch means the published bytes were not produced by this source with this\n' +
+                'toolchain. Check the toolchain first. Note that versions published before the\n' +
+                'build was made machine-independent cannot reproduce -- see "Verifying a published\n' +
+                'release" in docs/release-setup.md for the first version that can. Otherwise, treat\n' +
+                'it as a supply-chain incident.'
+        );
+    }
     process.exit(1);
 }
 
