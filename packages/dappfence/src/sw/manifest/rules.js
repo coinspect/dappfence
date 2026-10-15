@@ -110,12 +110,12 @@ const isErrorPageRule = (pathname, destination, status) => (r) =>
  * @param {{ url: string, destination: string }} req
  * @param {string} base - SW location href
  * @param {object} manifest - manifest object with pathRules and files
- * @param {{ ok: boolean, status: number, url?: string }|null} [response] - supply to enable error-page fallback and redirect-aware keying
+ * @param {{ ok: boolean, status: number, url?: string, redirected?: boolean }|null} [response] - supply to enable error-page fallback and redirect-aware keying
  * @returns {string}
  */
 export const resolveManifestKey = (req, base, manifest = {}, response = null) => {
     const { pathRules = [], files = {} } = manifest;
-    const url = response?.url || req.url;
+    const url = (response?.redirected && response.url) || req.url;
 
     let fileUrl, originUrl;
     try {
