@@ -40,6 +40,7 @@ const STATUS_LOG = {
     MATCH: (d) => [`SW file verification passed: ${d.fileKey}`],
     SKIPPED: (d) => [`SW file verification skipped: ${d.fileKey}`],
     REWRITE: (d) => [`SW file response rewritten: ${d.fileKey}`],
+    REDIRECT: (d) => [`SW file redirect materialized: ${d.fileKey}`],
     CSP_PROTECTED: (d) => [`SW file CSP-protected (verify skipped): ${d.fileKey}`],
     FILE_UNTRUSTED: (d) => [
         `SECURITY ALERT: File is not trusted (${d.reason ?? 'UNSPECIFIED'})!`,
