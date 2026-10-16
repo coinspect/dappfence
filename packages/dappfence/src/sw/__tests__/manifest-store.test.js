@@ -205,7 +205,7 @@ describe('createManifestStore', () => {
                 fileKey: '/a.js',
             });
             await storage.verificationResultsStore.add('v1', {
-                status: 'MISMATCH',
+                status: 'FILE_UNTRUSTED',
                 fileKey: '/b.js',
             });
 

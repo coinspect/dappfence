@@ -18,7 +18,7 @@ declare global {
     interface Window {
         // unique identifier used to log messages
         pageId: string;
-        // set by the Netlify CDP stub script; used to assert MATCH vs MISMATCH in filter tests
+        // set by the Netlify CDP stub script; used to assert MATCH vs FILE_UNTRUSTED in filter tests
         __cdnScriptLoaded?: string;
     }
 }

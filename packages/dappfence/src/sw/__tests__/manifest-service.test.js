@@ -64,9 +64,10 @@ describe('createManifestService — composition', () => {
         expect(ctx.mode).toBe(MODE.PROTECTED);
     });
 
-    it('returns CONFIG_ERROR from fetchAndStoreManifest when config has no manifestUrl', async () => {
+    it('returns MANIFEST_UNTRUSTED with CONFIG_ERROR reason when config has no manifestUrl', async () => {
         const { deps } = setup();
         const result = await createManifestService(deps).fetchAndStoreManifest();
-        expect(result.status).toBe(VERIFICATION_STATUS.CONFIG_ERROR);
+        expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
+        expect(result.reason).toBe('CONFIG_ERROR');
     });
 });

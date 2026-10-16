@@ -68,7 +68,7 @@ describe('basicVerifyAgainstManifest', () => {
         expect(result.fileKey).toBe('/index.html');
     });
 
-    it('returns MISMATCH when the hash differs from the manifest', async () => {
+    it('returns FILE_UNTRUSTED+HASH_MISMATCH when the hash differs from the manifest', async () => {
         calculateHash.mockResolvedValueOnce('sha256-tampered');
         const result = await basicVerifyAgainstManifest(
             makeReq('/index.html'),
@@ -76,19 +76,21 @@ describe('basicVerifyAgainstManifest', () => {
             MANIFEST_INFO,
             LOCATION_HREF
         );
-        expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
+        expect(result.status).toBe(VERIFICATION_STATUS.FILE_UNTRUSTED);
+        expect(result.reason).toBe('HASH_MISMATCH');
         expect(result.actualHash).toBe('sha256-tampered');
         expect(result.expectedHashes).toEqual([FILE_HASH]);
     });
 
-    it('returns NOT_FOUND_IN_MANIFEST when the fileKey is unknown', async () => {
+    it('returns FILE_UNTRUSTED+NOT_IN_MANIFEST when the fileKey is unknown', async () => {
         const result = await basicVerifyAgainstManifest(
             makeReq('/unknown.js'),
             makeResponse(),
             MANIFEST_INFO,
             LOCATION_HREF
         );
-        expect(result.status).toBe(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST);
+        expect(result.status).toBe(VERIFICATION_STATUS.FILE_UNTRUSTED);
+        expect(result.reason).toBe('NOT_IN_MANIFEST');
         expect(result.actualHash).toBe(FILE_HASH);
     });
 

@@ -59,19 +59,47 @@ export const VERIFICATION_STATUS = Object.freeze({
     SKIPPED: verdict('SKIPPED', false),
     REWRITE: verdict('REWRITE', false),
     CSP_PROTECTED: verdict('CSP_PROTECTED', false),
-    MISMATCH: verdict('MISMATCH', true),
-    NOT_FOUND_IN_MANIFEST: verdict('NOT_FOUND_IN_MANIFEST', true),
+    FILE_UNTRUSTED: verdict('FILE_UNTRUSTED', true),
     DENIED_BY_RULE: verdict('DENIED_BY_RULE', true),
-    UNSUPPORTED_SIGNATURE: verdict('UNSUPPORTED_SIGNATURE', true),
     ERROR: verdict('ERROR', true),
-    CONFIG_ERROR: verdict('CONFIG_ERROR', true),
+    MANIFEST_UNTRUSTED: verdict('MANIFEST_UNTRUSTED', true),
 });
 
-export const ASSET_TYPE = {
+/** @typedef {typeof VERIFICATION_STATUS[keyof typeof VERIFICATION_STATUS]} VerificationStatus */
+
+/**
+ * @typedef {'NULL_RESPONSE'
+ *         | 'BODY_UNREADABLE'
+ *         | 'FETCH_BAD_STATUS'
+ *         | 'FETCH_EXCEPTION'
+ *         } AssetErrorReason
+ */
+
+/**
+ * @typedef {'HASH_MISMATCH'
+ *         | 'NOT_IN_MANIFEST'
+ *         } FileUntrustedReason
+ */
+
+/**
+ * @typedef {'SIGNER_CHANGED'
+ *         | 'SIGNATURE_MISMATCH'
+ *         | 'UNSUPPORTED_SIGNATURE'
+ *         | 'SIGNATURE_ERROR'
+ *         | 'MANIFEST_PARSE_ERROR'
+ *         | 'MANIFEST_FETCH_BAD_STATUS'
+ *         | 'MANIFEST_FETCH_EXCEPTION'
+ *         | 'CONFIG_ERROR'
+ *         } ManifestLoadReason
+ */
+
+export const ASSET_TYPE = Object.freeze({
     ASSET: 'asset',
     SERVICE_WORKER: 'service-worker',
     MANIFEST: 'manifest',
-};
+});
+
+/** @typedef {typeof ASSET_TYPE[keyof typeof ASSET_TYPE]} AssetType */
 
 // Known-inert destinations: responses that the browser never executes as code.
 // Unknown future destinations default to executable (fail-closed) — only

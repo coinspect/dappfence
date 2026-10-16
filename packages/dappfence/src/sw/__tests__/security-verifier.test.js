@@ -123,19 +123,20 @@ describe('securityVerifyAgainstManifest — action pipeline', () => {
         expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
     });
 
-    it('verify action returns MISMATCH when hash differs', async () => {
+    it('verify action returns FILE_UNTRUSTED+HASH_MISMATCH when hash differs', async () => {
         calculateHash.mockResolvedValueOnce('sha256-tampered');
         const result = await run({
             files: { '/index.html': [FILE_HASH] },
             contentRules: [],
             pathRules: [{ type: 'directory-index' }],
         });
-        expect(result.status).toBe(VERIFICATION_STATUS.MISMATCH);
+        expect(result.status).toBe(VERIFICATION_STATUS.FILE_UNTRUSTED);
+        expect(result.reason).toBe('HASH_MISMATCH');
         expect(result.actualHash).toBe('sha256-tampered');
         expect(result.expectedHashes).toEqual([FILE_HASH]);
     });
 
-    it('verify action returns NOT_FOUND_IN_MANIFEST when the fileKey is unknown', async () => {
+    it('verify action returns FILE_UNTRUSTED+NOT_IN_MANIFEST when the fileKey is unknown', async () => {
         const result = await run(
             {
                 files: { '/other.js': [FILE_HASH] },
@@ -144,7 +145,8 @@ describe('securityVerifyAgainstManifest — action pipeline', () => {
             },
             makeSubResource('/nowhere.js')
         );
-        expect(result.status).toBe(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST);
+        expect(result.status).toBe(VERIFICATION_STATUS.FILE_UNTRUSTED);
+        expect(result.reason).toBe('NOT_IN_MANIFEST');
     });
 
     it('deny action returns DENIED_BY_RULE without hashing', async () => {

@@ -153,7 +153,7 @@ against the manifest's `files` map. Uses pathRules to canonicalize URL → manif
 (`directory-index`, `error-page`, etc.). Owns the escalation walk (pinned → latest → history →
 network), per-client pinning with stale-client pruning, and gate checks (`shouldSkipVerification` —
 non-GET, `destination=""`, opaque REWRITE branch). Returns verdicts with a `status` field (`MATCH`,
-`MISMATCH`, `NOT_FOUND_IN_MANIFEST`, `SKIPPED`, `REWRITE`).
+`FILE_UNTRUSTED` (with `reason: 'HASH_MISMATCH' | 'NOT_IN_MANIFEST'`), `SKIPPED`, `REWRITE`).
 
 **`manifest/manifest-service.js`** composes the loader and the verifier. Exposes
 `{ fetchAndStoreManifest, resolveManifest }`; `resolveManifest()` returns

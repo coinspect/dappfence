@@ -718,7 +718,7 @@ describe('generateManifest', () => {
 
     it('emits a `csp` contentRule for each SSR route prefix', async () => {
         // SSR routes have no manifest.files entry — without an explicit `csp`
-        // rule the SW would treat them as NOT_FOUND_IN_MANIFEST → violation.
+        // rule the SW would treat them as FILE_UNTRUSTED (NOT_IN_MANIFEST) → violation.
         // The build must emit one rule per dynamic-route prefix so those
         // navigations skip hash-verify while still getting CSP.
         const outDir = await setup();
