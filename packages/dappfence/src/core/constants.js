@@ -51,7 +51,19 @@ export const MODE = {
  */
 /** @typedef {Readonly<{description: string, isViolation: boolean}>} Verdict */
 
-/** @returns {Verdict} */
+/**
+ * Generic so each call preserves the literal types of `description` and
+ * `isViolation`. Without that narrowing, every verdict looks identical at
+ * the type level (`description: string, isViolation: boolean`) and tsc
+ * can't derive subsets like "status descriptions where isViolation is
+ * true" — see `ViolatingStatusName` below for the payoff.
+ *
+ * @template {string} D
+ * @template {boolean} V
+ * @param {D} description
+ * @param {V} isViolation
+ * @returns {Readonly<{description: D, isViolation: V}>}
+ */
 const verdict = (description, isViolation) => Object.freeze({ description, isViolation });
 
 export const VERIFICATION_STATUS = Object.freeze({
@@ -73,10 +85,10 @@ export const VERIFICATION_STATUS = Object.freeze({
  * recording a block, so MATCH / SKIPPED / REWRITE / CSP_PROTECTED /
  * REDIRECT never appear on stored blocks. Dispatch tables that only
  * handle violating cases key off this type.
- * Hand-maintained because `verdict()` returns `isViolation: boolean` (not
- * a literal), so tsc can't filter the enum by that flag automatically —
- * if a new violating status is added to VERIFICATION_STATUS, extend here.
- * @typedef {'FILE_UNTRUSTED' | 'DENIED_BY_RULE' | 'ERROR' | 'MANIFEST_UNTRUSTED'} ViolatingStatusName
+ * Derived automatically via `Extract` because `verdict()` is generic —
+ * add or reclassify a status in VERIFICATION_STATUS and this type updates
+ * in lockstep.
+ * @typedef {Extract<VerificationStatus, {isViolation: true}>['description']} ViolatingStatusName
  */
 
 /**

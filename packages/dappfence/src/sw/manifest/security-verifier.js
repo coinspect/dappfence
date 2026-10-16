@@ -440,6 +440,10 @@ export const securityVerifyAgainstManifest = async (req, response, manifestInfo,
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
     const actions = collectContentRuleActions(fileKey, req.destination, manifest?.contentRules);
     const actionsToWalk = actions.length ? actions : [{ type: 'verify' }];
+    // Annotation needed because verdict() preserves literal types — without it
+    // tsc would infer lastResult.status as the FILE_UNTRUSTED literal and flag
+    // the SKIPPED comparison below as unreachable.
+    /** @type {{ status: import('../../core/constants.js').VerificationStatus, reason?: string, keepTryingActions?: boolean, expectedHashes?: string[], actualHash?: string }} */
     let lastResult = { status: VERIFICATION_STATUS.FILE_UNTRUSTED, reason: 'NOT_IN_MANIFEST' };
     for (const action of actionsToWalk) {
         logger.log(
