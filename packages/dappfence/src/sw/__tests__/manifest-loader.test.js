@@ -37,12 +37,16 @@ function makeSwContext({
     };
 }
 
-function makeAppStore({ addLatestResult = MANIFEST_INFO } = {}) {
+function makeAppStore({ addLatestResult = MANIFEST_INFO, activeIdentity } = {}) {
     return {
         trustedManifestStore: {
             addLatest: vi.fn(() => Promise.resolve(addLatestResult)),
             getLatest: vi.fn(() => Promise.resolve(undefined)),
             getAll: vi.fn(() => Promise.resolve([])),
+        },
+        activeIdentityStore: {
+            getActiveIdentity: vi.fn(() => Promise.resolve(activeIdentity)),
+            updateActiveIdentity: vi.fn((identity) => Promise.resolve(identity)),
         },
     };
 }
@@ -172,7 +176,8 @@ describe('fetchAndStoreManifest', () => {
             expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
             expect(result.appVersion).toBe('v-ok');
             expect(appStore.trustedManifestStore.addLatest).toHaveBeenCalledWith(
-                normalizeManifestData(VALID_PAYLOAD)
+                normalizeManifestData(VALID_PAYLOAD),
+                { signatureType: 'secp256k1', identity: '0xABCDEF' }
             );
         });
     });

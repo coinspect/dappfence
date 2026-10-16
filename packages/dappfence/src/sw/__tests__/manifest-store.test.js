@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
 
+const MOCK_SIGNER = { signatureType: 'ethereum-personal-sign', identity: '0xmocksigner' };
+
 function createInMemoryStorage() {
     const store = new Map();
     return {
@@ -34,23 +36,29 @@ describe('createManifestStore', () => {
         });
 
         it('addLatest synthesizes a deterministic appVersion from manifest content', async () => {
-            const { appVersion } = await storage.trustedManifestStore.addLatest({
-                files: { '/a.js': 'h' },
-            });
+            const { appVersion } = await storage.trustedManifestStore.addLatest(
+                { files: { '/a.js': 'h' } },
+                MOCK_SIGNER
+            );
             expect(appVersion).toMatch(/^manifest-[A-Za-z0-9+/]{16}$/);
-            const dup = await storage.trustedManifestStore.addLatest({
-                files: { '/a.js': 'h' },
-            });
+            const dup = await storage.trustedManifestStore.addLatest(
+                { files: { '/a.js': 'h' } },
+                MOCK_SIGNER
+            );
             expect(dup.appVersion).toBe(appVersion);
-            const other = await storage.trustedManifestStore.addLatest({
-                files: { '/b.js': 'h2' },
-            });
+            const other = await storage.trustedManifestStore.addLatest(
+                { files: { '/b.js': 'h2' } },
+                MOCK_SIGNER
+            );
             expect(other.appVersion).not.toBe(appVersion);
         });
 
         it('addLatest stores a manifest retrievable by appVersion and via getLatest', async () => {
             const manifestData = { files: { '/app.js': 'abc123', '/style.css': 'def456' } };
-            const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
+            const { appVersion } = await storage.trustedManifestStore.addLatest(
+                manifestData,
+                MOCK_SIGNER
+            );
 
             expect(await storage.trustedManifestStore.get(appVersion)).toEqual(manifestData);
             expect(await storage.trustedManifestStore.getLatest()).toEqual(
@@ -68,29 +76,85 @@ describe('createManifestStore', () => {
                 metadata: { extensions: ['.js', '.wasm'] },
                 customField: { future: true },
             };
-            const { appVersion } = await storage.trustedManifestStore.addLatest(manifestData);
+            const { appVersion } = await storage.trustedManifestStore.addLatest(
+                manifestData,
+                MOCK_SIGNER
+            );
 
             expect(await storage.trustedManifestStore.get(appVersion)).toEqual(manifestData);
             expect((await storage.trustedManifestStore.getLatest()).manifest).toEqual(manifestData);
         });
 
         it('getLatest returns the most recently added manifest', async () => {
-            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'x' } });
-            const second = await storage.trustedManifestStore.addLatest({
-                files: { '/b.js': 'y' },
-            });
+            await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'x' } }, MOCK_SIGNER);
+            const second = await storage.trustedManifestStore.addLatest(
+                { files: { '/b.js': 'y' } },
+                MOCK_SIGNER
+            );
 
             const latest = await storage.trustedManifestStore.getLatest();
             expect(latest.appVersion).toBe(second.appVersion);
             expect(latest.manifest).toEqual({ files: { '/b.js': 'y' } });
         });
 
+        describe('revokeManifests flag', () => {
+            it('replaces the entire list with just the new entry when flag is true', async () => {
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/old1.js': 'a' } },
+                    MOCK_SIGNER
+                );
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/old2.js': 'b' } },
+                    MOCK_SIGNER
+                );
+                expect(await storage.trustedManifestStore.getAll()).toHaveLength(2);
+
+                const { appVersion } = await storage.trustedManifestStore.addLatest(
+                    { files: { '/new.js': 'c' }, revokeManifests: true },
+                    MOCK_SIGNER
+                );
+                const all = await storage.trustedManifestStore.getAll();
+                expect(all).toHaveLength(1);
+                expect(all[0].appVersion).toBe(appVersion);
+                expect(all[0].manifest).toEqual({
+                    files: { '/new.js': 'c' },
+                    revokeManifests: true,
+                });
+            });
+
+            it('still prepends normally when flag is absent or falsy', async () => {
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/old.js': 'a' } },
+                    MOCK_SIGNER
+                );
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/new.js': 'b' }, revokeManifests: false },
+                    MOCK_SIGNER
+                );
+                expect(await storage.trustedManifestStore.getAll()).toHaveLength(2);
+            });
+
+            it('updates the in-memory cache after a revoke', async () => {
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/old.js': 'a' } },
+                    MOCK_SIGNER
+                );
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/new.js': 'b' }, revokeManifests: true },
+                    MOCK_SIGNER
+                );
+                const latest = await storage.trustedManifestStore.getLatest();
+                expect(latest.manifest.files).toEqual({ '/new.js': 'b' });
+            });
+        });
+
         it('addLatest caps entries at 20 (safety bound)', async () => {
             const versions = [];
             for (let i = 1; i <= 25; i++) {
-                const { appVersion } = await storage.trustedManifestStore.addLatest({
-                    files: { [`/f${i}.js`]: `h${i}` },
-                });
+                const { appVersion } = await storage.trustedManifestStore.addLatest(
+                    { files: { [`/f${i}.js`]: `h${i}` } },
+                    MOCK_SIGNER
+                );
                 versions.push(appVersion);
             }
             const all = await storage.trustedManifestStore.getAll();
@@ -103,11 +167,15 @@ describe('createManifestStore', () => {
         });
 
         it('re-adding an existing manifest dedups and promotes it to the front', async () => {
-            const a = await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'x' } });
-            await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'y' } });
-            const aAgain = await storage.trustedManifestStore.addLatest({
-                files: { '/a.js': 'x' },
-            });
+            const a = await storage.trustedManifestStore.addLatest(
+                { files: { '/a.js': 'x' } },
+                MOCK_SIGNER
+            );
+            await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'y' } }, MOCK_SIGNER);
+            const aAgain = await storage.trustedManifestStore.addLatest(
+                { files: { '/a.js': 'x' } },
+                MOCK_SIGNER
+            );
 
             expect(aAgain.appVersion).toBe(a.appVersion);
             expect((await storage.trustedManifestStore.getLatest()).appVersion).toBe(a.appVersion);
@@ -119,15 +187,17 @@ describe('createManifestStore', () => {
 
             it('prunes entries older than 24h on next addLatest', async () => {
                 vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-                const stale = await storage.trustedManifestStore.addLatest({
-                    files: { '/old.js': 'gone' },
-                });
+                const stale = await storage.trustedManifestStore.addLatest(
+                    { files: { '/old.js': 'gone' } },
+                    MOCK_SIGNER
+                );
                 expect(await storage.trustedManifestStore.get(stale.appVersion)).toBeDefined();
 
                 vi.setSystemTime(new Date('2026-01-02T00:00:01Z'));
-                const fresh = await storage.trustedManifestStore.addLatest({
-                    files: { '/new.js': 'kept' },
-                });
+                const fresh = await storage.trustedManifestStore.addLatest(
+                    { files: { '/new.js': 'kept' } },
+                    MOCK_SIGNER
+                );
 
                 expect(await storage.trustedManifestStore.get(stale.appVersion)).toBeUndefined();
                 expect(await storage.trustedManifestStore.get(fresh.appVersion)).toBeDefined();
@@ -135,20 +205,33 @@ describe('createManifestStore', () => {
 
             it('does not prune entries younger than 24h', async () => {
                 vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-                const first = await storage.trustedManifestStore.addLatest({
-                    files: { '/a.js': 'ha' },
-                });
+                const first = await storage.trustedManifestStore.addLatest(
+                    { files: { '/a.js': 'ha' } },
+                    MOCK_SIGNER
+                );
                 vi.setSystemTime(new Date('2026-01-01T23:59:59Z'));
-                await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'hb' } });
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/b.js': 'hb' } },
+                    MOCK_SIGNER
+                );
 
                 expect(await storage.trustedManifestStore.get(first.appVersion)).toBeDefined();
             });
         });
 
         it('getAll returns entries newest-first', async () => {
-            const a = await storage.trustedManifestStore.addLatest({ files: { '/a.js': 'ha' } });
-            const b = await storage.trustedManifestStore.addLatest({ files: { '/b.js': 'hb' } });
-            const c = await storage.trustedManifestStore.addLatest({ files: { '/c.js': 'hc' } });
+            const a = await storage.trustedManifestStore.addLatest(
+                { files: { '/a.js': 'ha' } },
+                MOCK_SIGNER
+            );
+            const b = await storage.trustedManifestStore.addLatest(
+                { files: { '/b.js': 'hb' } },
+                MOCK_SIGNER
+            );
+            const c = await storage.trustedManifestStore.addLatest(
+                { files: { '/c.js': 'hc' } },
+                MOCK_SIGNER
+            );
 
             const all = await storage.trustedManifestStore.getAll();
             expect(all.map((e) => e.appVersion)).toEqual([
@@ -160,6 +243,68 @@ describe('createManifestStore', () => {
 
         it('getAll returns an empty array when nothing is stored', async () => {
             expect(await storage.trustedManifestStore.getAll()).toEqual([]);
+        });
+
+        describe('updateActiveIdentity', () => {
+            it('writes the supplied identity to the active-identity key', async () => {
+                await storage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xnewsigner',
+                });
+                const anchor = await storage.activeIdentityStore.getActiveIdentity();
+                expect(anchor.signatureType).toBe('ethereum-personal-sign');
+                expect(anchor.identity).toBe('0xnewsigner');
+                expect(typeof anchor.enrolledAt).toBe('number');
+            });
+
+            it('overwrites a prior anchor set by addLatest', async () => {
+                await storage.trustedManifestStore.addLatest(
+                    { files: { '/a.js': 'x' } },
+                    { signatureType: 'ethereum-personal-sign', identity: '0xoldsigner' }
+                );
+                await storage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xnewsigner',
+                });
+                const anchor = await storage.activeIdentityStore.getActiveIdentity();
+                expect(anchor.identity).toBe('0xnewsigner');
+            });
+
+            it('keeps the in-memory cache in sync so getActiveIdentity does not re-read IDB', async () => {
+                // Prime the cache with the first identity.
+                await storage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xfirst',
+                });
+                await storage.activeIdentityStore.getActiveIdentity();
+
+                // Wrap the underlying get to detect post-update IDB reads.
+                const backend = createInMemoryStorage();
+                const freshStorage = createManifestStore(backend);
+                await freshStorage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xcached',
+                });
+                const spy = vi.spyOn(backend, 'get');
+                const anchor = await freshStorage.activeIdentityStore.getActiveIdentity();
+                expect(anchor.identity).toBe('0xcached');
+                expect(spy).not.toHaveBeenCalled();
+            });
+
+            it('is idempotent — rewriting the same identity leaves the anchor identical in shape', async () => {
+                const first = await storage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xsame',
+                });
+                const second = await storage.activeIdentityStore.updateActiveIdentity({
+                    signatureType: 'ethereum-personal-sign',
+                    identity: '0xsame',
+                });
+                expect(second.signatureType).toBe(first.signatureType);
+                expect(second.identity).toBe(first.identity);
+                // enrolledAt is refreshed each call — that's expected, not a bug.
+                expect(typeof second.enrolledAt).toBe('number');
+            });
         });
     });
 

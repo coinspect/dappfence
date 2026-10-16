@@ -18,7 +18,7 @@ import {
     bytesToHex,
     keccak256,
 } from '@dappfence/manifest-tools/crypto';
-import { BUILD_TARGETS, OUT_DIR, keys, EXTERNAL_ASSETS } from './build-config.js';
+import { BUILD_TARGETS, OUT_DIR, EXTERNAL_ASSETS } from './build-config.js';
 
 let log = console.log;
 
@@ -52,8 +52,18 @@ function render(inputPath, outFile, signatureData, args) {
     log(`  Render: ${outputPath}`);
 }
 
-function renderPages(target, outDir, signatureData, version) {
+function renderPages(target, outDir, { personalSign }, version) {
     for (const [output, page] of Object.entries(target.pages || {})) {
+        const manifestConfig = target.manifests?.[page.manifest];
+        if (!manifestConfig?.keyPair) {
+            throw new Error(
+                `Page "${output}" references manifest "${page.manifest}" with no signing keyPair`
+            );
+        }
+        const signatureData = {
+            identity: ethereumAddress(manifestConfig.keyPair.publicKey),
+            type: personalSign ? 'personal-sign-alt' : 'noble-secp256k1-recovered-eth',
+        };
         const pageDir = path.dirname(path.join(outDir, output));
         if (!fs.existsSync(pageDir)) fs.mkdirSync(pageDir, { recursive: true });
         render(path.join(target.templateDir, page.template), output, signatureData, {
@@ -120,8 +130,12 @@ function hashOutputFiles(outDir) {
     return files;
 }
 
-async function writeSignedManifest(manifests, outDir, { personalSign, signatureData }) {
-    for (const { manifestFile, data } of manifests) {
+async function writeSignedManifest(manifests, outDir, { personalSign }) {
+    for (const { manifestFile, data, keyPair } of manifests) {
+        const signatureData = {
+            identity: ethereumAddress(keyPair.publicKey),
+            type: personalSign ? 'personal-sign-alt' : 'noble-secp256k1-recovered-eth',
+        };
         let signedManifest;
         if (personalSign) {
             const msg = new TextEncoder('utf-8').encode(JSON.stringify(data, null, 2));
@@ -148,18 +162,21 @@ async function writeSignedManifest(manifests, outDir, { personalSign, signatureD
             }
             signedManifest = { pay: data, sig: signature };
         } else {
-            const { pay, sig } = signManifest(data, keys);
+            const { pay, sig } = signManifest(data, keyPair);
             signedManifest = { pay, sig };
         }
         const outPath = path.join(outDir, manifestFile);
         fs.writeFileSync(outPath, JSON.stringify(signedManifest, null, 2));
-        log(`Manifest written to: ${outPath}`);
+        log(`Manifest ${manifestFile} signed by ${signatureData.identity}, written to: ${outPath}`);
     }
 }
 
 async function buildManifestsData(target, sharedFiles, { targetName, version, outDir }) {
     const results = [];
     for (const [manifestFile, manifest] of Object.entries(target.manifests || {})) {
+        if (!manifest.keyPair) {
+            throw new Error(`Manifest "${manifestFile}" has no signing keyPair declared`);
+        }
         const additionalFileHashes = {};
         for (const [manifestKey, relPaths] of Object.entries(manifest.additionalFiles || {})) {
             const hashes = relPaths.map((p) => calculateFileHash(path.join(target.assetDir, p)));
@@ -201,11 +218,12 @@ async function buildManifestsData(target, sharedFiles, { targetName, version, ou
             pathRules: manifest.pathRules || [],
             contentRules: manifest.contentRules || null,
             ...(csp ? { csp } : {}),
+            ...(manifest.revokeManifests ? { revokeManifests: true } : {}),
             metadata: { buildTime: new Date().toISOString(), version, target: targetName },
         };
 
         log(`Manifest ${manifestFile}: ${Object.keys(data.files).length} assets`);
-        results.push({ manifestFile, data });
+        results.push({ manifestFile, data, keyPair: manifest.keyPair });
     }
     return results;
 }
@@ -216,21 +234,15 @@ async function buildTarget(targetName, target, { personalSign = false }, version
     if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true });
     fs.mkdirSync(outDir, { recursive: true });
 
-    const signatureData = {
-        identity: ethereumAddress(keys.publicKey),
-        type: personalSign ? 'personal-sign-alt' : 'noble-secp256k1-recovered-eth',
-    };
-    log(`Manifest signer: ${signatureData.identity}`);
-
     copySourceFiles(target, outDir, version);
-    renderPages(target, outDir, signatureData, version);
+    renderPages(target, outDir, { personalSign }, version);
     const sharedFiles = hashOutputFiles(outDir);
     const manifests = await buildManifestsData(target, sharedFiles, {
         targetName,
         version,
         outDir,
     });
-    await writeSignedManifest(manifests, outDir, { personalSign, signatureData });
+    await writeSignedManifest(manifests, outDir, { personalSign });
 }
 
 // CLI

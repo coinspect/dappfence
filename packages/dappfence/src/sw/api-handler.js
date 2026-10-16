@@ -12,10 +12,16 @@ const logger = createLogger();
  * @param {object} deps
  * @param {function} deps.onSecurityViolation - called to broadcast the active block condition
  * @param {object} deps.appStore
+ * @param {object} deps.config
  */
-export function createApiHandler({ onSecurityViolation, appStore }) {
-    const { apiTokenStore, activeBlocksStore, trustedManifestStore, verificationResultsStore } =
-        appStore;
+export function createApiHandler({ onSecurityViolation, appStore, config }) {
+    const {
+        apiTokenStore,
+        activeBlocksStore,
+        trustedManifestStore,
+        activeIdentityStore,
+        verificationResultsStore,
+    } = appStore;
 
     async function validateApiToken(request) {
         const token = await apiTokenStore.getApiToken();
@@ -76,8 +82,10 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
     }
 
     async function handleSiteUnblock(_request) {
-        // Errors bubble to the outer catch and become a plain-text 500, matching
-        // how the rest of this handler reports unexpected failures.
+        await activeIdentityStore.updateActiveIdentity({
+            signatureType: config.manifestSignatureType,
+            identity: config.manifestSignatureIdentity,
+        });
         await activeBlocksStore.clearBlockCondition();
         logger.log('Site unblocked successfully');
         return new Response(
