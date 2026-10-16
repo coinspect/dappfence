@@ -62,12 +62,14 @@ export default defineConfig(({ mode }) => ({
         target: 'es2020',
     },
 
-    // Define environment variables
+    // Build-time substitutions. Every value here must be derived from the source, never from
+    // the machine doing the building -- the released bundle has to be reproducible by anyone
+    // who checks out the tagged commit, and release.yml now refuses to publish when its
+    // rebuild does not match the hashes the maintainer signed into the tag. A timestamp and
+    // process.versions.node used to be substituted here and defeated exactly that.
     define: {
         __VERSION__: JSON.stringify(process.env.npm_package_version || '0.1.0'),
         __COMMIT__: JSON.stringify(process.env.COMMIT_HASH || 'not-for-release'),
-        __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
-        __NODE_VERSION__: JSON.stringify(process.versions.node),
         __DEV__: mode !== 'production',
     },
 

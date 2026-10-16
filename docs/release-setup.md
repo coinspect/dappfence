@@ -134,12 +134,12 @@ in that step are simply skipped by code that mints its own.
 GitHub scopes permissions per job, never per step. So the only control available is how little runs
 in the job that holds the token:
 
-| Job       | Holds the npm credential | Runs repository code                                | Produces                                 |
-| --------- | ------------------------ | --------------------------------------------------- | ---------------------------------------- |
-| `verify`  | no                       | signature/ancestry checks, `sync-versions.js check` | the verified SHA + `{name: version}` map |
-| `test`    | no                       | **the bulk of it** — `npm run check`, 36 unit tests | nothing                                  |
-| `build`   | no                       | the Vite build, `npm pack`                          | the tarballs                             |
-| `publish` | **yes**                  | nothing — no checkout at all                        | the npm release                          |
+| Job       | Holds the npm credential | Runs repository code                                | Produces                                                     |
+| --------- | ------------------------ | --------------------------------------------------- | ------------------------------------------------------------ |
+| `verify`  | no                       | signature/ancestry checks, `sync-versions.js check` | the verified SHA, `{name: version}` map, the signed manifest |
+| `test`    | no                       | **the bulk of it** — `npm run check`, 36 unit tests | nothing                                                      |
+| `build`   | no                       | the Vite build, `npm pack`, the hash gate           | the tarballs — only if they match the manifest               |
+| `publish` | **yes**                  | nothing — no checkout at all                        | the npm release                                              |
 
 `test` and `build` are separate for a second reason, independent of the credential: **`test`
 produces nothing.** Unit tests and eslint configs are repository code with full write access to
@@ -441,6 +441,12 @@ given day: append a counter (`release-20261001-2`, `-3`, …) when the plain dat
 spent tag left behind on the remote is harmless — dispatching is manual, so nothing fires from a
 tag's existence.
 
+**What you sign is no longer the commit — it's the bytes.** Before tagging you build, pack, and hash
+every file that will be published, and sign that manifest into the tag. `release.yml` rebuilds and
+refuses to publish anything whose hash differs. See
+[What the signature covers](#what-the-signature-covers) below for what that buys and what a mismatch
+means.
+
 **A coordinated release (MAJOR.MINOR bump, or several packages' PATCHes at once):**
 
 ```bash
@@ -450,7 +456,10 @@ git commit -am "chore: release 0.2 line"
 git push origin release/0.2
 # open a PR, get it reviewed and merged to main, then:
 git checkout main && git pull
-git tag -s release-$(date +%Y%m%d) -m "Release 0.2 line"
+
+npm run release-manifest          # builds in the pinned container, writes release-manifest.txt
+less release-manifest.txt         # read it — see below for why this step is the point
+git tag -s release-$(date +%Y%m%d) -F release-manifest.txt --cleanup=verbatim
 git push origin release-$(date +%Y%m%d)
 ```
 
@@ -463,14 +472,28 @@ git commit -am "chore(vite): release patch"
 git push origin release/vite-patch
 # open a PR, get it reviewed and merged to main, then:
 git checkout main && git pull
-git tag -s release-$(date +%Y%m%d) -m "Release @dappfence/vite patch"
+
+npm run release-manifest
+less release-manifest.txt
+git tag -s release-$(date +%Y%m%d) -F release-manifest.txt --cleanup=verbatim
 git push origin release-$(date +%Y%m%d)
 ```
 
+`--cleanup=verbatim` is belt-and-braces, not load-bearing: without it git's default `strip` mode
+collapses blank lines and trims trailing whitespace, so the tag's copy of the manifest is no longer
+byte-identical to the file. The checker parses entries rather than diffing text precisely so that
+forgetting the flag is harmless — but pass it anyway, so what a reader sees in `git show <tag>` is
+what you looked at.
+
+Tag message length is not a constraint. An annotated tag object holds megabytes; the manifest is
+around 3 KB, and even base64-encoded it passes through `$GITHUB_OUTPUT`'s 1 MB limit with four
+orders of magnitude to spare.
+
 **Then, always, dry run first:** Actions → `Release` → **Run workflow** → enter the tag you just
 pushed → `dry_run: true`. The full pipeline runs for real — tag verify, main-ancestry check,
-MAJOR.MINOR check, install, checks, audits, tests, pack, then `npm publish --dry-run` against the
-real tarballs — with no upload at the end. Confirm it's clean.
+MAJOR.MINOR check, install, checks, audits, tests, pack, the hash gate, then `npm publish --dry-run`
+against the real tarballs — with no upload at the end. Confirm it's clean. This is also where a hash
+mismatch surfaces, which is the main reason not to skip it.
 
 Note the dry run **also pauses at the `production-publish` environment** and needs a second
 maintainer to approve it, exactly as the real run does: `dry_run` only decides whether `npm publish`
@@ -483,6 +506,187 @@ your approver before you start, rather than discovering the pause halfway throug
 pauses at the `production-publish` environment — ask a second maintainer to approve. Once approved,
 whichever packages actually changed version publish with `--provenance`; everything already at its
 current version on npm is skipped, not re-uploaded.
+
+## What the signature covers
+
+Until now the signed tag said _"publish whatever is at this commit."_ The bytes that actually
+reached npm were produced by CI and nobody checked them against anything — provenance recorded which
+workflow built them, but nothing established that a human had ever seen those exact bytes.
+
+`npm run release-manifest` changes what the signature means. It builds and packs every publishable
+package and emits a sha256 of every file inside every tarball:
+
+```
+dappfence-release-manifest v1
+commit 7b0c3f1a… (full 40-char sha)
+
+@dappfence/astro 0.1.2
+  3e1f…  README.md
+  9ac4…  package.json
+  …
+```
+
+You sign that into the tag. The `build` job rebuilds from the same commit, recomputes the same
+hashes, and compares. Any file that differs — or any package present on one side and not the other,
+or a manifest whose `commit` line names a different commit than the tag points at — **aborts the run
+before the tarballs are uploaded**, so `publish` never starts. Dry runs included; there is no flag
+that publishes past a mismatch.
+
+Two things follow, and they are the whole reason for the step:
+
+-   The release now requires **two independent machines to agree on the bytes**. Compromising CI is
+    no longer enough, and neither is compromising the maintainer's laptop.
+-   `less release-manifest.txt` is the one part nothing downstream can do for you. CI can prove the
+    bytes are the ones you signed; only you can decide they are the bytes that should ship. An
+    unexpected file in the list, a package you didn't mean to release, a `dist/` entry when you
+    changed no source — this is where that shows up.
+
+**Why a container.** `package-lock.json` pins the version and integrity of every dependency, but for
+platform-gated binaries it does not pin _which_ one installs: there are 26 `@esbuild/*` and 25
+`@rollup/rollup-*` variants, chosen at install time by platform, and both are on the critical path
+for `@dappfence/core`'s bundle (rollup's native binding parses the JS and computes content hashes;
+esbuild bundles the config and transpiles the chunk). The same source on macOS arm64 and on a Linux
+runner therefore produces different bytes. So "the same environment" has to mean the same image, not
+the same Node version. `npm run release-manifest` runs the build inside
+[`.github/build-image`](../.github/build-image) — the digest-pinned image `release.yml` builds in —
+and `verify` asserts that file and the workflow's `container.image` still agree. Docker is required
+for that reason; there is no native fallback, because a native fallback would silently produce
+manifests that abort the release.
+
+It clones `HEAD` into the container rather than mounting your working tree, so what gets hashed is
+committed content only, exactly as `actions/checkout` gives CI. A dirty working tree is refused up
+front.
+
+**When it fails.** The error names every differing file with both hashes. By far the likeliest cause
+is environment drift, not tampering — a stale manifest from before the last commit, or
+`.github/build-image` changed since. Regenerate and compare; if the same commit still hashes two
+ways in the same image, that is the serious case and nothing should be published until it is
+understood.
+
+**What this doesn't cover.** The manifest is only as good as the review — it proves the published
+bytes are the ones you looked at, not that they are good. And it stops at the registry: npm has no
+mechanism for re-checking a manifest at publish time, so the last hop is still covered by provenance
+alone. `npm run verify-published` closes that from the other end, after the fact.
+
+## Upgrading the build image
+
+The Node version lives in three places, and only one of them is real:
+
+| Where                         | What it drives                                                    |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `.nvmrc`                      | `setup-node` in `verify`, `test`, `publish`, and all PR workflows |
+| the `node:X.Y.Z-bookworm` tag | nothing — see below                                               |
+| the `@sha256:…` digest        | the `build` container, and therefore the released bytes           |
+
+**A reference carrying both a tag and a digest resolves by digest; the tag is ignored.** So
+`node:24.21.0-bookworm@sha256:…` would pull exactly the same image if the tag read `18.0.0`. The
+version in that string is decoration — the same hazard as a stale version comment beside a pinned
+action SHA, except it reads as authoritative. `verify` compares `.github/build-image` to the
+`container.image` literal in `release.yml`, which catches those two drifting from _each other_ but
+is no evidence at all about the image they name.
+
+So the real check runs inside the container, where `process.version` is the image's own answer:
+`scripts/check-build-node.js` asserts it equals both `.nvmrc` and the tag. It runs in the `build`
+job and again in `npm run release-manifest`, so a drift fails before you sign a manifest rather than
+halfway through a release.
+
+The drift that matters most is the quiet one: bump `.nvmrc` without re-pinning the image and every
+job _except_ `build` moves to the new Node, so the tests no longer run on the Node the released
+bytes are built with. The hash gate does not notice — the manifest is generated in the same
+container the build runs in, so the two stay consistent with each other while both diverge from the
+rest of the repo.
+
+To upgrade, change all three together:
+
+```bash
+docker pull node:<new-version>-bookworm
+docker inspect --format='{{index .RepoDigests 0}}' node:<new-version>-bookworm
+
+echo "<new-version>" > .nvmrc
+# .github/build-image: the full node:<new-version>-bookworm@sha256:<digest> line
+# .github/workflows/release.yml: the same string in the build job's container.image
+```
+
+Open it as a normal PR — `release.yml` is CODEOWNERS-gated (Step 1). The next
+`npm run release-manifest` will fail loudly if any of the three was missed.
+
+Note that an image upgrade changes the released bytes: a new Node means a new V8 and, usually, new
+`@esbuild/*` and `@rollup/*` binaries resolved against it. Any manifest generated before the upgrade
+is void. Regenerate and re-tag; don't try to reuse one across the change.
+
+## Verifying a published release
+
+Provenance proves a tarball came from this repository and commit. Reproducibility proves the
+stronger thing: that the published bytes correspond to source you can read, trusting nothing but
+your own machine. Both are available to anyone — no access to this repo or to npm required.
+
+```bash
+git checkout <the commit the release was built from>
+npm ci
+npm run verify-published
+```
+
+The script reads npm's provenance attestation to learn which commit was published, refuses to run
+from any other checkout, rebuilds exactly as the `build` job does, and compares sha512 digests. It
+also confirms the tarball the registry served is the one the attestation covers — and refuses an
+attestation that names no commit or no subject digest, rather than skipping the comparison and
+reporting a pass that checked nothing.
+
+**Checking `@dappfence/core` needs linux x64**, for the same reason the release is built in a
+container: npm resolves the `@rollup/*` and `@esbuild/*` native binaries by platform, and they
+decide the bundle's bytes. On anything else the script says so up front rather than rebuilding and
+reporting a mismatch it cannot interpret — a false supply-chain alarm aimed at the people most
+likely to be running it. It prints a `docker run` line that rebuilds in the pinned image, which
+works from any host. The other four packages are platform-independent and can be checked anywhere
+with `--package`.
+
+There is a cheaper check available too, and it needs no toolchain at all. The release tag carries
+the signed per-file manifest, so anyone can unpack a published tarball, hash its files, and compare
+against something a maintainer signed — seconds, rather than a full rebuild:
+
+```bash
+git verify-tag release-<date>          # needs the signers enrolled locally; see Step 2
+git cat-file tag release-<date>        # the manifest is the message body
+tar -xzf dappfence-astro-0.1.2.tgz
+( cd package && find . -type f | sed 's|^\./||' | sort | xargs sha256sum )
+```
+
+Packaging that as a one-command tool for consumers is a natural follow-up; it isn't built yet.
+
+Four of the five packages ship raw committed source, so their tarballs are archives of files already
+in git — nothing can drift, and a sceptic can skip the script entirely:
+
+```bash
+tar -xzf dappfence-astro-0.1.2.tgz
+diff -r package/src packages/astro/src --exclude=__tests__
+```
+
+Only `@dappfence/core` ships built output, and only it depends on the toolchain. That is why
+`.nvmrc` and `package.json`'s `packageManager` field exist, and why the script refuses to continue
+when the local Node or npm does not match them: a mismatch makes a "differs" result uninterpretable,
+since you could not tell tampering from having built with a different compiler.
+
+**What makes this possible.** The published bundle must depend only on the source. A build timestamp
+and `process.versions.node` used to be substituted into it by `vite.config.js` and shipped in
+`__DAPPFENCE_BUILD_INFO__`; both are gone, from every build rather than only release builds, so
+there is no longer any code path that reads the machine into the bundle. What remains is `version`
+and `commit`, both derived from the tagged source.
+
+Little is lost. For a published build the Node version is recoverable — `.nvmrc` at that commit
+names it, and provenance records the environment that actually ran, signed, where it cannot be
+edited afterwards. The timestamp is not recoverable from the bundle and was never a security
+property: provenance carries the real build time, and the commit date bounds it. A value a
+maintainer could overwrite in a text editor was the weaker of the two records anyway.
+
+**Versions before `0.1.3` cannot reproduce.** `0.1.2` was published while the Node version was still
+baked into the bundle, so a rebuild on any other Node patch — and, after this change, on any Node at
+all — produces different bytes. That is expected, not tampering. It was verified reproducible on the
+toolchain that built it before the change landed.
+
+**Also complementary, and cheaper:** `npm audit signatures` verifies that the attestations
+themselves are authentic and publicly logged. The rebuild does not need it — the attestation's only
+job here is naming the commit, and a wrong commit would not reproduce — but it is one command and
+checks a different thing.
 
 ## Adding a new package to the repo
 
@@ -522,9 +726,20 @@ dispatched by hand, so an abandoned tag never triggers anything.
 
     ```bash
     git tag -d release-20261001                       # local only
-    git tag -s release-20261001-2 -m "Release 0.2 line"
+    git tag -s release-20261001-2 -F release-manifest.txt --cleanup=verbatim
     git push origin release-20261001-2
     ```
+
+    The manifest is unchanged — it describes the commit, and the commit hasn't moved — so there is
+    no need to regenerate it. If you've already deleted it, `npm run release-manifest` again from
+    the same commit reproduces it exactly; that it does so is the property this whole mechanism
+    rests on.
+
+-   **The hash gate fails** (`✗ N difference(s) from the signed manifest`) — the build didn't
+    reproduce the bytes you signed. The error names each file with both hashes. See
+    [What the signature covers](#what-the-signature-covers); in practice this is almost always a
+    manifest generated from a different commit or a different image, and the fix is to regenerate
+    and tag again as above. Nothing was uploaded, so there is nothing to undo.
 
 -   **`sync-versions.js check` fails** — a publishable package's MAJOR.MINOR doesn't match the rest.
     This one needs a new commit, not just a new tag, and `release.yml` refuses any tag whose commit

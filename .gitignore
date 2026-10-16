@@ -45,3 +45,6 @@ Thumbs.db
 # Temporary files
 .tmp/
 tmp/
+
+# Release manifest (regenerated per release, signed into the tag — never committed)
+release-manifest.txt

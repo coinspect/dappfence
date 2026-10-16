@@ -35,12 +35,12 @@
     },
     "scripts": {
         "build": "vite build --mode development && vite build --mode production",
-        "build:prod": "COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null) vite build --mode production",
+        "build:prod": "COMMIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null) vite build --mode production",
         "build:watch": "vite build --mode development --watch & vite build --mode production --watch",
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
-        "prepublishOnly": "git diff-index --quiet HEAD || (echo 'ERROR: uncommitted changes — commit before publishing' && exit 1) && COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null) npm run build",
+        "prepublishOnly": "git diff-index --quiet HEAD || (echo 'ERROR: uncommitted changes — commit before publishing' && exit 1) && COMMIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null) npm run build",
         "publish:local": "vite build --mode production && npm pack --pack-destination ../../dist"
     },
     "publishConfig": {
