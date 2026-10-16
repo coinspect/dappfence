@@ -222,9 +222,9 @@ window.checkManifestStatus = async function () {
         log('Manifest Status:', status);
 
         const statusVariant = (status) =>
-            status === 'MATCH' ? 'match' : status === 'MISMATCH' ? 'mismatch' : 'unknown';
+            status === 'MATCH' ? 'match' : status === 'FILE_UNTRUSTED' ? 'mismatch' : 'unknown';
         const statusLabel = (status) =>
-            status === 'MATCH' ? 'MATCH' : status === 'MISMATCH' ? 'MISMATCH' : 'UNKNOWN';
+            status === 'MATCH' ? 'MATCH' : status === 'FILE_UNTRUSTED' ? 'UNTRUSTED' : 'UNKNOWN';
 
         const createFileList = (manifest, isVerificationResults = false) => {
             if (isVerificationResults) {
@@ -259,7 +259,7 @@ window.checkManifestStatus = async function () {
                     const recentClass = isRecent ? ' file-row--recent' : '';
                     const hash = result.actualHash ? result.actualHash : 'No hash';
                     const expected =
-                        result.status === 'MISMATCH'
+                        result.status === 'FILE_UNTRUSTED' && result.reason === 'HASH_MISMATCH'
                             ? `<span class="file-row__expected">expected ${result.expectedHashes?.join(', ')}</span>`
                             : '';
 
@@ -324,15 +324,15 @@ window.checkManifestStatus = async function () {
 
         // Calculate failed verification count
         const failedVerifications = status.verificationResults.filter(
-            (r) => r.status === 'MISMATCH' || r.status === 'NOT_IN_MANIFEST'
+            (r) => r.status === 'FILE_UNTRUSTED'
         ).length;
 
         const matchCount = status.verificationResults.filter((r) => r.status === 'MATCH').length;
         const mismatchCount = status.verificationResults.filter(
-            (r) => r.status === 'MISMATCH'
+            (r) => r.status === 'FILE_UNTRUSTED' && r.reason === 'HASH_MISMATCH'
         ).length;
         const unknownCount = status.verificationResults.filter(
-            (r) => r.status === 'NOT_IN_MANIFEST'
+            (r) => r.status === 'FILE_UNTRUSTED' && r.reason === 'NOT_IN_MANIFEST'
         ).length;
 
         const output = document.getElementById('output');

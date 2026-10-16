@@ -3,8 +3,8 @@
  * Exposes the properties needed by shouldSkipVerification and resolveManifestKey
  * without consuming the response body eagerly.
  *
- * getBodyBytes()      → { value: Uint8Array } | { status: VERIFICATION_STATUS.ERROR }
- * calculateBodyHash() → { value: string }     | { status: VERIFICATION_STATUS.ERROR }
+ * getBodyBytes()      → { value: Uint8Array } | { status: VERIFICATION_STATUS.ERROR, reason: 'BODY_UNREADABLE' }
+ * calculateBodyHash() → { value: string }     | { status: VERIFICATION_STATUS.ERROR, reason: 'BODY_UNREADABLE' }
  *
  * Both results are memoized for the ret's lifetime so manifest escalation
  * (which may re-verify the same body against several manifests) hashes once.
@@ -26,7 +26,10 @@ export const makeResponseWrapper = (response) => {
                 const buf = await response.clone().arrayBuffer();
                 return { value: new Uint8Array(buf) };
             } catch {
-                return { status: VERIFICATION_STATUS.ERROR };
+                return {
+                    status: VERIFICATION_STATUS.ERROR,
+                    reason: 'BODY_UNREADABLE',
+                };
             }
         }),
         calculateBodyHash: once(async () => {

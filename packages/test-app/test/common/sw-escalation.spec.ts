@@ -46,11 +46,11 @@ test('step 4 — fresh manifest fetch resolves a deployment upgrade without bloc
     await activateSW({ page, swHelper }, testInfo);
 
     // Deploy: switch to latest. index.html and dappfence.js have different hashes
-    // between versions, so the 1.0.1 manifest will produce a MISMATCH.
+    // between versions, so the 1.0.1 manifest will produce a FILE_UNTRUSTED.
     await swHelper.setVersion('latest');
 
     // Navigation bypasses pin → escalation:
-    //   step 2: 1.0.1 manifest (IndexedDB[0]) → MISMATCH on index.html
+    //   step 2: 1.0.1 manifest (IndexedDB[0]) → FILE_UNTRUSTED on index.html
     //   step 3: history is [1.0.1], same appVersion as latestManifest → skip
     //   step 4: fetch latest manifest from network → MATCH → pins → page loads
     const response = await page.reload();
@@ -86,7 +86,7 @@ test('step 3 — historic manifest match loads page when the network manifest is
     });
 
     // Navigation → escalation:
-    //   step 2: latest manifest (IndexedDB[0]) → MISMATCH (1.0.1 content vs latest hashes)
+    //   step 2: latest manifest (IndexedDB[0]) → FILE_UNTRUSTED (1.0.1 content vs latest hashes)
     //   step 3: history [latest (skip, already tried), 1.0.1] → 1.0.1 MATCH → page loads
     //   step 4: never reached
     const r2 = await page.reload();
@@ -104,9 +104,9 @@ test('genuine tamper blocks through all escalation steps', async ({ page, swHelp
     await swHelper.interceptAndModifyPageContent({ pattern: '**/', formula: 'default' });
 
     // Navigation → escalation:
-    //   step 2: latest manifest (IndexedDB[0]) → MISMATCH (tampered content)
+    //   step 2: latest manifest (IndexedDB[0]) → FILE_UNTRUSTED (tampered content)
     //   step 3: history has only latest (already tried) → skip
-    //   step 4: fetch fresh latest manifest → same expected hash → still MISMATCH
+    //   step 4: fetch fresh latest manifest → same expected hash → still FILE_UNTRUSTED
     //   result: violation — escalation does not rescue a genuine tamper
     // Timing-robust: accept either race outcome.
     await page.goto('').catch(() => {}); // ERR_ABORTED OK, resolve OK
@@ -163,9 +163,9 @@ test('tamper blocks even when multiple manifest versions are in history', async 
     await swHelper.interceptAndModifyPageContent({ pattern: '**/', formula: 'default' });
 
     // Navigation → escalation:
-    //   step 2: latest manifest → MISMATCH (tampered content)
-    //   step 3: history [latest (skip), 1.0.1] → 1.0.1 manifest → MISMATCH (same tamper)
-    //   step 4: fetch fresh latest manifest → still MISMATCH
+    //   step 2: latest manifest → FILE_UNTRUSTED (tampered content)
+    //   step 3: history [latest (skip), 1.0.1] → 1.0.1 manifest → FILE_UNTRUSTED (same tamper)
+    //   step 4: fetch fresh latest manifest → still FILE_UNTRUSTED
     //   result: violation despite rich history
     // Timing-robust: accept either race outcome.
     await page.goto('').catch(() => {}); // ERR_ABORTED OK, resolve OK
