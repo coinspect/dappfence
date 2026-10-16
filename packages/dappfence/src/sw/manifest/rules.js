@@ -101,15 +101,21 @@ const isErrorPageRule = (pathname, destination, status) => (r) =>
  * pathname to a status-specific URL (last-resort, regardless of rule position).
  * Falls back to pathname if no rule matches.
  *
+ * When `response.url` is non-empty we key off the final URL after any
+ * follow-redirects, not the original `req.url`. The body we actually have
+ * belongs to the final URL; keying by `req.url` would turn legitimate
+ * same-origin subresource redirects into NOT_FOUND. Empty `response.url`
+ * (opaque-redirect, script-constructed Response) falls back to `req.url`.
+ *
  * @param {{ url: string, destination: string }} req
  * @param {string} base - SW location href
  * @param {object} manifest - manifest object with pathRules and files
- * @param {{ ok: boolean, status: number }|null} [response] - supply to enable error-page fallback
+ * @param {{ ok: boolean, status: number, url?: string }|null} [response] - supply to enable error-page fallback and redirect-aware keying
  * @returns {string}
  */
 export const resolveManifestKey = (req, base, manifest = {}, response = null) => {
     const { pathRules = [], files = {} } = manifest;
-    const { url } = req;
+    const url = response?.url || req.url;
 
     let fileUrl, originUrl;
     try {
