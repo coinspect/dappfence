@@ -3,7 +3,12 @@
  * Orchestrates security checks and app service worker integration
  */
 
-import { createBlockResponse, createRewriteResponse, injectResponseHeaders } from './response.js';
+import {
+    createBlockResponse,
+    createRedirectResponse,
+    createRewriteResponse,
+    injectResponseHeaders,
+} from './response.js';
 import { createLogger } from '../core/logger.js';
 import { API_PREFIX, MODE, VERIFICATION_STATUS } from '../core/constants.js';
 
@@ -69,6 +74,8 @@ export function createSecurityFetchHandler({
         logger.log('Verifying security-critical asset:', request.url);
         const verificationResult = await ctx.verifyResponse(request, response, clientId);
         let mustBlock = false;
+
+        // !=isViolation, REWRITE/REDIRECT/CSP_PROTECTED must be recorded for reporting
         if (
             verificationResult.status !== VERIFICATION_STATUS.MATCH &&
             verificationResult.status !== VERIFICATION_STATUS.SKIPPED
@@ -82,6 +89,12 @@ export function createSecurityFetchHandler({
 
         if (verificationResult.status === VERIFICATION_STATUS.REWRITE) {
             return createRewriteResponse(response);
+        }
+        if (verificationResult.status === VERIFICATION_STATUS.REDIRECT) {
+            return createRedirectResponse(
+                verificationResult.location,
+                verificationResult.httpStatus
+            );
         }
         if (ctx.mode === MODE.PROTECTED && mustBlock) {
             // Navigation requests get the warning inline via createBlockResponse;
