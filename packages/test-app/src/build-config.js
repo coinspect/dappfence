@@ -32,6 +32,14 @@ const keys = { publicKey, secretKey };
 const defaultManifest = {
     mode: MODE.PROTECTED,
     pathRules: [{ type: 'directory-index' }, { type: 'error-page', status: 404, url: '/404.html' }],
+    redirects: [
+        { from: '/', to: 'http://migrated.com:12345/', status: 302 },
+        { from: '/redirect-to-front', to: '/front-page.html', status: 302 },
+        { from: '/index.html', to: '/', status: 302 },
+        { from: '/child/respond/front-page.html', to: '/front-page.html', status: 302 },
+        { from: '/child/manual/child-nav-src', to: '/front-page.html', status: 302 },
+        { from: '/legacy-page', to: 'http://migrated.site.com:12345/front-page.html', status: 301 },
+    ],
     contentRules: [
         // CSP rule BEFORE the transform so it fires first for /csp-test* paths.
         // The transform returns MATCH (terminal) on hash match and would prevent

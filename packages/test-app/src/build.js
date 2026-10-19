@@ -200,6 +200,7 @@ async function buildManifestsData(target, sharedFiles, { targetName, version, ou
             mode: manifest.mode,
             pathRules: manifest.pathRules || [],
             contentRules: manifest.contentRules || null,
+            redirects: manifest.redirects || [],
             ...(csp ? { csp } : {}),
             metadata: { buildTime: new Date().toISOString(), version, target: targetName },
         };

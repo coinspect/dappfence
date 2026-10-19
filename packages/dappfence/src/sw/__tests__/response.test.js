@@ -158,6 +158,16 @@ describe('createSecurityPageResponse — DAPPFENCE_CONFIG view', () => {
         expect(cfg.activeBlocks[0].view.title).toBe('File untrusted (FUTURE_REASON)');
     });
 
+    it('resolves view for FILE_UNTRUSTED / REDIRECT_NOT_DECLARED with no hash labels', async () => {
+        const res = createSecurityPageResponse('tok', [block({ reason: 'REDIRECT_NOT_DECLARED' })]);
+        const cfg = await extractConfig(res);
+        expect(cfg.activeBlocks[0].view.title).toBe(
+            'Redirect source not declared in trusted manifest'
+        );
+        expect(cfg.activeBlocks[0].view.expectedLabel).toBeUndefined();
+        expect(cfg.activeBlocks[0].view.actualLabel).toBeUndefined();
+    });
+
     it('resolves view for DENIED_BY_RULE with no hash labels', async () => {
         const res = createSecurityPageResponse('tok', [block({ status: 'DENIED_BY_RULE' })]);
         const cfg = await extractConfig(res);

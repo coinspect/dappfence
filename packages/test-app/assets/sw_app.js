@@ -91,6 +91,20 @@ self.addEventListener('fetch', (event) => {
                 );
                 return;
             }
+            if (mode === 'respond') {
+                const status = Number(url.searchParams.get('status')) || 200;
+                const headers = {};
+                for (const [k, v] of url.searchParams) {
+                    if (k !== 'status') {
+                        headers[k] = v;
+                    }
+                }
+                if (headers.Location === undefined && target) {
+                    headers.Location = target;
+                }
+                event.respondWith(new Response(null, { status, headers }));
+                return;
+            }
             if (mode === 'respond-302-ext') {
                 // target is /host/path → Location: http://host/path
                 // Must be http:// — Playwright's proxy intercepts http

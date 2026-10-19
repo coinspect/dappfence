@@ -208,4 +208,54 @@ test.describe('server-side redirect handling', () => {
         await page.waitForURL(/.*\/sw-api/);
         await expect(page).toHaveTitle('Security Warning - Content Blocked');
     });
+
+    test('undeclared cross-origin redirect is blocked (Phase 3 forcing-function)', async ({
+        page,
+        swHelper,
+        baseURL,
+    }) => {
+        const port = new URL(baseURL!).port;
+        await swHelper.setServerTestParameters({
+            intercept: [{ pattern: '/undeclared-xorig', formula: 'empty', statusCode: 302 }],
+            responseHeaders: [
+                {
+                    match: '/undeclared-xorig',
+                    headers: { Location: `http://attacker.example:${port}/front-page.html` },
+                },
+            ],
+        });
+
+        await page.goto('/undeclared-xorig').catch(() => {});
+        await page.waitForURL(/.*\/sw-api/);
+
+        await expect(page).toHaveTitle('Security Warning - Content Blocked');
+        expect(page.url()).not.toContain('attacker.example');
+    });
+
+    test.describe('cross-origin redirects (dedicated dev-server :12345)', () => {
+        test.beforeEach(async ({ swHelper }) => {
+            await swHelper.setServerTestParameters({ port: 12345 });
+        });
+
+        test.afterEach(async ({ swHelper }) => {
+            await swHelper.clearServerTestParameters(12345);
+        });
+
+        test('authorized cross-origin migration redirect lands on migrated.site.com', async ({
+            page,
+            swHelper,
+        }) => {
+            await swHelper.setServerTestParameters({
+                intercept: [{ pattern: '/legacy-page', formula: 'empty', statusCode: 302 }],
+                responseHeaders: [
+                    { match: '/legacy-page', headers: { Location: '/should-be-ignored' } },
+                ],
+            });
+
+            await page.goto('/legacy-page');
+
+            await expect(page).toHaveURL(/migrated\.site\.com:12345/);
+            await expect(page).toHaveTitle('DappFence - Front Page - Manifest Mode Example');
+        });
+    });
 });
