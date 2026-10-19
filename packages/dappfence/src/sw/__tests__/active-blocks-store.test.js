@@ -18,7 +18,8 @@ function createInMemoryDatabase() {
 }
 
 const BLOCK_DATA = {
-    status: 'MISMATCH',
+    status: 'FILE_UNTRUSTED',
+    reason: 'HASH_MISMATCH',
     fileKey: '/app.js',
     expectedHashes: ['expected123'],
     actualHash: 'actual456',
@@ -26,7 +27,8 @@ const BLOCK_DATA = {
 };
 
 const BLOCK_DATA_2 = {
-    status: 'MISMATCH',
+    status: 'FILE_UNTRUSTED',
+    reason: 'HASH_MISMATCH',
     fileKey: '/style.css',
     expectedHashes: ['expectedABC'],
     actualHash: 'actualDEF',
@@ -166,7 +168,8 @@ describe('createActiveBlocksStore', () => {
             expect(blocks).toHaveLength(2);
             expect(blocks[0]).toMatchObject({
                 fileKey: '/app.js',
-                status: 'MISMATCH',
+                status: 'FILE_UNTRUSTED',
+                reason: 'HASH_MISMATCH',
                 occurrenceCount: 1,
             });
             expect(blocks[0].id).toMatch(/^block_[0-9a-f]{16}$/);
@@ -324,7 +327,8 @@ describe('createActiveBlocksStore', () => {
     describe('recordSecurityBlock occurrenceCount edge cases', () => {
         it('line 85: occurrenceCount || 0 branch handles existing block with occurrenceCount=0', async () => {
             const blockData = {
-                status: 'MISMATCH',
+                status: 'FILE_UNTRUSTED',
+                reason: 'HASH_MISMATCH',
                 fileKey: '/app.js',
                 expectedHashes: ['expected123'],
                 actualHash: 'actual456',

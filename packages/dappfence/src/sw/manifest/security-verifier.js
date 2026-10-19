@@ -3,7 +3,7 @@
  * + action pipeline + CSP) verifier factories, sharing the same orchestration:
  * manifest escalation across pinned, cached, and freshly-fetched manifests.
  *
- * Manifest escalation (MISMATCH / NOT_FOUND / ERROR / UNSUPPORTED_SIGNATURE):
+ * Manifest escalation (FILE_UNTRUSTED / ERROR):
  *   1. pinned manifest (sub-resources only; navigations skip to step 2)
  *   2. latestManifest (caller-supplied, IndexedDB cache)
  *   3. getManifestHistory — stored historic manifests, newest-first
@@ -37,12 +37,7 @@ const logger = createLogger();
 // "this manifest is broken" — escalate to a newer or historic version.
 // Any other outcome is a real policy decision that must not be bypassed.
 // null means tryManifest skipped the manifest entirely; keep escalating.
-const ESCALATE_STATUSES = new Set([
-    VERIFICATION_STATUS.MISMATCH,
-    VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST,
-    VERIFICATION_STATUS.ERROR,
-    VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE,
-]);
+const ESCALATE_STATUSES = new Set([VERIFICATION_STATUS.FILE_UNTRUSTED, VERIFICATION_STATUS.ERROR]);
 const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.has(result.status);
 
 const ACTION_HANDLERS = {
@@ -81,7 +76,8 @@ const ACTION_HANDLERS = {
             return { status: VERIFICATION_STATUS.MATCH, expectedHashes, actualHash };
         }
         return {
-            status: VERIFICATION_STATUS.MISMATCH,
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'HASH_MISMATCH',
             keepTryingActions: true,
             expectedHashes,
             actualHash,
@@ -184,8 +180,8 @@ export const createVerifier = (
     };
 
     // Escalate pinned (sub-resources) → latest → historic → network-fetch on
-    // MISMATCH / NOT_FOUND / ERROR / UNSUPPORTED_SIGNATURE. All other results
-    // (MATCH, DENIED_BY_RULE, etc.) stop escalation immediately.
+    // FILE_UNTRUSTED / ERROR. All other results (MATCH, DENIED_BY_RULE, etc.)
+    // stop escalation immediately.
     const verifyWithManifestSearch = async (req, response, clientId, latestManifest) => {
         const isNavigation = req.mode === 'navigate';
         const triedVersions = new Set();
@@ -234,6 +230,9 @@ export const createVerifier = (
         }
 
         const fetched = await fetchAndStoreManifest();
+        if (fetched.status.isViolation) {
+            return fetched;
+        }
         const fetchedResult = await tryManifest(fetched);
         if (manifestDecidedAbout(fetchedResult)) {
             pinClient(clientId, fetched);
@@ -243,7 +242,10 @@ export const createVerifier = (
         return (
             [pinnedResult, latestResult, ...historicResults, fetchedResult].find(
                 (r) => r !== null
-            ) ?? fetched
+            ) ?? {
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NO_MANIFEST_AVAILABLE',
+            }
         );
     };
 
@@ -260,7 +262,10 @@ export const createVerifier = (
 
         if (!response) {
             logger.log(`⏭️  Error: null response`);
-            return result({ status: VERIFICATION_STATUS.ERROR });
+            return result({
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NULL_RESPONSE',
+            });
         }
 
         if (fileKey === manifestFileKey) {
@@ -392,20 +397,50 @@ export const basicVerifyAgainstManifest = async (req, response, manifestInfo, lo
         `Using manifest ${appVersion} for ${fileKey} hash ${actualHash} expected: ${expectedHashes.join(', ')}`
     );
     if (expectedHashes.length === 0) {
-        return { status: VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST, fileKey, actualHash };
+        return {
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'NOT_IN_MANIFEST',
+            fileKey,
+            actualHash,
+        };
     }
     if (expectedHashes.includes(actualHash)) {
         return { status: VERIFICATION_STATUS.MATCH, fileKey, expectedHashes, actualHash };
     }
-    return { status: VERIFICATION_STATUS.MISMATCH, fileKey, expectedHashes, actualHash };
+    return {
+        status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+        reason: 'HASH_MISMATCH',
+        fileKey,
+        expectedHashes,
+        actualHash,
+    };
 };
 
+/**
+ * @typedef {{
+ *   status: import('../../core/constants.js').VerificationStatus,
+ *   fileKey: string,
+ *   expectedHashes?: string[],
+ *   actualHash?: string,
+ *   keepTryingActions?: boolean,
+ *   nonce?: string,
+ *   headers?: object,
+ * }} VerifyResult
+ */
+
+/**
+ * @param {{ url: string, destination: string, method?: string, mode?: string }} req
+ * @param {object} response
+ * @param {{ manifest: { contentRules?: object[], csp?: { enabled?: boolean } }, appVersion?: string }} manifestInfo
+ * @param {string} locationHref
+ * @returns {Promise<VerifyResult>}
+ */
 export const securityVerifyAgainstManifest = async (req, response, manifestInfo, locationHref) => {
     const { manifest } = manifestInfo;
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
     const actions = collectContentRuleActions(fileKey, req.destination, manifest?.contentRules);
     const actionsToWalk = actions.length ? actions : [{ type: 'verify' }];
-    let lastResult = { status: VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST };
+    let lastResult = { status: VERIFICATION_STATUS.FILE_UNTRUSTED, reason: 'NOT_IN_MANIFEST' };
     for (const action of actionsToWalk) {
         logger.log(
             `[securityVerifyAgainstManifest] fileKey=${fileKey} action.type=${action.type}${action.transform ? ` transform=${action.transform}` : ''}`

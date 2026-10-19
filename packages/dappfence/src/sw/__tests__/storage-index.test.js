@@ -71,7 +71,8 @@ describe('recordSecurityViolation', () => {
     }
 
     const mismatchDetails = {
-        status: VERIFICATION_STATUS.MISMATCH,
+        status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+        reason: 'HASH_MISMATCH',
         fileKey: '/app.js',
         url: 'https://example.com/app.js',
         expectedHashes: ['aaaa1111bbbb2222'],
@@ -98,7 +99,8 @@ describe('recordSecurityViolation', () => {
 
         const events = await appStore.securityEventsStore.getSecurityEvents();
         expect(events.length).toBe(1);
-        expect(events[0].status).toBe('MISMATCH');
+        expect(events[0].status).toBe('FILE_UNTRUSTED');
+        expect(events[0].reason).toBe('HASH_MISMATCH');
         expect(events[0].userAgent).toBe('test-ua');
         expect(events[0].origin).toBe('https://example.com');
     });
@@ -130,11 +132,12 @@ describe('recordSecurityViolation', () => {
         expect(mustBlock).toBe(false);
     });
 
-    it('handles NOT_FOUND_IN_MANIFEST violation', async () => {
+    it('handles FILE_UNTRUSTED+NOT_IN_MANIFEST violation', async () => {
         const appStore = createStore();
         const mustBlock = await appStore.recordSecurityViolation({
             ...mismatchDetails,
-            status: VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST,
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'NOT_IN_MANIFEST',
         });
         expect(mustBlock).toBe(true);
     });
@@ -182,7 +185,8 @@ describe('recordSecurityViolation', () => {
         };
         const appStore = createAppStore(db);
         const details = {
-            status: VERIFICATION_STATUS.MISMATCH,
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'HASH_MISMATCH',
             fileKey: '/bad.js',
             url: 'https://example.com/bad.js',
             assetType: 'asset',

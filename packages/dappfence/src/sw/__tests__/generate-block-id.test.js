@@ -3,7 +3,8 @@ import { generateBlockId } from '../storage/security-stores.js';
 
 describe('generateBlockId', () => {
     const BLOCK_DATA = {
-        status: 'MISMATCH',
+        status: 'FILE_UNTRUSTED',
+        reason: 'HASH_MISMATCH',
         fileKey: '/app.js',
         expectedHashes: ['expected123'],
         actualHash: 'actual456',
@@ -27,18 +28,19 @@ describe('generateBlockId', () => {
         expect(id1).not.toBe(id2);
     });
 
-    it('produces different ids for different violation types', async () => {
+    it('produces different ids for different reasons', async () => {
         const id1 = await generateBlockId(BLOCK_DATA);
         const id2 = await generateBlockId({
             ...BLOCK_DATA,
-            status: 'NOT_FOUND_IN_MANIFEST',
+            reason: 'NOT_IN_MANIFEST',
         });
         expect(id1).not.toBe(id2);
     });
 
     it('handles missing expectedHashes gracefully', async () => {
         const id = await generateBlockId({
-            status: 'MISMATCH',
+            status: 'FILE_UNTRUSTED',
+            reason: 'HASH_MISMATCH',
             fileKey: '/app.js',
             actualHash: 'hash',
             assetType: 'ASSET',
@@ -51,11 +53,15 @@ describe('generateBlockId', () => {
     });
 
     it('throws when assetType is missing', async () => {
-        await expect(generateBlockId({ status: 'MISMATCH', fileKey: '/app.js' })).rejects.toThrow();
+        await expect(
+            generateBlockId({ status: 'FILE_UNTRUSTED', fileKey: '/app.js' })
+        ).rejects.toThrow();
     });
 
     it('throws when fileKey is missing', async () => {
-        await expect(generateBlockId({ status: 'MISMATCH', assetType: 'ASSET' })).rejects.toThrow();
+        await expect(
+            generateBlockId({ status: 'FILE_UNTRUSTED', assetType: 'ASSET' })
+        ).rejects.toThrow();
     });
 
     it('produces different ids for different asset types', async () => {

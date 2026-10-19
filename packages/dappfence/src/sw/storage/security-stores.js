@@ -24,20 +24,46 @@ const logger = createLogger();
 const ACTIVE_BLOCK_IDS_KEY = 'active-block-ids';
 const BLOCKS_KEY = 'blocks';
 
+/** @typedef {import('../../core/constants.js').AssetType} AssetType */
+/** @typedef {import('../../core/constants.js').VerificationStatus} VerificationStatus */
+/** @typedef {import('../../core/constants.js').AssetErrorReason} AssetErrorReason */
+/** @typedef {import('../../core/constants.js').FileUntrustedReason} FileUntrustedReason */
+/** @typedef {import('../../core/constants.js').ManifestLoadReason} ManifestLoadReason */
+/** @typedef {VerificationStatus['description']} VerificationStatusName */
+
+/**
+ * Block record shape. Four required fields are the identity (changes break
+ * dedup across SW restarts). Per-status field invariants (actualHash on hash
+ * verdicts, reason on ERROR / MANIFEST_UNTRUSTED, etc.) are runtime-enforced
+ * via tests + devAsserts.
+ * @typedef {{
+ *   status: VerificationStatusName,
+ *   assetType: AssetType,
+ *   fileKey: string,
+ *   url?: string,
+ *   reason?: AssetErrorReason | FileUntrustedReason | ManifestLoadReason,
+ *   actualHash?: string,
+ *   expectedHashes?: string[],
+ *   httpStatus?: number,
+ * }} SecurityBlockData
+ */
+
 /**
  * Generate deterministic block ID using SHA-256 hash.
  * Same violation content = same block ID (prevents duplicates).
- * @param {object} blockData
- * @param {string} blockData.status - Type of security violation
- * @param {string} blockData.assetType - Asset classifier (asset / manifest / service-worker)
- * @param {string} blockData.fileKey - The file key that triggered the violation
- * @param {string[]} [blockData.expectedHashes] - Expected hashes from manifest
- * @param {string} blockData.actualHash - Actual hash of the file content
+ * @param {SecurityBlockData} blockData
  * @returns {Promise<string>} Deterministic block ID like "block_<hash prefix>"
  */
-export async function generateBlockId({ status, fileKey, expectedHashes, actualHash, assetType }) {
+export async function generateBlockId({
+    status,
+    reason,
+    fileKey,
+    expectedHashes,
+    actualHash,
+    assetType,
+}) {
     devAssert(status && assetType && fileKey);
-    const contentKey = `${assetType}_${status}_${fileKey}_${expectedHashes?.join(',') || 'N/A'}_${actualHash || 'N/A'}`;
+    const contentKey = `${assetType}_${status}_${reason ?? 'N/A'}_${fileKey}_${expectedHashes?.join(',') || 'N/A'}_${actualHash || 'N/A'}`;
     const encoder = new TextEncoder();
     const data = encoder.encode(contentKey);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -64,6 +90,7 @@ export function createActiveBlocksStore(database) {
      * true means "block the current request", regardless of whether that's because
      * we just added it to the active set or because we couldn't write and want to
      * fail-safe.
+     * @param {SecurityBlockData} blockData
      * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
      */
     async function recordSecurityBlock(blockData) {
