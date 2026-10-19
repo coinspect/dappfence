@@ -70,6 +70,9 @@ const FILE_UNTRUSTED_VIEWS = {
         title: 'File not listed in trusted manifest',
         actualLabel: 'Actual hash',
     },
+    REDIRECT_NOT_DECLARED: {
+        title: 'Redirect source not declared in trusted manifest',
+    },
 };
 
 /**

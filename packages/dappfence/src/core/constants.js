@@ -106,6 +106,7 @@ export const VERIFICATION_STATUS = Object.freeze({
 /**
  * @typedef {'HASH_MISMATCH'
  *         | 'NOT_IN_MANIFEST'
+ *         | 'REDIRECT_NOT_DECLARED'
  *         } FileUntrustedReason
  */
 

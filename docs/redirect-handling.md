@@ -165,9 +165,6 @@ change where declared sources go (we overwrite Location from the manifest).
     the pick is in an allowed set) — carries double round-trip cost and drift risk between probe and
     the browser's actual follow.
 -   **No `from` wildcards.** Each source needs its own entry.
--   **Streaming POST + method-preserving redirects (307/308) are not expressible.** A request body
-    stream can only be consumed once; verifying the destination before letting the browser follow
-    would consume it, leaving nothing for the browser's re-fetch.
 -   **Child-SW fetch tampering is a separate concern** (see §Child-SW fetch control below). The
     schema's guarantees assume the response shapes DF expects per request kind; a compromised child
     SW can flip them. Addressed by a separate hardening, not by this schema.
@@ -253,9 +250,10 @@ Discipline that holds regardless of which options we pick:
    allowed destination the server picked. Verifying would need
    `fetch(req.clone(), {redirect:'follow'})` to learn the destination and check it against the
    allowed set — at the cost of an extra destination body transfer. See Limitations.
-7. **Streaming POST + method-preserving redirects (307/308) can't be verified ahead of the browser's
-   follow.** The request body stream can only be consumed once; a probe would consume it and leave
-   nothing for the re-fetch. See Limitations.
+7. **Streaming POST + 307/308 fails at the Fetch-spec layer.** The Fetch API refuses to follow a
+   method-preserving redirect when the request body is a `ReadableStream` — the stream has already
+   been consumed sending the original POST and can't be replayed. The failure happens before DF's
+   redirect logic runs. See Documented limitations.
 8. **Module script `import.meta.url` behavior differs under the child-SW patch.** When a child SW's
    `fetch(req, {redirect:'manual'})` is force-converted to follow by the patch, the module script
    sees `import.meta.url === request.url` (original) rather than the destination URL. Relative
@@ -287,3 +285,9 @@ Discipline that holds regardless of which options we pick:
 -   **Client-side detection of the destination before redirect is impossible.** `beforeunload`
     doesn't expose the destination; the Navigation API doesn't fire for cross-origin targets.
     Browsers deliberately keep server-initiated navigation destinations opaque to a page script.
+-   **Streaming POST + method-preserving redirects (307/308) are unexpressible in the Fetch API.** A
+    request body `ReadableStream` is one-shot; the browser's own fetch errors on 307/308 after a
+    streaming POST regardless of SW presence, because there is no way to replay the consumed stream
+    at the new URL. DF inherits this failure unchanged; no manifest configuration routes around it.
+    Callers that need streaming upload to an endpoint that may redirect must either treat 307/308 as
+    terminal or buffer the body before sending.

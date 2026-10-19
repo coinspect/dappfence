@@ -186,56 +186,53 @@ test.describe('DF child SW fetch behavior (real DF code paths)', () => {
     });
 
     test.describe('child SW synthesizes a 3xx response (no network fetch)', () => {
-        test('nav respond-302 internal → blocked as NOT_FOUND (type=basic, not opaqueredirect)', async ({
+        test('nav respond 302 internal declared → verified synthesized 302 to /front-page.html', async ({
             page,
             swHelper,
         }) => {
             const probeFiredP = swHelper.waitForServiceWorkerMessage(
-                '[child-probe] mode=respond-302 target=/front-page.html'
+                '[child-probe] mode=respond target=/front-page.html'
             );
 
-            await page.goto('/child/respond-302/front-page.html').catch(() => {});
+            await page.goto('/child/respond/front-page.html?status=302');
+
+            expect((await probeFiredP).msg.text()).toContain('[child-probe] mode=respond');
+            await expect(page).toHaveURL(/\/front-page\.html$/);
+            await expect(page).toHaveTitle('DappFence - Front Page - Manifest Mode Example');
+        });
+
+        test('nav respond 302 internal UNDECLARED → blocked as REDIRECT_NOT_DECLARED', async ({
+            page,
+            swHelper,
+        }) => {
+            const probeFiredP = swHelper.waitForServiceWorkerMessage(
+                '[child-probe] mode=respond target=/no-such-page.html'
+            );
+
+            await page.goto('/child/respond/no-such-page.html?status=302').catch(() => {});
             await page.waitForURL(/.*\/sw-api/);
 
-            expect((await probeFiredP).msg.text()).toContain('[child-probe] mode=respond-302');
+            expect((await probeFiredP).msg.text()).toContain('[child-probe] mode=respond');
+            await expect(page).toHaveTitle('Security Warning - Content Blocked');
+        });
+
+        test('nav respond 304 falls through to body verification (not treated as redirect)', async ({
+            page,
+            swHelper,
+        }) => {
+            const probeFiredP = swHelper.waitForServiceWorkerMessage(
+                '[child-probe] mode=respond target=/front-page.html'
+            );
+
+            await page.goto('/child/respond/front-page.html?status=304').catch(() => {});
+            await page.waitForURL(/.*\/sw-api/);
+
+            expect((await probeFiredP).msg.text()).toContain('[child-probe] mode=respond');
             await expect(page).toHaveTitle('Security Warning - Content Blocked');
         });
     });
 
     test.describe('server 302 to cross-origin http:// — escape-to-attacker gap', () => {
-        test('redirect:manual → opaque-redirect hides Location, browser follows to attacker, DF cannot block', async ({
-            page,
-            swHelper,
-            baseURL,
-        }) => {
-            const port = new URL(baseURL!).port;
-            await swHelper.setServerTestParameters({
-                intercept: [{ pattern: '/xorig-src', formula: 'empty', statusCode: 302 }],
-                responseHeaders: [
-                    {
-                        match: '/xorig-src',
-                        headers: {
-                            Location: `http://attacker.example:${port}/front-page.html`,
-                        },
-                    },
-                ],
-            });
-
-            const probeFiredP = swHelper.waitForServiceWorkerMessage(
-                '[child-probe] mode=manual target=/xorig-src'
-            );
-            const opaqueSeenP = swHelper.waitForServiceWorkerMessage(
-                '/child/manual/xorig-src GET destination=document response.ok=false response.type=opaqueredirect'
-            );
-
-            await page.goto('/child/manual/xorig-src').catch(() => {});
-            await page.waitForURL(/attacker\.example/, { timeout: 5000 });
-
-            expect((await probeFiredP).msg.text()).toContain('[child-probe] mode=manual');
-            expect((await opaqueSeenP).msg.text()).toContain('response.type=opaqueredirect');
-            expect(page.url()).toContain(`attacker.example:${port}/front-page.html`);
-        });
-
         test('redirect:follow → SW sees final cross-origin URL, blocks via NOT_FOUND (breaks legit cross-origin exits)', async ({
             page,
             swHelper,

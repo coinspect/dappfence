@@ -40,6 +40,11 @@ const logger = createLogger();
 const ESCALATE_STATUSES = new Set([VERIFICATION_STATUS.FILE_UNTRUSTED, VERIFICATION_STATUS.ERROR]);
 const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.has(result.status);
 
+// 300 Multiple Choices, 304 Not Modified, 305 Use Proxy, 306 unused are 3xx
+// but not redirects — they fall through to the normal verification pipeline.
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const isRedirectStatus = (status) => REDIRECT_STATUSES.has(status);
+
 const ACTION_HANDLERS = {
     allow: async (fileKey) => {
         logger.log(`⏭️  Skipping (allow): ${fileKey}`);
@@ -130,7 +135,7 @@ export const createVerifier = (
     const shouldSkipVerification = (req, response) => {
         const { destination } = req;
         logger.log(
-            `shouldSkipVerification ${req.url} ${req.method} destination=${destination} response.ok=${response?.ok} response.type=${response?.type}`
+            `shouldSkipVerification ${req.url} ${req.method} destination=${destination} response.ok=${response?.ok} response.type=${response?.type} response.status=${response?.status}`
         );
         const skip = (reason) => {
             logger.log(`⏭️ Skipping: ${reason} ${req.url}`);
@@ -141,9 +146,15 @@ export const createVerifier = (
         if (req.method !== 'GET' && !isPostNavigation) {
             return skip('non-GET/non-POST-navigate request');
         }
-        if (!destination) return skip('programmatic fetch (destination="")');
-        if (response.type === 'opaqueredirect' || response.type === 'error') {
+        if (!destination) {
+            return skip('programmatic fetch (destination="")');
+        }
+        if (response.type === 'error') {
             return skip(`empty body, response type ${response.type}`);
+        }
+        if (response.type === 'opaqueredirect' || isRedirectStatus(response.status)) {
+            logger.log(`Redirect opaque or materialized: status ${response.status} for ${req.url}`);
+            return VERIFICATION_STATUS.REDIRECT;
         }
         if (response.type === 'opaque') {
             if (!isExecutableDestination(destination)) {
@@ -236,6 +247,21 @@ export const createVerifier = (
         );
     };
 
+    const dispatchRedirect = (manifest, fileKey) => {
+        const rule = manifest?.redirects?.find((r) => r.from === fileKey);
+        if (!rule) {
+            logger.log(`❌ Redirect not declared: ${fileKey}`);
+            return { status: VERIFICATION_STATUS.FILE_UNTRUSTED, reason: 'REDIRECT_NOT_DECLARED' };
+        }
+        const httpStatus = rule.status ?? 302;
+        logger.log(`↪️  Synthesized ${httpStatus} ${fileKey} → ${rule.to}`);
+        return {
+            status: VERIFICATION_STATUS.REDIRECT,
+            location: rule.to,
+            httpStatus,
+        };
+    };
+
     const verifyResponse = async (req, response, clientId, latestManifest) => {
         const fileKey = toPathname(req.url, locationHref);
         // fileKey from fields overrides the default (resolveManifestKey may differ);
@@ -263,19 +289,18 @@ export const createVerifier = (
             return await storeManifestFromResponse(response.clone());
         }
 
-        // Allow rule pre-check: if the manifest explicitly allows this request,
-        // skip verification before shouldSkipVerification runs — so the opaque
-        // REWRITE path never fires for intentionally un-upgraded resources (e.g.
-        // cross-origin embeds/objects on CDNs that don't support CORS).
         if (isAllowed(req, locationHref, latestManifest?.manifest)) {
             logger.log(`⏭️  Skipping (allow rule): ${req.url}`);
             return result({ status: VERIFICATION_STATUS.SKIPPED });
         }
         const wrappedResponse = makeResponseWrapper(response);
-        const shouldSkip = shouldSkipVerification(req, wrappedResponse);
-        if (shouldSkip) {
-            logger.log(`⏭️  ${shouldSkip.description}: ${fileKey}`);
-            return result({ status: shouldSkip });
+        const status = shouldSkipVerification(req, wrappedResponse);
+        if (status === VERIFICATION_STATUS.REDIRECT) {
+            return result(dispatchRedirect(latestManifest?.manifest, fileKey));
+        }
+        if (status) {
+            logger.log(`⏭️  ${status.description}: ${fileKey}`);
+            return result({ status: status });
         }
 
         logger.log(
