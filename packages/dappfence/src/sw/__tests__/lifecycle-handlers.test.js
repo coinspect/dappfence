@@ -20,7 +20,7 @@ function makeInstallDeps({
         manifest: { mode: 'reporting' },
     },
     onInstallDone = vi.fn(),
-    recordSecurityViolation = vi.fn(() => Promise.resolve()),
+    recordSecurityViolation = vi.fn(() => Promise.resolve(false)),
 } = {}) {
     return {
         swContext: { skipWaiting },
@@ -29,7 +29,7 @@ function makeInstallDeps({
             fetchAndStoreManifest: vi.fn(() => Promise.resolve(fetchAndStoreManifestResult)),
         },
         onInstallDone,
-        appStore: {
+        securityProcessor: {
             recordSecurityViolation,
         },
     };
@@ -78,7 +78,7 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.appStore.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(deps.securityProcessor.recordSecurityViolation).toHaveBeenCalledWith(
             expect.objectContaining({ url: manifestUrl })
         );
     });
@@ -93,7 +93,7 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.appStore.recordSecurityViolation).not.toHaveBeenCalled();
+        expect(deps.securityProcessor.recordSecurityViolation).not.toHaveBeenCalled();
     });
 
     it('calls importScripts when config.appSW is set', async () => {

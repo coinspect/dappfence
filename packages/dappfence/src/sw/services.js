@@ -14,6 +14,7 @@ import { createAppStore } from './storage/index.js';
 import { createSwContext } from './context.js';
 import { createLogger } from '../core/logger.js';
 import { createApiHandler } from './api-handler.js';
+import { createSecurityProcessor } from './security-processor.js';
 
 const logger = createLogger();
 
@@ -37,10 +38,8 @@ export function createServices(swGlobal) {
     const config = parseConfig(swContext);
     logger.log('Configuration:', config);
 
-    const appStore = createAppStore(createDatabase(swGlobal.indexedDB), {
-        userAgent: swContext.getUserAgent(),
-        origin: swContext.getLocationOrigin(),
-    });
+    const appStore = createAppStore(createDatabase(swGlobal.indexedDB));
+    const securityProcessor = createSecurityProcessor({ swContext, appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext);
@@ -48,6 +47,7 @@ export function createServices(swGlobal) {
         swContext,
         appStore,
         manifestService,
+        securityProcessor,
         onSecurityViolation: messageBroker.broadcastSecurityViolation,
     };
 

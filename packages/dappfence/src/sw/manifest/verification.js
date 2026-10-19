@@ -157,15 +157,15 @@ export async function verifyLocation({ swContext, manifestService }, url) {
  * Verify an imported script against the trusted manifest.
  * @param {object} deps
  * @param {object} deps.manifestService
- * @param {object} deps.appStore
  * @param {object} deps.swContext
+ * @param {object} deps.securityProcessor
  * @param {string} scriptPath
  */
 export async function verifyImportedScript(deps, scriptPath) {
     const fileKey = toPathname(scriptPath, deps.swContext.getLocationHref());
     const verificationResult = await verifyLocation(deps, scriptPath);
     if (verificationResult.status.isViolation) {
-        await deps.appStore.recordSecurityViolation({
+        await deps.securityProcessor.recordSecurityViolation({
             ...verificationResult,
             url: scriptPath,
             fileKey,

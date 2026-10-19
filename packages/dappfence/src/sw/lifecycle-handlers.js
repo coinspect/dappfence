@@ -8,7 +8,7 @@ const logger = createLogger();
  * @param {object} deps.config - Parsed URL config (appSW, manifestUrl, etc.)
  * @param {object} deps.manifestService - Manifest verification service
  * @param {function} deps.onInstallDone - Called when install event processing completes
- * @param {object} deps.appStore - App store facade
+ * @param {object} deps.securityProcessor - Security event orchestrator
  * @returns {function} Install event handler (event, callChildHandlers) => Promise<void>
  */
 export function createInstallHandler({
@@ -16,7 +16,7 @@ export function createInstallHandler({
     config,
     manifestService,
     onInstallDone,
-    appStore,
+    securityProcessor,
 }) {
     /**
      * When a web app has its own service worker, we load it using `importScripts` but after hooking functions to maintain our code.
@@ -44,7 +44,7 @@ export function createInstallHandler({
             logger.log('Initializing manifest system');
             const manifestVerificationResult = await manifestService.fetchAndStoreManifest();
             if (manifestVerificationResult.status.isViolation) {
-                await appStore.recordSecurityViolation(manifestVerificationResult);
+                await securityProcessor.recordSecurityViolation(manifestVerificationResult);
                 logger.error('❌ error during initialization: Failed to load manifest');
             } else {
                 logger.log(

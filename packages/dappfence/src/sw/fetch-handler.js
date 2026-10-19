@@ -15,6 +15,7 @@ const logger = createLogger();
  * @param {object} deps.manifestService - Manifest verification service
  * @param {function} deps.onSecurityViolation - Called to broadcast the block condition
  * @param {object} deps.appStore - App store facade
+ * @param {object} deps.securityProcessor - Security event orchestrator
  * @param {function} deps.handleApiEndpoint - Internal /sw-api/* request handler
  * @returns {function} Fetch event handler (event, callChildHandlers) => Promise<Response>
  */
@@ -23,6 +24,7 @@ export function createSecurityFetchHandler({
     manifestService,
     onSecurityViolation,
     appStore,
+    securityProcessor,
     handleApiEndpoint,
 }) {
     const { activeBlocksStore } = appStore;
@@ -73,7 +75,7 @@ export function createSecurityFetchHandler({
             verificationResult.status !== VERIFICATION_STATUS.MATCH &&
             verificationResult.status !== VERIFICATION_STATUS.SKIPPED
         ) {
-            mustBlock = await appStore.recordSecurityViolation({
+            mustBlock = await securityProcessor.recordSecurityViolation({
                 ...verificationResult,
                 url: request.url,
                 httpStatus: response.status,
