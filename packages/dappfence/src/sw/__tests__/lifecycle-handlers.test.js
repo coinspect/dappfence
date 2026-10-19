@@ -20,7 +20,7 @@ function makeInstallDeps({
         manifest: { mode: 'reporting' },
     },
     onInstallDone = vi.fn(),
-    recordSecurityViolation = vi.fn(() => Promise.resolve(false)),
+    processSecurityEvent = vi.fn(() => Promise.resolve(false)),
 } = {}) {
     return {
         swContext: { skipWaiting },
@@ -30,7 +30,7 @@ function makeInstallDeps({
         },
         onInstallDone,
         securityProcessor: {
-            recordSecurityViolation,
+            processSecurityEvent,
         },
     };
 }
@@ -78,12 +78,12 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.securityProcessor.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(deps.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
             expect.objectContaining({ url: manifestUrl })
         );
     });
 
-    it('does not record security violation on manifest success', async () => {
+    it('still calls processSecurityEvent on manifest success (processor no-ops on MATCH)', async () => {
         const deps = makeInstallDeps({
             fetchAndStoreManifestResult: {
                 status: VERIFICATION_STATUS.MATCH,
@@ -93,7 +93,9 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.securityProcessor.recordSecurityViolation).not.toHaveBeenCalled();
+        expect(deps.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ status: VERIFICATION_STATUS.MATCH })
+        );
     });
 
     it('calls importScripts when config.appSW is set', async () => {

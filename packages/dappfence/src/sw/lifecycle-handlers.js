@@ -43,8 +43,8 @@ export function createInstallHandler({
 
             logger.log('Initializing manifest system');
             const manifestVerificationResult = await manifestService.fetchAndStoreManifest();
+            await securityProcessor.processSecurityEvent(manifestVerificationResult);
             if (manifestVerificationResult.status.isViolation) {
-                await securityProcessor.recordSecurityViolation(manifestVerificationResult);
                 logger.error('❌ error during initialization: Failed to load manifest');
             } else {
                 logger.log(

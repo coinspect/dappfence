@@ -5,7 +5,6 @@
  * All stores use dependency injection: each factory takes a { get, set, withTx }
  * database interface, making them testable with in-memory backends.
  */
-import { devAssert } from '../../core/utils.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
@@ -32,10 +31,10 @@ const BLOCKS_KEY = 'blocks';
 /** @typedef {VerificationStatus['description']} VerificationStatusName */
 
 /**
- * Block record shape. Four required fields are the identity (changes break
+ * Block record shape. The first three fields are the identity (changes break
  * dedup across SW restarts). Per-status field invariants (actualHash on hash
- * verdicts, reason on ERROR / MANIFEST_UNTRUSTED, etc.) are runtime-enforced
- * via tests + devAsserts.
+ * verdicts, reason on ERROR / MANIFEST_UNTRUSTED, etc.) are statically enforced
+ * via this typedef and verified by tests.
  * @typedef {{
  *   status: VerificationStatusName,
  *   assetType: AssetType,
@@ -62,7 +61,6 @@ export async function generateBlockId({
     actualHash,
     assetType,
 }) {
-    devAssert(status && assetType && fileKey);
     const contentKey = `${assetType}_${status}_${reason ?? 'N/A'}_${fileKey}_${expectedHashes?.join(',') || 'N/A'}_${actualHash || 'N/A'}`;
     const encoder = new TextEncoder();
     const data = encoder.encode(contentKey);

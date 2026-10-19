@@ -33,13 +33,13 @@ function createProcessor({ db = createInMemoryDatabase(), swContext = createSwCo
 }
 
 describe('createSecurityProcessor', () => {
-    it('exposes recordSecurityViolation', () => {
+    it('exposes processSecurityEvent', () => {
         const { securityProcessor } = createProcessor();
-        expect(typeof securityProcessor.recordSecurityViolation).toBe('function');
+        expect(typeof securityProcessor.processSecurityEvent).toBe('function');
     });
 });
 
-describe('recordSecurityViolation', () => {
+describe('processSecurityEvent', () => {
     const mismatchDetails = {
         status: VERIFICATION_STATUS.FILE_UNTRUSTED,
         reason: 'HASH_MISMATCH',
@@ -52,14 +52,14 @@ describe('recordSecurityViolation', () => {
 
     it('returns mustBlock=true when a mismatch violation adds a new active block', async () => {
         const { securityProcessor } = createProcessor();
-        const mustBlock = await securityProcessor.recordSecurityViolation(mismatchDetails);
+        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
         expect(mustBlock).toBe(true);
     });
 
     it('returns mustBlock=false for a recurrence of a known block', async () => {
         const { securityProcessor } = createProcessor();
-        await securityProcessor.recordSecurityViolation(mismatchDetails);
-        const mustBlock = await securityProcessor.recordSecurityViolation(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
         expect(mustBlock).toBe(false);
     });
 
@@ -67,7 +67,7 @@ describe('recordSecurityViolation', () => {
         const { securityProcessor, appStore } = createProcessor({
             swContext: createSwContext({ userAgent: 'test-ua', origin: 'https://example.com' }),
         });
-        await securityProcessor.recordSecurityViolation(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails);
 
         const events = await appStore.securityEventsStore.getSecurityEvents();
         expect(events.length).toBe(1);
@@ -79,8 +79,8 @@ describe('recordSecurityViolation', () => {
 
     it('logs every violation event (including recurrences)', async () => {
         const { securityProcessor, appStore } = createProcessor();
-        await securityProcessor.recordSecurityViolation(mismatchDetails);
-        await securityProcessor.recordSecurityViolation(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails);
 
         const events = await appStore.securityEventsStore.getSecurityEvents();
         expect(events.length).toBe(2);
@@ -88,7 +88,7 @@ describe('recordSecurityViolation', () => {
 
     it('stores an active block', async () => {
         const { securityProcessor, appStore } = createProcessor();
-        await securityProcessor.recordSecurityViolation(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails);
 
         const blocks = await appStore.activeBlocksStore.getActiveBlocks();
         expect(blocks.length).toBe(1);
@@ -97,7 +97,7 @@ describe('recordSecurityViolation', () => {
 
     it('MATCH is a no-op (returns false)', async () => {
         const { securityProcessor } = createProcessor();
-        const mustBlock = await securityProcessor.recordSecurityViolation({
+        const mustBlock = await securityProcessor.processSecurityEvent({
             ...mismatchDetails,
             status: VERIFICATION_STATUS.MATCH,
         });
@@ -106,7 +106,7 @@ describe('recordSecurityViolation', () => {
 
     it('handles FILE_UNTRUSTED+NOT_IN_MANIFEST violation', async () => {
         const { securityProcessor } = createProcessor();
-        const mustBlock = await securityProcessor.recordSecurityViolation({
+        const mustBlock = await securityProcessor.processSecurityEvent({
             ...mismatchDetails,
             status: VERIFICATION_STATUS.FILE_UNTRUSTED,
             reason: 'NOT_IN_MANIFEST',
@@ -116,7 +116,7 @@ describe('recordSecurityViolation', () => {
 
     it('handles unknown violation types', async () => {
         const { securityProcessor } = createProcessor();
-        const mustBlock = await securityProcessor.recordSecurityViolation({
+        const mustBlock = await securityProcessor.processSecurityEvent({
             ...mismatchDetails,
             status: { description: 'UNKNOWN_TYPE', isViolation: true },
         });
@@ -125,7 +125,7 @@ describe('recordSecurityViolation', () => {
 
     it('handles VERIFICATION_STATUS.ERROR without throwing', async () => {
         const { securityProcessor } = createProcessor();
-        const mustBlock = await securityProcessor.recordSecurityViolation({
+        const mustBlock = await securityProcessor.processSecurityEvent({
             ...mismatchDetails,
             status: VERIFICATION_STATUS.ERROR,
         });
@@ -142,7 +142,7 @@ describe('recordSecurityViolation', () => {
             return originalSet(key, value);
         };
         const { securityProcessor } = createProcessor({ db });
-        const mustBlock = await securityProcessor.recordSecurityViolation(mismatchDetails);
+        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
         expect(mustBlock).toBe(true);
     });
 
@@ -163,7 +163,7 @@ describe('recordSecurityViolation', () => {
             url: 'https://example.com/bad.js',
             assetType: 'asset',
         };
-        const mustBlock = await securityProcessor.recordSecurityViolation(details);
+        const mustBlock = await securityProcessor.processSecurityEvent(details);
         expect(mustBlock).toBe(true);
     });
 
@@ -172,21 +172,21 @@ describe('recordSecurityViolation', () => {
         appStore.securityEventsStore.logSecurityEvent = async () => {
             throw new Error('direct logSecurityEvent failure');
         };
-        const mustBlock = await securityProcessor.recordSecurityViolation(mismatchDetails);
+        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
         expect(mustBlock).toBe(true);
     });
 
     describe('expectedHashes array contract (shape from verifier)', () => {
         it('persists expectedHashes in the security event', async () => {
             const { securityProcessor, appStore } = createProcessor();
-            await securityProcessor.recordSecurityViolation(mismatchDetails);
+            await securityProcessor.processSecurityEvent(mismatchDetails);
             const events = await appStore.securityEventsStore.getSecurityEvents();
             expect(events[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
         });
 
         it('persists expectedHashes in the active block record', async () => {
             const { securityProcessor, appStore } = createProcessor();
-            await securityProcessor.recordSecurityViolation(mismatchDetails);
+            await securityProcessor.processSecurityEvent(mismatchDetails);
             const blocks = await appStore.activeBlocksStore.getActiveBlocks();
             expect(blocks[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
         });
@@ -197,8 +197,8 @@ describe('recordSecurityViolation', () => {
                 expectedHashes: ['hash-a', 'hash-b'],
             };
             const { securityProcessor, appStore } = createProcessor();
-            const first = await securityProcessor.recordSecurityViolation(multiHash);
-            const second = await securityProcessor.recordSecurityViolation(multiHash);
+            const first = await securityProcessor.processSecurityEvent(multiHash);
+            const second = await securityProcessor.processSecurityEvent(multiHash);
             expect(first).toBe(true);
             expect(second).toBe(false);
             const blocks = await appStore.activeBlocksStore.getActiveBlocks();
@@ -207,11 +207,11 @@ describe('recordSecurityViolation', () => {
 
         it('treats different expectedHashes arrays as distinct violations', async () => {
             const { securityProcessor, appStore } = createProcessor();
-            await securityProcessor.recordSecurityViolation({
+            await securityProcessor.processSecurityEvent({
                 ...mismatchDetails,
                 expectedHashes: ['hash-a'],
             });
-            await securityProcessor.recordSecurityViolation({
+            await securityProcessor.processSecurityEvent({
                 ...mismatchDetails,
                 expectedHashes: ['hash-b'],
             });

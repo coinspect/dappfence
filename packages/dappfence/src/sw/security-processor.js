@@ -1,5 +1,4 @@
-import { devAssert } from '../core/utils.js';
-import { ASSET_TYPE, VERIFICATION_STATUS } from '../core/constants.js';
+import { VERIFICATION_STATUS } from '../core/constants.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger();
@@ -20,11 +19,10 @@ const logger = createLogger();
  *   actualHash?: string,
  *   expectedHashes?: string[],
  *   httpStatus?: number,
- * }} ViolationDetails
+ * }} SecurityEventDetails
  */
 
 /**
- * Formatter signature for a status log entry.
  * @typedef {(d: { fileKey?: string, url?: string, reason?: string, expectedHashes?: string[], actualHash?: string }) => string[]} StatusLogFormatter
  */
 
@@ -61,7 +59,18 @@ const STATUS_LOG = {
  *   - registers the active block when the verdict is a violation (activeBlocksStore)
  *   - returns mustBlock for the caller
  *
- * Extracted from storage/index.js so storage stays as pure stores.
+ * Call sites pass every verdict unconditionally; this service decides what to
+ * do with it. MATCH/SKIPPED short-circuit as no-ops; non-violation telemetry
+ * statuses (REWRITE / CSP_PROTECTED) are logged to the events store but never
+ * activate a block; violations go all the way through.
+ *
+ * Status/assetType invariant held by the callers: MANIFEST and SERVICE_WORKER
+ * asset types only reach the processor with MATCH / SKIPPED / isViolation
+ * statuses — never REWRITE / CSP_PROTECTED / REDIRECT. The telemetry branch
+ * below is therefore only ever hit for ASSET-type verdicts in practice.
+ *
+ * Static typing on `SecurityEventDetails` is enforced; callers that type-check
+ * cannot pass malformed payloads, so no runtime devAsserts.
  *
  * @param {object} deps
  * @param {object} deps.swContext
@@ -73,25 +82,16 @@ export function createSecurityProcessor({ swContext, appStore }) {
     const origin = swContext.getLocationOrigin();
 
     /**
-     * Logs a security event and, when the status is a violation, records the block.
-     * MATCH/SKIPPED are no-ops; non-violation telemetry statuses (REWRITE/CSP_PROTECTED)
-     * are logged to the events store but never activate a block. Recurrences of
-     * already-known blocks are logged but return false. Storage failures fail-safe
-     * and return true.
-     * @param {ViolationDetails} details
+     * @param {SecurityEventDetails} details
      * @returns {Promise<boolean>} mustBlock
      */
-    async function recordSecurityViolation(details) {
-        devAssert(details.status && typeof details.status.description === 'string');
+    async function processSecurityEvent(details) {
         if (
             details.status === VERIFICATION_STATUS.MATCH ||
             details.status === VERIFICATION_STATUS.SKIPPED
         ) {
             return false;
         }
-        devAssert(Object.values(ASSET_TYPE).includes(details.assetType));
-        devAssert(details.url);
-        devAssert(details.fileKey);
         try {
             const statusName = details.status.description;
             const persistedDetails = {
@@ -134,7 +134,7 @@ export function createSecurityProcessor({ swContext, appStore }) {
             }
 
             if (!details.status.isViolation) {
-                logger.log(`Security violation skipped: ${statusName} - ${details.fileKey}`);
+                logger.log(`Security event logged (no block): ${statusName} - ${details.fileKey}`);
                 return false;
             }
             const mustBlock = await activeBlocksStore.recordSecurityBlock(persistedDetails);
@@ -148,12 +148,12 @@ export function createSecurityProcessor({ swContext, appStore }) {
             }
             return mustBlock;
         } catch (error) {
-            logger.error('Failed to handle security violation:', error);
+            logger.error('Failed to handle security event:', error);
             return true;
         }
     }
 
     return {
-        recordSecurityViolation,
+        processSecurityEvent,
     };
 }

@@ -164,17 +164,17 @@ export async function verifyLocation({ swContext, manifestService }, url) {
 export async function verifyImportedScript(deps, scriptPath) {
     const fileKey = toPathname(scriptPath, deps.swContext.getLocationHref());
     const verificationResult = await verifyLocation(deps, scriptPath);
+    await deps.securityProcessor.processSecurityEvent({
+        ...verificationResult,
+        url: scriptPath,
+        fileKey,
+        assetType: ASSET_TYPE.SERVICE_WORKER,
+    });
     if (verificationResult.status.isViolation) {
-        await deps.securityProcessor.recordSecurityViolation({
-            ...verificationResult,
-            url: scriptPath,
-            fileKey,
-            assetType: ASSET_TYPE.SERVICE_WORKER,
-        });
         logger.log(
             `Security violation detected for ${scriptPath}: ${verificationResult.status.description}`
         );
-        return;
+    } else {
+        logger.log(`Script verified: ${scriptPath}`);
     }
-    logger.log(`Script verified: ${scriptPath}`);
 }
