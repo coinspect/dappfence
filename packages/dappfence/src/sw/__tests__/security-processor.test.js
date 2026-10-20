@@ -32,24 +32,34 @@ function createProcessor({ db = createInMemoryDatabase(), swContext = createSwCo
     return { appStore, securityProcessor };
 }
 
+function createFetchEvent(clientId = 'c1') {
+    return { request: { mode: 'no-cors' }, clientId, resultingClientId: '' };
+}
+
+async function processAndDrain(securityProcessor, details) {
+    const mustBlock = await securityProcessor.processSecurityEvent(details);
+    await securityProcessor.reportAfterFetch(createFetchEvent());
+    return mustBlock;
+}
+
 describe('createSecurityProcessor', () => {
     it('exposes processSecurityEvent', () => {
         const { securityProcessor } = createProcessor();
         expect(typeof securityProcessor.processSecurityEvent).toBe('function');
     });
 
-    it('exposes reportOnFetch, reportOnInstall, reportOnClientRequest, reportOnPageLoad, reportOnSync', () => {
+    it('exposes reportAfterFetch, reportAfterInstall, reportOnClientRequest, reportOnPageLoad, reportOnSync', () => {
         const { securityProcessor } = createProcessor();
-        expect(typeof securityProcessor.reportOnFetch).toBe('function');
-        expect(typeof securityProcessor.reportOnInstall).toBe('function');
+        expect(typeof securityProcessor.reportAfterFetch).toBe('function');
+        expect(typeof securityProcessor.reportAfterInstall).toBe('function');
         expect(typeof securityProcessor.reportOnClientRequest).toBe('function');
         expect(typeof securityProcessor.reportOnPageLoad).toBe('function');
         expect(typeof securityProcessor.reportOnSync).toBe('function');
     });
 
-    it('reportOnInstall resolves without throwing (stub body)', async () => {
+    it('reportAfterInstall resolves without throwing (stub body)', async () => {
         const { securityProcessor } = createProcessor();
-        await expect(securityProcessor.reportOnInstall()).resolves.toBeUndefined();
+        await expect(securityProcessor.reportAfterInstall()).resolves.toBeUndefined();
     });
 
     it('reportOnSync resolves without throwing (stub body)', async () => {
@@ -57,24 +67,24 @@ describe('createSecurityProcessor', () => {
         await expect(securityProcessor.reportOnSync()).resolves.toBeUndefined();
     });
 
-    it('reportOnFetch extracts clientId from navigation events', async () => {
+    it('reportAfterFetch extracts clientId from navigation events', async () => {
         const { securityProcessor } = createProcessor();
         const event = {
             request: { mode: 'navigate' },
             clientId: '',
             resultingClientId: 'c-new',
         };
-        await expect(securityProcessor.reportOnFetch(event)).resolves.toBeUndefined();
+        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
     });
 
-    it('reportOnFetch extracts clientId from non-navigation events', async () => {
+    it('reportAfterFetch extracts clientId from non-navigation events', async () => {
         const { securityProcessor } = createProcessor();
         const event = {
             request: { mode: 'no-cors' },
             clientId: 'c1',
             resultingClientId: '',
         };
-        await expect(securityProcessor.reportOnFetch(event)).resolves.toBeUndefined();
+        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
     });
 });
 
@@ -102,11 +112,11 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(false);
     });
 
-    it('stores the security event', async () => {
+    it('stores the security event (after drain)', async () => {
         const { securityProcessor, appStore } = createProcessor({
             swContext: createSwContext({ userAgent: 'test-ua', origin: 'https://example.com' }),
         });
-        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await processAndDrain(securityProcessor, mismatchDetails);
 
         const events = await appStore.securityEventsStore.getSecurityEvents();
         expect(events.length).toBe(1);
@@ -116,10 +126,10 @@ describe('processSecurityEvent', () => {
         expect(events[0].origin).toBe('https://example.com');
     });
 
-    it('logs every violation event (including recurrences)', async () => {
+    it('logs every violation event (including recurrences) after drain', async () => {
         const { securityProcessor, appStore } = createProcessor();
-        await securityProcessor.processSecurityEvent(mismatchDetails);
-        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await processAndDrain(securityProcessor, mismatchDetails);
+        await processAndDrain(securityProcessor, mismatchDetails);
 
         const events = await appStore.securityEventsStore.getSecurityEvents();
         expect(events.length).toBe(2);
@@ -141,6 +151,17 @@ describe('processSecurityEvent', () => {
             status: VERIFICATION_STATUS.MATCH,
         });
         expect(mustBlock).toBe(false);
+    });
+
+    it('does not persist SKIPPED to any store', async () => {
+        const { securityProcessor, appStore } = createProcessor();
+        await processAndDrain(securityProcessor, {
+            ...mismatchDetails,
+            status: VERIFICATION_STATUS.SKIPPED,
+        });
+
+        const events = await appStore.securityEventsStore.getSecurityEvents();
+        expect(events).toHaveLength(0);
     });
 
     it('handles FILE_UNTRUSTED+NOT_IN_MANIFEST violation', async () => {
@@ -171,7 +192,7 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(true);
     });
 
-    it('does not crash if event logging fails', async () => {
+    it('does not crash if event logging fails during drain', async () => {
         const db = createInMemoryDatabase();
         const originalSet = db.set;
         db.set = async (key, value) => {
@@ -181,7 +202,9 @@ describe('processSecurityEvent', () => {
             return originalSet(key, value);
         };
         const { securityProcessor } = createProcessor({ db });
+        const event = createFetchEvent();
         const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
+        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
         expect(mustBlock).toBe(true);
     });
 
@@ -206,19 +229,21 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(true);
     });
 
-    it('handles securityEventsStore.logSecurityEvent throwing directly', async () => {
+    it('handles securityEventsStore.logSecurityEvent throwing directly during drain', async () => {
         const { securityProcessor, appStore } = createProcessor();
         appStore.securityEventsStore.logSecurityEvent = async () => {
             throw new Error('direct logSecurityEvent failure');
         };
+        const event = createFetchEvent();
         const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
+        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
         expect(mustBlock).toBe(true);
     });
 
     describe('expectedHashes array contract (shape from verifier)', () => {
         it('persists expectedHashes in the security event', async () => {
             const { securityProcessor, appStore } = createProcessor();
-            await securityProcessor.processSecurityEvent(mismatchDetails);
+            await processAndDrain(securityProcessor, mismatchDetails);
             const events = await appStore.securityEventsStore.getSecurityEvents();
             expect(events[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
         });

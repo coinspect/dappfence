@@ -25,7 +25,7 @@ function makeInstallDeps({
     },
     onInstallDone = vi.fn(),
     processSecurityEvent = vi.fn(() => Promise.resolve(false)),
-    reportOnInstall = vi.fn(() => Promise.resolve()),
+    reportAfterInstall = vi.fn(() => Promise.resolve()),
 } = {}) {
     return {
         swContext: { skipWaiting },
@@ -36,7 +36,7 @@ function makeInstallDeps({
         onInstallDone,
         securityProcessor: {
             processSecurityEvent,
-            reportOnInstall,
+            reportAfterInstall,
         },
     };
 }
@@ -153,20 +153,20 @@ describe('createInstallHandler', () => {
         expect(deps.onInstallDone).toHaveBeenCalledTimes(1);
     });
 
-    it('calls securityProcessor.reportOnInstall', async () => {
+    it('calls securityProcessor.reportAfterInstall', async () => {
         const deps = makeInstallDeps();
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.securityProcessor.reportOnInstall).toHaveBeenCalledTimes(1);
+        expect(deps.securityProcessor.reportAfterInstall).toHaveBeenCalledTimes(1);
     });
 
-    it('still calls reportOnInstall when install logic throws', async () => {
+    it('still calls reportAfterInstall when install logic throws', async () => {
         const deps = makeInstallDeps({
             skipWaiting: vi.fn(() => Promise.reject(new Error('skipWaiting failed'))),
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.securityProcessor.reportOnInstall).toHaveBeenCalledTimes(1);
+        expect(deps.securityProcessor.reportAfterInstall).toHaveBeenCalledTimes(1);
     });
 });
 

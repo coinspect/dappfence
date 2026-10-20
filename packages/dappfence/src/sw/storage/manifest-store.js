@@ -108,30 +108,32 @@ export function createManifestStore(database) {
             appVersion,
             { status, timestamp, fileKey, url, assetType, expectedHashes, actualHash }
         ) {
-            const allResults = (await database.get(VERIFICATION_RESULTS_KEY)) || {};
-            if (!allResults[appVersion]) {
-                allResults[appVersion] = [];
-            }
+            return database.withTx(async (tx) => {
+                const allResults = (await tx.get(VERIFICATION_RESULTS_KEY)) || {};
+                if (!allResults[appVersion]) {
+                    allResults[appVersion] = [];
+                }
 
-            // Named params act as the allowlist: extra fields passed by callers
-            // (per-response nonce, response Headers) are dropped by
-            // destructuring — nothing non-cloneable can reach IndexedDB.
-            allResults[appVersion].push({
-                status,
-                timestamp,
-                fileKey,
-                url,
-                assetType,
-                expectedHashes,
-                actualHash,
+                // Named params act as the allowlist: extra fields passed by callers
+                // (per-response nonce, response Headers) are dropped by
+                // destructuring — nothing non-cloneable can reach IndexedDB.
+                allResults[appVersion].push({
+                    status,
+                    timestamp: timestamp || new Date().toISOString(),
+                    fileKey,
+                    url,
+                    assetType,
+                    expectedHashes,
+                    actualHash,
+                });
+
+                // Keep only last 100 results per app version to avoid unbounded growth
+                if (allResults[appVersion].length > 100) {
+                    allResults[appVersion] = allResults[appVersion].slice(-100);
+                }
+
+                await tx.set(VERIFICATION_RESULTS_KEY, allResults);
             });
-
-            // Keep only last 100 results per app version to avoid unbounded growth
-            if (allResults[appVersion].length > 100) {
-                allResults[appVersion] = allResults[appVersion].slice(-100);
-            }
-
-            await database.set(VERIFICATION_RESULTS_KEY, allResults);
         },
     };
 

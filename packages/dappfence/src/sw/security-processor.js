@@ -10,11 +10,20 @@ const logger = createLogger();
 /** @typedef {import('../core/constants.js').ManifestLoadReason} ManifestLoadReason */
 
 /**
+ * @typedef {{ appVersion: string, manifest: object, storedAt?: number }} ManifestInfo
+ */
+
+/**
  * @typedef {{
  *   status: VerificationStatus,
  *   assetType: AssetType,
  *   fileKey: string,
  *   url: string,
+ *   manifestInfo?: ManifestInfo,
+ *   clientId?: string,
+ *   destination?: string,
+ *   requestMode?: string,
+ *   method?: string,
  *   reason?: AssetErrorReason | FileUntrustedReason | ManifestLoadReason,
  *   actualHash?: string,
  *   expectedHashes?: string[],
@@ -77,24 +86,44 @@ const STATUS_LOG = {
  * @param {object} deps.appStore
  */
 export function createSecurityProcessor({ swContext, appStore }) {
-    const { securityEventsStore, activeBlocksStore } = appStore;
+    const { securityEventsStore, activeBlocksStore, verificationResultsStore } = appStore;
     const userAgent = swContext.getUserAgent();
     const origin = swContext.getLocationOrigin();
+
+    // Shared in-memory buffer drained by reportAfterFetch / reportAfterInstall.
+    // SW is single-threaded; multiple drains are idempotent (second finds empty).
+    const pending = { events: [] };
 
     /**
      * @param {SecurityEventDetails} details
      * @returns {Promise<boolean>} mustBlock
      */
     async function processSecurityEvent(details) {
+        pending.events.push(details);
         if (
             details.status === VERIFICATION_STATUS.MATCH ||
             details.status === VERIFICATION_STATUS.SKIPPED
         ) {
             return false;
         }
+        const statusName = details.status.description;
+        const method = details.status.isViolation ? 'error' : 'log';
+        const logArgs =
+            STATUS_LOG[statusName] ??
+            ((d) => [
+                `SECURITY ALERT: {${statusName}}`,
+                `URL: ${d.url ?? 'N/A'}`,
+                `File: ${d.fileKey ?? 'N/A'}`,
+            ]);
+        logger[method](...logArgs(details));
+        if (!details.status.isViolation) {
+            logger.log(`Security event logged (no block): ${statusName} - ${details.fileKey}`);
+            return false;
+        }
         try {
-            const statusName = details.status.description;
-            const persistedDetails = {
+            // Block records stay awaited on the hot path — losing one across
+            // SW restart is worse than paying the IDB cost on a rare violation.
+            const mustBlock = await activeBlocksStore.recordSecurityBlock({
                 status: statusName,
                 reason: details.reason,
                 fileKey: details.fileKey,
@@ -103,41 +132,7 @@ export function createSecurityProcessor({ swContext, appStore }) {
                 expectedHashes: details.expectedHashes,
                 actualHash: details.actualHash,
                 httpStatus: details.httpStatus,
-            };
-            const method = details.status.isViolation ? 'error' : 'log';
-            const logArgs =
-                STATUS_LOG[statusName] ??
-                ((d) => [
-                    `SECURITY ALERT: {${statusName}}`,
-                    `URL: ${d.url ?? 'N/A'}`,
-                    `File: ${d.fileKey ?? 'N/A'}`,
-                ]);
-            logger[method](...logArgs(details));
-
-            try {
-                await securityEventsStore.logSecurityEvent({
-                    type: 'SECURITY_VIOLATION',
-                    status: statusName,
-                    reason: details.reason,
-                    assetType: details.assetType,
-                    timestamp: new Date().toISOString(),
-                    url: details.url,
-                    fileKey: details.fileKey,
-                    expectedHashes: details.expectedHashes,
-                    actualHash: details.actualHash,
-                    httpStatus: details.httpStatus,
-                    userAgent,
-                    origin,
-                });
-            } catch (error) {
-                logger.error('Failed to store security log:', error);
-            }
-
-            if (!details.status.isViolation) {
-                logger.log(`Security event logged (no block): ${statusName} - ${details.fileKey}`);
-                return false;
-            }
-            const mustBlock = await activeBlocksStore.recordSecurityBlock(persistedDetails);
+            });
             if (mustBlock) {
                 logger.log(`Security violation handled: ${statusName} - ${details.fileKey}`);
             } else {
@@ -153,14 +148,47 @@ export function createSecurityProcessor({ swContext, appStore }) {
         }
     }
 
-    async function reportOnFetch(/** @type {FetchEvent} */ event) {
-        const clientId =
-            event.request.mode === 'navigate' ? event.resultingClientId : event.clientId;
-        logger.log(`reportOnFetch clientId=${clientId}`);
+    async function flushPending() {
+        // Atomic snapshot, splice is synchronous.
+        for (const details of pending.events.splice(0)) {
+            if (details.status === VERIFICATION_STATUS.SKIPPED) {
+                continue;
+            }
+            try {
+                const record = {
+                    ...details,
+                    status: details.status.description,
+                    appVersion: details.manifestInfo?.appVersion,
+                    userAgent,
+                    origin,
+                };
+                if (details.status === VERIFICATION_STATUS.MATCH) {
+                    await verificationResultsStore.add(record.appVersion, record);
+                } else {
+                    await securityEventsStore.logSecurityEvent(record);
+                }
+            } catch (error) {
+                logger.error('Failed to persist event:', error);
+            }
+        }
     }
 
-    async function reportOnInstall(/** @type {ExtendableEvent} */ _event) {
-        logger.log('reportOnInstall');
+    /**
+     * Drains and persists queued security events asynchronously without blocking the fetch response.
+     * Executed inside `event.waitUntil` after the fetch response promise settles.
+     *
+     * @param {FetchEvent} event
+     */
+    async function reportAfterFetch(event) {
+        const clientId =
+            event.request.mode === 'navigate' ? event.resultingClientId : event.clientId;
+        logger.log(`reportAfterFetch clientId=${clientId}`);
+        await flushPending();
+    }
+
+    async function reportAfterInstall(/** @type {ExtendableEvent} */ _event) {
+        logger.log('reportAfterInstall');
+        await flushPending();
     }
 
     async function reportOnClientRequest(/** @type {ExtendableMessageEvent} */ event) {
@@ -179,8 +207,8 @@ export function createSecurityProcessor({ swContext, appStore }) {
 
     return {
         processSecurityEvent,
-        reportOnFetch,
-        reportOnInstall,
+        reportAfterFetch,
+        reportAfterInstall,
         reportOnClientRequest,
         reportOnPageLoad,
         reportOnSync,

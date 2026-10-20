@@ -26,7 +26,7 @@ export function initializeServiceWorker() {
         logger.log('Security SW fetch');
         const fetchPromise = fetchHandler(event, callChildHandlers);
         event.respondWith(fetchPromise);
-        event.waitUntil(fetchPromise.finally(() => securityProcessor.reportOnFetch(event)));
+        event.waitUntil(fetchPromise.finally(() => securityProcessor.reportAfterFetch(event)));
     });
 
     hookService.addEventListener('install', (event, callChildHandlers) => {

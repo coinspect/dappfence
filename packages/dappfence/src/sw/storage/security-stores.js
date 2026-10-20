@@ -220,13 +220,34 @@ const SECURITY_EVENTS_KEY = 'security-events';
  * @param {object} database - Storage backend with { get, set }
  */
 export function createSecurityEventsStore(database) {
-    async function logSecurityEvent(eventData) {
+    async function logSecurityEvent({
+        status,
+        reason,
+        assetType,
+        fileKey,
+        url,
+        expectedHashes,
+        actualHash,
+        httpStatus,
+        userAgent,
+        origin,
+        timestamp,
+    }) {
         try {
             const events = (await database.get(SECURITY_EVENTS_KEY)) || [];
             events.push({
-                ...eventData,
+                status,
+                reason,
+                assetType,
+                fileKey,
+                url,
+                expectedHashes,
+                actualHash,
+                httpStatus,
+                userAgent,
+                origin,
                 id: `event_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                timestamp: eventData.timestamp || new Date().toISOString(),
+                timestamp: timestamp || new Date().toISOString(),
             });
 
             // Keep only last 1000 events to prevent storage bloat
@@ -234,7 +255,7 @@ export function createSecurityEventsStore(database) {
                 events.splice(0, events.length - 1000);
             }
             await database.set(SECURITY_EVENTS_KEY, events);
-            logger.log('Security event logged:', eventData.status);
+            logger.log('Security event logged:', status);
         } catch (error) {
             logger.error('Failed to log security event:', error);
         }

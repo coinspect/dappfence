@@ -75,7 +75,7 @@ export function createInstallHandler({
         } catch (error) {
             logger.error('❌ error during initialization:', error);
         } finally {
-            await securityProcessor.reportOnInstall(event);
+            await securityProcessor.reportAfterInstall(event);
         }
     };
 }
