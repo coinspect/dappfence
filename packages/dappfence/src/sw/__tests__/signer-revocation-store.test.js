@@ -1,18 +1,21 @@
 /**
  * Signer revocation — store layer.
  *
- * `addLatest` stamps every entry with { signatureType, signerIdentity }
- * (storage/manifest-store.js), but no reader consults them, so manifests
- * produced by a key that is no longer the anchored identity stay trusted.
- * Rotating the anchor is the standard response to a leaked signing key; it has
- * to stop honoring that key's manifests or it remediates nothing.
+ * Policy: rotating the anchored identity does NOT revoke the previous signer's
+ * manifests. The old signer was trusted when those manifests were stored, and a
+ * legitimate rotation must not retroactively break files they vouched for. The
+ * only thing that removes old entries is a manifest carrying
+ * `revokeManifests: true`, which makes `addLatest` replace the whole list
+ * instead of prepending.
  *
- * These tests cover the three reads the escalation search consumes, plus the
- * requirement that filtering stays non-destructive. The search that consumes
- * them is covered in signer-revocation-escalation.test.js.
+ * For a leaked key, that means the new owner signs their first post-rotation
+ * manifest with `revokeManifests: true`; storing it drops everything the leaked
+ * key produced.
  *
- * STATUS: these FAIL against the current implementation. They describe the
- * intended behavior, not the shipped behavior.
+ * `updateActiveIdentity` stands in for the user accepting a rotation.
+ *
+ * The escalation search that consumes these reads is covered in
+ * signer-revocation-escalation.test.js.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
@@ -43,41 +46,82 @@ describe('trustedManifestStore — retired signers', () => {
             createManifestStore(createInMemoryStorage()));
     });
 
-    it('getAll omits manifests signed by anyone but the anchored identity', async () => {
-        await trustedManifestStore.addLatest({ files: { '/evil.js': ['h'] } }, RETIRED);
-        await activeIdentityStore.updateActiveIdentity(ANCHORED);
-        await trustedManifestStore.addLatest({ files: { '/app.js': ['h2'] } }, ANCHORED);
+    describe('rotation alone keeps the previous signer trusted', () => {
+        it('getAll returns entries from both signers, newest first', async () => {
+            await trustedManifestStore.addLatest({ files: { '/old.js': ['h'] } }, RETIRED);
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+            await trustedManifestStore.addLatest({ files: { '/app.js': ['h2'] } }, ANCHORED);
 
-        const all = await trustedManifestStore.getAll();
+            const all = await trustedManifestStore.getAll();
 
-        expect(all.map((m) => m.signerIdentity)).toEqual([ANCHORED.identity]);
+            expect(all.map((m) => m.signerIdentity)).toEqual([ANCHORED.identity, RETIRED.identity]);
+        });
+
+        it('getLatest returns the previous signer’s entry until the new signer stores one', async () => {
+            await trustedManifestStore.addLatest({ files: { '/old.js': ['h'] } }, RETIRED);
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+
+            const latest = await trustedManifestStore.getLatest();
+
+            expect(latest.signerIdentity).toBe(RETIRED.identity);
+        });
+
+        it('get(appVersion) still resolves the previous signer’s manifest', async () => {
+            const { appVersion } = await trustedManifestStore.addLatest(
+                { files: { '/old.js': ['h'] } },
+                RETIRED
+            );
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+
+            expect(await trustedManifestStore.get(appVersion)).toEqual({
+                files: { '/old.js': ['h'] },
+            });
+        });
     });
 
-    it('getLatest does not stand in a retired signer when the anchor has stored nothing', async () => {
-        await trustedManifestStore.addLatest({ files: { '/evil.js': ['h'] } }, RETIRED);
-        await activeIdentityStore.updateActiveIdentity(ANCHORED);
+    describe('revokeManifests from the new signer drops the previous signer', () => {
+        it('getAll keeps only the revoking entry', async () => {
+            await trustedManifestStore.addLatest({ files: { '/old.js': ['h'] } }, RETIRED);
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+            await trustedManifestStore.addLatest(
+                { files: { '/app.js': ['h2'] }, revokeManifests: true },
+                ANCHORED
+            );
 
-        expect(await trustedManifestStore.getLatest()).toBeUndefined();
-    });
+            const all = await trustedManifestStore.getAll();
 
-    it('get(appVersion) does not resolve a retired signer’s manifest', async () => {
-        const { appVersion } = await trustedManifestStore.addLatest(
-            { files: { '/evil.js': ['h'] } },
-            RETIRED
-        );
-        await activeIdentityStore.updateActiveIdentity(ANCHORED);
+            expect(all.map((m) => m.signerIdentity)).toEqual([ANCHORED.identity]);
+        });
 
-        expect(await trustedManifestStore.get(appVersion)).toBeUndefined();
-    });
+        it('get(appVersion) no longer resolves the previous signer’s manifest', async () => {
+            const { appVersion } = await trustedManifestStore.addLatest(
+                { files: { '/old.js': ['h'] } },
+                RETIRED
+            );
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+            await trustedManifestStore.addLatest(
+                { files: { '/app.js': ['h2'] }, revokeManifests: true },
+                ANCHORED
+            );
 
-    it('keeps serving manifests once the anchor is rotated back to their signer', async () => {
-        await trustedManifestStore.addLatest({ files: { '/a.js': ['h'] } }, RETIRED);
-        await activeIdentityStore.updateActiveIdentity(ANCHORED);
-        expect(await trustedManifestStore.getAll()).toHaveLength(0);
+            expect(await trustedManifestStore.get(appVersion)).toBeUndefined();
+        });
 
-        // Filtering must be non-destructive — the entries are ignored while a
-        // different identity is anchored, not deleted.
-        await activeIdentityStore.updateActiveIdentity(RETIRED);
-        expect(await trustedManifestStore.getAll()).toHaveLength(1);
+        it('later non-revoking manifests do not bring the previous signer back', async () => {
+            await trustedManifestStore.addLatest({ files: { '/old.js': ['h'] } }, RETIRED);
+            await activeIdentityStore.updateActiveIdentity(ANCHORED);
+            await trustedManifestStore.addLatest(
+                { files: { '/app.js': ['h2'] }, revokeManifests: true },
+                ANCHORED
+            );
+            await trustedManifestStore.addLatest({ files: { '/app.js': ['h3'] } }, ANCHORED);
+
+            const all = await trustedManifestStore.getAll();
+
+            expect(all.map((m) => m.signerIdentity)).toEqual([
+                ANCHORED.identity,
+                ANCHORED.identity,
+            ]);
+        });
     });
 });

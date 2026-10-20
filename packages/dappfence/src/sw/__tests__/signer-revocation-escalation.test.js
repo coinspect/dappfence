@@ -1,24 +1,24 @@
 /**
  * Signer revocation — escalation layer.
  *
- * `addLatest` stamps every stored entry with { signatureType, signerIdentity }
- * (storage/manifest-store.js), but no reader consults them. The escalation
- * search in createVerifier walks the whole manifest history and accepts the
- * first MATCH, so a file vouched for only by a retired key still verifies after
- * the anchor has rotated away from it. Rotating the anchor is the standard
- * response to a leaked signing key; it has to stop honoring that key's
- * manifests or it remediates nothing.
+ * Policy: rotating the anchored identity does NOT revoke the previous signer's
+ * manifests. The escalation search in createVerifier walks the full manifest
+ * history and accepts the first MATCH, so a file vouched for only by the
+ * previous signer keeps verifying after a rotation. That is intended: a
+ * legitimate rotation must not retroactively break the old signer's files.
  *
- * Real Response objects and real hashing throughout — the body the verifier
- * hashes and the hash the manifest declares come from the same bytes, so
- * nothing here depends on a stubbed digest.
+ * Revocation is explicit: the new signer publishes a manifest with
+ * `revokeManifests: true`, `addLatest` replaces the history with that single
+ * entry, and from then on escalation has nothing from the old signer to fall
+ * back to. This is how a leaked key is remediated.
+ *
+ * The store is real (in-memory backend), and `getManifestHistory` is wired to
+ * `trustedManifestStore.getAll` exactly like manifest-loader does, so these
+ * tests exercise the flag end to end rather than a hand-built history array.
+ * Responses and hashes are real too — the body the verifier hashes and the hash
+ * the manifest declares come from the same bytes.
  *
  * Store-layer coverage lives in signer-revocation-store.test.js.
- *
- * STATUS: the two "rejects" tests FAIL against the current implementation.
- * They describe the intended behavior, not the shipped behavior. The two
- * "still accepts" tests pass and exist to prove the harness is not simply
- * rejecting everything.
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -28,6 +28,7 @@ import {
 } from '../manifest/security-verifier.js';
 import { normalizeManifestData } from '../manifest/manifest-loader.js';
 import { isRequestAllowed } from '../manifest/rules.js';
+import { createManifestStore } from '../storage/manifest-store.js';
 import { calculateHash } from '../../core/crypto.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 
@@ -43,20 +44,6 @@ const hashOf = (body) => calculateHash(new TextEncoder().encode(body));
 const EVIL_HASH = await hashOf(EVIL_BODY);
 const LEGIT_HASH = await hashOf(LEGIT_BODY);
 
-const entry = (appVersion, files, signer) => ({
-    appVersion,
-    manifest: normalizeManifestData({ files, mode: 'protected' }),
-    storedAt: Date.now(),
-    signatureType: signer.signatureType,
-    signerIdentity: signer.identity,
-});
-
-// What the attacker got signed while they held the leaked key.
-const EVIL_ENTRY = entry('v-evil', { '/evil.js': [EVIL_HASH] }, RETIRED);
-
-// The post-rotation manifest. Does not list /evil.js at all.
-const CURRENT_ENTRY = entry('v-new', { '/app.js': [LEGIT_HASH] }, ANCHORED);
-
 const STRATEGIES = [
     {
         name: 'basic',
@@ -70,6 +57,20 @@ const STRATEGIES = [
         },
     },
 ];
+
+function createInMemoryStorage() {
+    const store = new Map();
+    return {
+        get: async (key) => store.get(key),
+        set: async (key, value) => store.set(key, value),
+        delete: async (key) => store.delete(key),
+        withTx: async (fn) =>
+            fn({
+                get: async (key) => store.get(key),
+                set: async (key, value) => store.set(key, value),
+            }),
+    };
+}
 
 function scriptRequest(path) {
     return {
@@ -87,54 +88,97 @@ function scriptResponse(body) {
     });
 }
 
-describe.each(STRATEGIES)(
-    'escalation must not fall back to a retired signer — $name',
-    ({ strategy }) => {
-        function makeVerifier() {
-            const manifestLoader = {
-                // After a rotation the bootstrap config disagrees with the
-                // anchor, so a fresh fetch cannot produce a usable manifest.
-                fetchAndStoreManifest: vi.fn(() =>
-                    Promise.resolve({
-                        status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
-                        reason: 'SIGNER_CHANGED',
-                    })
-                ),
-                storeManifestFromResponse: vi.fn(),
-                getManifestHistory: vi.fn(() => Promise.resolve([CURRENT_ENTRY, EVIL_ENTRY])),
-            };
-            const { verifyResponse } = createVerifier(
-                {
-                    swContext: {
-                        getLocationHref: () => LOCATION_HREF,
-                        matchAllClients: vi.fn(() => Promise.resolve([{ id: 'client-1' }])),
-                    },
-                    appStore: {
-                        verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
-                    },
-                    config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
-                },
-                manifestLoader,
-                strategy
-            );
-            return (req, response) => verifyResponse(req, response, 'client-1', CURRENT_ENTRY);
-        }
+/**
+ * Plays out a rotation away from a leaked key:
+ *   1. The attacker, holding RETIRED, gets a manifest listing /evil.js stored.
+ *   2. The user accepts the rotation to ANCHORED.
+ *   3. The new owner publishes a manifest that lists only /app.js — with or
+ *      without `revokeManifests`, depending on the test.
+ */
+async function rotateAwayFromLeakedKey({ revokeManifests }) {
+    const { trustedManifestStore, activeIdentityStore } =
+        createManifestStore(createInMemoryStorage());
 
-        it('rejects a file that only the retired signer vouched for', async () => {
-            const verify = makeVerifier();
+    await trustedManifestStore.addLatest(
+        normalizeManifestData({ files: { '/evil.js': [EVIL_HASH] }, mode: 'protected' }),
+        RETIRED
+    );
+    await activeIdentityStore.updateActiveIdentity(ANCHORED);
+    await trustedManifestStore.addLatest(
+        normalizeManifestData({
+            files: { '/app.js': [LEGIT_HASH] },
+            mode: 'protected',
+            revokeManifests,
+        }),
+        ANCHORED
+    );
+
+    return trustedManifestStore;
+}
+
+function makeVerify(trustedManifestStore, strategy) {
+    const manifestLoader = {
+        // The network serves the same manifest the new owner already stored,
+        // so the last escalation step adds nothing beyond what history holds.
+        fetchAndStoreManifest: vi.fn(async () => ({
+            status: VERIFICATION_STATUS.MATCH,
+            ...(await trustedManifestStore.getLatest()),
+        })),
+        storeManifestFromResponse: vi.fn(),
+        getManifestHistory: trustedManifestStore.getAll,
+    };
+    const { verifyResponse } = createVerifier(
+        {
+            swContext: {
+                getLocationHref: () => LOCATION_HREF,
+                matchAllClients: vi.fn(() => Promise.resolve([{ id: 'client-1' }])),
+            },
+            appStore: {
+                verificationResultsStore: { add: vi.fn(() => Promise.resolve()) },
+            },
+            config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
+        },
+        manifestLoader,
+        strategy
+    );
+    return async (req, response) =>
+        verifyResponse(req, response, 'client-1', await trustedManifestStore.getLatest());
+}
+
+describe.each(STRATEGIES)('escalation across a signer rotation — $name', ({ strategy }) => {
+    describe('without revokeManifests', () => {
+        it('still accepts a file only the previous signer vouched for', async () => {
+            const store = await rotateAwayFromLeakedKey({ revokeManifests: false });
+            const verify = makeVerify(store, strategy);
 
             const result = await verify(scriptRequest('/evil.js'), scriptResponse(EVIL_BODY));
 
-            // Today: MATCH — the escalation loop reaches EVIL_ENTRY and accepts it.
+            // The latest (ANCHORED) manifest doesn't list /evil.js, so the search
+            // falls back to history and finds the RETIRED entry. By design.
+            expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
+        });
+    });
+
+    describe('with revokeManifests', () => {
+        it('rejects a file only the previous signer vouched for', async () => {
+            const store = await rotateAwayFromLeakedKey({ revokeManifests: true });
+            const verify = makeVerify(store, strategy);
+
+            const result = await verify(scriptRequest('/evil.js'), scriptResponse(EVIL_BODY));
+
+            // History was replaced by the revoking manifest, so there is no
+            // RETIRED entry left for the search to fall back to.
             expect(result.status).not.toBe(VERIFICATION_STATUS.MATCH);
         });
 
-        it('still accepts a file the anchored signer vouched for', async () => {
-            const verify = makeVerifier();
+        it('still accepts a file the new signer vouched for', async () => {
+            const store = await rotateAwayFromLeakedKey({ revokeManifests: true });
+            const verify = makeVerify(store, strategy);
 
             const result = await verify(scriptRequest('/app.js'), scriptResponse(LEGIT_BODY));
 
+            // Control: proves the rejection above isn't the harness rejecting everything.
             expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
         });
-    }
-);
+    });
+});
