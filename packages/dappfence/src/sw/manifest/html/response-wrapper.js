@@ -20,6 +20,8 @@ export const makeResponseWrapper = (response) => {
         ok: response.ok,
         status: response.status,
         type: response.type,
+        url: response.url,
+        redirected: response.redirected,
         headers: response.headers,
         getBodyBytes: once(async () => {
             try {
