@@ -19,6 +19,8 @@
         "check": "prettier --check \"*.md\" packages/ scripts/ docs/ && eslint packages/ scripts/ && tsc --noEmit -p jsconfig.json && node scripts/check-lock-integrity.js",
         "format": "prettier --write packages/ scripts/ docs/ *.md",
         "sync-versions": "node scripts/sync-versions.js",
+        "verify-published": "node scripts/verify-published.js",
+        "release-manifest": "bash scripts/release-manifest-in-container.sh",
         "update-consumer": "node scripts/update-local-consumer.js",
         "publish:local": "npm run publish:local --ws --if-present",
         "prepare": "npm run check && npm run build:prod",
@@ -39,5 +41,6 @@
     ],
     "engines": {
         "node": ">=22.0.0"
-    }
+    },
+    "packageManager": "npm@11.19.0"
 }

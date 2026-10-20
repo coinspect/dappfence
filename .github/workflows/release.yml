@@ -30,13 +30,19 @@ on:
                 type: boolean
                 default: false
 
+# Pinned once here rather than in each job. Must stay equal to the root package.json's
+# `packageManager` field, which is where a verifier outside CI reads it from -- the verify
+# job asserts they match, since the publish job has no checkout and cannot read the file.
+env:
+    NPM_VERSION: '11.19.0'
+
 concurrency:
     group: release
     cancel-in-progress: false
 
 jobs:
     verify:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 5
         permissions:
             contents: read
@@ -51,6 +57,13 @@ jobs:
             # version are not exactly a pair from this map, so the build job cannot decide
             # either. See the comment on that step for why it cannot be trusted to.
             packages: ${{ steps.allowlist.outputs.names }}
+            # The per-file hashes the maintainer signed into the tag, base64-encoded. build
+            # refuses to upload anything that does not reproduce them exactly.
+            manifest: ${{ steps.manifest.outputs.b64 }}
+            # .nvmrc at the verified commit. publish has no checkout and so cannot read the
+            # file; passing it from here keeps one source of truth rather than adding a
+            # fourth, unpinned copy of the Node version to this workflow.
+            node: ${{ steps.toolchain.outputs.node }}
         steps:
             - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
@@ -119,6 +132,34 @@ jobs:
                   git config --global gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
                   git verify-tag "$TAG"
 
+            # Deliberately after the signature check: the manifest is only worth anything
+            # because the signature covering it has just been verified. It is the maintainer's
+            # statement that they built these exact bytes and looked at them.
+            - name: Extract the signed release manifest from the tag
+              id: manifest
+              env:
+                  TAG: ${{ steps.resolve.outputs.tag }}
+              run: |
+                  set -euo pipefail
+                  # Read the raw tag object rather than using git's %(contents:*) formats.
+                  # %(contents:body) drops the whole first paragraph -- which is where the
+                  # format and commit lines live -- and %(contents:subject) folds that
+                  # paragraph onto a single line. Neither reconstructs the manifest. So: skip
+                  # the object header, then cut everything from the signature block onwards.
+                  manifest=$(git cat-file tag "$TAG" \
+                    | awk 'BEGIN{h=1} h && /^$/ {h=0; next} !h {print}' \
+                    | sed '/^-----BEGIN [A-Z0-9 ]*SIGNATURE-----$/,$d')
+
+                  if ! printf '%s\n' "$manifest" | head -1 | grep -q '^dappfence-release-manifest '; then
+                    echo "::error::$TAG carries no release manifest. Produce one with 'npm run release-manifest' and re-tag: git tag -s <tag> -F release-manifest.txt --cleanup=verbatim"
+                    exit 1
+                  fi
+
+                  # base64 so it crosses $GITHUB_OUTPUT as one line -- a multi-line value needs
+                  # a heredoc delimiter, and a delimiter is something content could collide with.
+                  echo "b64=$(printf '%s\n' "$manifest" | base64 -w0)" >> "$GITHUB_OUTPUT"
+                  echo "Signed manifest: $(printf '%s\n' "$manifest" | grep -c '^  ') file hashes"
+
             - name: Check out the verified commit
               env:
                   SHA: ${{ steps.resolve.outputs.sha }}
@@ -126,7 +167,55 @@ jobs:
 
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
+
+            # publish runs setup-node with no checkout, so it cannot use node-version-file --
+            # the file is simply not there and the action fails before anything else in that
+            # job runs. Export the value instead of hardcoding it there: a literal would be a
+            # fourth place the Node version lives, free to drift from .nvmrc, the image tag and
+            # the image itself, which is the whole class of problem check-build-node.js exists
+            # for. Read after the checkout above, so this is the verified commit's .nvmrc.
+            - name: Export the pinned Node version for the publish job
+              id: toolchain
+              run: |
+                  set -euo pipefail
+                  node_version=$(tr -d '[:space:]' < .nvmrc)
+                  if [ -z "$node_version" ]; then
+                    echo "::error::.nvmrc is empty at the verified commit"
+                    exit 1
+                  fi
+                  echo "node=$node_version" >> "$GITHUB_OUTPUT"
+                  echo "Node pin: $node_version"
+
+            # The npm version is pinned twice -- as NPM_VERSION above, and as packageManager in
+            # package.json where anyone rebuilding outside CI reads it. They have to agree, or a
+            # third party reproducing a release would pack with a different npm than built it.
+            # Checked here because publish has no checkout and cannot read the file itself.
+            - name: The pinned npm version must match packageManager
+              run: |
+                  set -euo pipefail
+                  declared=$(node -p "require('./package.json').packageManager")
+                  if [ "$declared" != "npm@${NPM_VERSION}" ]; then
+                    echo "::error::package.json packageManager is \"$declared\" but release.yml pins npm@${NPM_VERSION}"
+                    exit 1
+                  fi
+                  echo "npm pin agrees: $declared"
+
+            # The build image is pinned twice -- as build's `container.image`, which must be a
+            # literal, and in .github/build-image where the maintainer's release-manifest script
+            # reads it. If they drift, the maintainer signs hashes from one environment and CI
+            # checks them against another, and every release aborts for no good reason.
+            - name: The build image must match .github/build-image
+              run: |
+                  set -euo pipefail
+                  declared=$(tr -d '[:space:]' < .github/build-image)
+                  used=$(grep -A1 '^        container:' .github/workflows/release.yml \
+                    | grep 'image:' | sed 's/.*image: *//' | tr -d '[:space:]')
+                  if [ "$declared" != "$used" ]; then
+                    echo "::error::.github/build-image is \"$declared\" but release.yml builds in \"$used\""
+                    exit 1
+                  fi
+                  echo "Build image agrees: $declared"
 
             # Everything this pipeline guarantees depends on settings that live outside the
             # repository -- the tag ruleset, the environment's reviewers and deployment-branch
@@ -169,7 +258,7 @@ jobs:
     # files the release is actually built from: `build` starts from a fresh checkout.
     test:
         needs: verify
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 15
         permissions:
             contents: read
@@ -180,10 +269,10 @@ jobs:
 
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version-file: .nvmrc
 
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - name: Install
               run: npm ci --ignore-scripts
@@ -236,10 +325,20 @@ jobs:
     # is fresh, so no test code has ever run against the files packed here.
     build:
         needs: [verify, test]
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 15
         permissions:
             contents: read
+        # Runs in a digest-pinned image so a maintainer can reproduce this build exactly, which
+        # the hash gate below requires of them. package-lock.json pins the version and integrity
+        # of all 26 @esbuild/* and 25 @rollup/rollup-* variants but not *which* one installs --
+        # that is chosen by platform at install time, and both are on the critical path (rollup's
+        # native binding parses the JS and computes content hashes; esbuild bundles the config
+        # and transpiles the chunk). Same source on a different platform therefore means
+        # different bytes, so "same environment" has to mean the same image, not the same
+        # setup-node version. Keep this equal to .github/build-image; verify asserts it.
+        container:
+            image: node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
         steps:
             - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
@@ -248,12 +347,20 @@ jobs:
                   # whose signature and main-ancestry were checked.
                   ref: ${{ needs.verify.outputs.sha }}
 
-            - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-              with:
-                  node-version: 24
+            # No setup-node here, unlike the other jobs: Node comes from the image, and
+            # installing a second one would defeat the point of pinning it by digest.
+            #
+            # Which is exactly why this check has to run here. verify compares
+            # .github/build-image to the container.image literal above, but both are just
+            # strings -- neither is evidence about the image they name, because a reference
+            # carrying both a tag and a digest resolves by digest and ignores the tag. Inside
+            # the container, process.version is the real answer, and it is also the only place
+            # .nvmrc (which every other job installs from) can be held against it.
+            - name: The image's Node must match .nvmrc and the image tag
+              run: node scripts/check-build-node.js
 
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - name: Install
               run: npm ci --ignore-scripts
@@ -290,7 +397,7 @@ jobs:
                   # output. That build used to happen via its prepublishOnly script during
                   # `npm publish`; the publish job no longer runs repo code, so it happens
                   # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
-                  COMMIT_HASH=$(git rev-parse --short HEAD) npm run build -w @dappfence/core
+                  COMMIT_HASH=$(git rev-parse --short=7 HEAD) npm run build -w @dappfence/core
 
                   # The build is itself repository code (packages/dappfence/vite.config.js and
                   # whatever it loads), so it runs after the check above and could edit another
@@ -316,6 +423,27 @@ jobs:
                   done <<< "$dirs"
                   ls -l "$staging"
 
+            # The gate. Everything before this proves the right source was built; this proves
+            # the build produced the bytes a maintainer signed for. It runs before the upload,
+            # so a mismatch means nothing is staged and publish never runs at all.
+            #
+            # A difference here is not necessarily an attack -- the likeliest cause by far is
+            # that the manifest was generated in a different environment than this job builds
+            # in (see .github/build-image). But it is never safe to publish past, which is why
+            # this aborts rather than warns, dry run included.
+            - name: Verify the build matches the hashes signed into the tag
+              env:
+                  MANIFEST_B64: ${{ needs.verify.outputs.manifest }}
+                  SHA: ${{ needs.verify.outputs.sha }}
+              run: |
+                  set -euo pipefail
+                  signed="${RUNNER_TEMP}/signed-manifest.txt"
+                  printf '%s' "$MANIFEST_B64" | base64 -d > "$signed"
+                  node scripts/release-manifest.js check \
+                    --manifest "$signed" \
+                    --tarballs "${RUNNER_TEMP}/release-staging" \
+                    --commit "$SHA"
+
             - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: release-tarballs
@@ -325,7 +453,7 @@ jobs:
 
     publish:
         needs: [verify, build]
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 15
         # Requires a "production-publish" GitHub Environment (Settings -> Environments) with
         # required reviewers configured -- the job pauses here for a human, different from
@@ -342,9 +470,13 @@ jobs:
             # Deliberately no actions/checkout. This job must not have repo code on disk at
             # all: anything it executed could mint the publish credential for itself. It
             # works only from the tarballs build produced and from `npm view`.
+            #
+            # Which is why the version comes from verify rather than node-version-file: with
+            # no checkout there is no .nvmrc to read, and setup-node fails outright on a
+            # missing file. verify read it from the verified commit, under signature.
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
               with:
-                  node-version: 24
+                  node-version: ${{ needs.verify.outputs.node }}
                   registry-url: 'https://registry.npmjs.org'
 
             # Pinned, not @latest: this job holds an OIDC token with publish authority, so the
@@ -352,7 +484,7 @@ jobs:
             # one's confirmed to support Trusted Publishing) -- not whatever happens to be
             # newest the moment a release runs. Bump intentionally via a reviewed PR.
             - name: Install a known-good npm CLI version
-              run: npm install -g npm@11.19.0
+              run: npm install -g "npm@${NPM_VERSION}"
 
             - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:

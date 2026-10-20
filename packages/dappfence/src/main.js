@@ -26,11 +26,15 @@ if (isClient) {
     // Any ES export would leak `window.DappFence`; freezing an inert literal keeps
     // info in the closure. In the SW branch to hide from page-realm interception.
     Object.preventExtensions({
+        // Only values derived from the source. A build timestamp and the builder's Node
+        // version used to live here too; they made the bundle depend on the machine that
+        // produced it, so the same commit could not be rebuilt byte-for-byte by anyone else.
+        // Little is lost for a published build: .nvmrc at that commit names the Node version,
+        // and provenance records the environment and the real build time, signed, where
+        // neither can be edited afterwards -- a stronger record than a string in here.
         __DAPPFENCE_BUILD_INFO__: {
             version: __VERSION__,
             commit: __COMMIT__,
-            buildDate: __COMMIT__ === 'not-for-release' ? __BUILD_DATE__ : null,
-            node: __NODE_VERSION__,
         },
     });
     initializeServiceWorker();
