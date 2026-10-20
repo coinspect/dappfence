@@ -197,6 +197,15 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
         try {
             const json = await response.json();
 
+            const signatureResult = verifyManifestSignature(
+                manifestSignatureType,
+                manifestSignatureIdentity,
+                json
+            );
+            if (signatureResult.status.isViolation) {
+                return manifestResult(signatureResult);
+            }
+
             let activeIdentity = await activeIdentityStore.getActiveIdentity();
             if (!activeIdentity) {
                 // The first time we accept the identity
@@ -218,15 +227,6 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
                     expectedHashes: [`${activeIdentity.signatureType}:${activeIdentity.identity}`],
                     actualHash: `${manifestSignatureType}:${manifestSignatureIdentity}`,
                 });
-            }
-
-            const signatureResult = verifyManifestSignature(
-                manifestSignatureType,
-                manifestSignatureIdentity,
-                json
-            );
-            if (signatureResult.status.isViolation) {
-                return manifestResult(signatureResult);
             }
             const { appVersion, manifest } = await trustedManifestStore.addLatest(
                 normalizeManifestData(signatureResult.payload),
