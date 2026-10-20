@@ -37,6 +37,45 @@ describe('createSecurityProcessor', () => {
         const { securityProcessor } = createProcessor();
         expect(typeof securityProcessor.processSecurityEvent).toBe('function');
     });
+
+    it('exposes reportOnFetch, reportOnInstall, reportOnClientRequest, reportOnPageLoad, reportOnSync', () => {
+        const { securityProcessor } = createProcessor();
+        expect(typeof securityProcessor.reportOnFetch).toBe('function');
+        expect(typeof securityProcessor.reportOnInstall).toBe('function');
+        expect(typeof securityProcessor.reportOnClientRequest).toBe('function');
+        expect(typeof securityProcessor.reportOnPageLoad).toBe('function');
+        expect(typeof securityProcessor.reportOnSync).toBe('function');
+    });
+
+    it('reportOnInstall resolves without throwing (stub body)', async () => {
+        const { securityProcessor } = createProcessor();
+        await expect(securityProcessor.reportOnInstall()).resolves.toBeUndefined();
+    });
+
+    it('reportOnSync resolves without throwing (stub body)', async () => {
+        const { securityProcessor } = createProcessor();
+        await expect(securityProcessor.reportOnSync()).resolves.toBeUndefined();
+    });
+
+    it('reportOnFetch extracts clientId from navigation events', async () => {
+        const { securityProcessor } = createProcessor();
+        const event = {
+            request: { mode: 'navigate' },
+            clientId: '',
+            resultingClientId: 'c-new',
+        };
+        await expect(securityProcessor.reportOnFetch(event)).resolves.toBeUndefined();
+    });
+
+    it('reportOnFetch extracts clientId from non-navigation events', async () => {
+        const { securityProcessor } = createProcessor();
+        const event = {
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        };
+        await expect(securityProcessor.reportOnFetch(event)).resolves.toBeUndefined();
+    });
 });
 
 describe('processSecurityEvent', () => {

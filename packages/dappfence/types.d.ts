@@ -35,3 +35,39 @@ interface Window {
 interface Navigator {
     __dappfencePatched?: boolean;
 }
+
+// --- Background Sync API (not in default lib.webworker.d.ts) ---
+
+interface ExtendableEvent extends Event {
+    waitUntil(p: Promise<any>): void;
+}
+
+interface SyncEvent extends ExtendableEvent {
+    readonly tag: string;
+    readonly lastChance: boolean;
+}
+
+interface FetchEvent extends ExtendableEvent {
+    readonly request: Request;
+    readonly clientId: string;
+    readonly resultingClientId: string;
+    respondWith(r: Response | Promise<Response>): void;
+}
+
+interface ExtendableMessageEvent extends ExtendableEvent {
+    readonly data: any;
+    readonly source: { id?: string } | null;
+}
+
+interface ServiceWorkerGlobalScopeEventMap {
+    sync: SyncEvent;
+}
+
+interface SyncManager {
+    register(tag: string): Promise<void>;
+    getTags(): Promise<string[]>;
+}
+
+interface ServiceWorkerRegistration {
+    readonly sync?: SyncManager;
+}

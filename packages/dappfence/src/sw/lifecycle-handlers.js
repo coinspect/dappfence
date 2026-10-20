@@ -74,6 +74,8 @@ export function createInstallHandler({
             logger.log('Install complete');
         } catch (error) {
             logger.error('❌ error during initialization:', error);
+        } finally {
+            await securityProcessor.reportOnInstall(event);
         }
     };
 }
@@ -104,6 +106,20 @@ export function createActivateHandler({ swContext, onSecurityViolation, appStore
             logger.log('Activating - end');
         } catch (error) {
             logger.error('❌ error during activate:', error);
+        }
+    };
+}
+
+/**
+ * @param {object} deps
+ * @param {object} deps.securityProcessor
+ * @returns {(event: SyncEvent) => Promise<void>}
+ */
+export function createSyncHandler({ securityProcessor }) {
+    return async (event) => {
+        logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
+        if (event.tag === 'dappfence-report-events') {
+            await securityProcessor.reportOnSync(event);
         }
     };
 }

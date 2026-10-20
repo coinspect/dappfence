@@ -10,14 +10,23 @@ const logger = createLogger();
 export function initializeServiceWorker() {
     logger.log('Initializing service worker protection');
 
-    const { hookService, fetchHandler, installHandler, activateHandler, messageHandler } =
-        createServices(self);
+    const {
+        hookService,
+        fetchHandler,
+        installHandler,
+        activateHandler,
+        messageHandler,
+        syncHandler,
+        securityProcessor,
+    } = createServices(self);
 
     hookService.installHooks();
 
     hookService.addEventListener('fetch', (event, callChildHandlers) => {
         logger.log('Security SW fetch');
-        event.respondWith(fetchHandler(event, callChildHandlers));
+        const fetchPromise = fetchHandler(event, callChildHandlers);
+        event.respondWith(fetchPromise);
+        event.waitUntil(fetchPromise.finally(() => securityProcessor.reportOnFetch(event)));
     });
 
     hookService.addEventListener('install', (event, callChildHandlers) => {
@@ -30,7 +39,12 @@ export function initializeServiceWorker() {
         event.waitUntil(activateHandler(event, callChildHandlers));
     });
 
-    hookService.addEventListener('message', messageHandler);
+    hookService.addEventListener('message', (event, callChildHandlers) => {
+        event.waitUntil(messageHandler(event, callChildHandlers));
+    });
+    hookService.addEventListener('sync', (event) => {
+        event.waitUntil(syncHandler(event));
+    });
     hookService.addDefaultEventListeners();
 
     logger.log('Service worker protection initialized');

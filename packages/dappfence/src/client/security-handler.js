@@ -41,3 +41,47 @@ export function notifyServiceWorkerReady() {
     });
     logger.log('Notified SW that client is ready for security messages');
 }
+
+/**
+ * Periodically ask the SW to drain its telemetry queue. Timers on the client
+ * page survive while the tab is open — gives us a drain path that doesn't
+ * depend on fetch traffic or Background Sync.
+ */
+export function startReportEventsPing(intervalMs = __DEV__ ? 15_000 : 300_000) {
+    setInterval(() => {
+        const controller = navigator.serviceWorker?.controller;
+        if (!controller) {
+            return;
+        }
+        controller.postMessage({ type: MSG.REPORT_EVENTS, timestamp: Date.now() });
+    }, intervalMs);
+    logger.log(`Report-events ping scheduled every ${intervalMs}ms`);
+}
+
+/**
+ * Notify the SW that this page finished loading. One-shot per page.
+ * Settle delay catches late async scripts in performance.getEntries().
+ * Payload is minimal in PR1 — scriptSrcs / inlineHashes land in PR2.
+ */
+export function notifyPageLoaded(settleMs = 1500) {
+    const fire = () => {
+        setTimeout(() => {
+            const controller = navigator.serviceWorker?.controller;
+            if (!controller) {
+                logger.warn('No SW controller available to notify of page loaded');
+                return;
+            }
+            controller.postMessage({
+                type: MSG.PAGE_LOADED,
+                pageUrl: location.href,
+                timestamp: Date.now(),
+            });
+            logger.log('Notified SW that page is loaded');
+        }, settleMs);
+    };
+    if (document.readyState === 'complete') {
+        fire();
+    } else {
+        window.addEventListener('load', fire, { once: true });
+    }
+}

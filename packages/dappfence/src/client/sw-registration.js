@@ -4,7 +4,12 @@
  */
 import { createLogger } from '../core/logger.js';
 import { monkeyPatch, secureMonkeyPatch, verifyPatchIntegrity } from '../core/monkey-patch.js';
-import { notifyServiceWorkerReady, setupSecurityMessageListener } from './security-handler.js';
+import {
+    notifyPageLoaded,
+    notifyServiceWorkerReady,
+    setupSecurityMessageListener,
+    startReportEventsPing,
+} from './security-handler.js';
 import { hasConfigManifest } from '../core/utils.js';
 import { MSG } from '../core/constants.js';
 import { createEmergencyPanel } from '../core/emergency-panel.js';
@@ -326,6 +331,9 @@ export async function initializeClient(config) {
 
     // Notify a service worker that the client is fully ready
     notifyServiceWorkerReady();
+
+    startReportEventsPing();
+    notifyPageLoaded();
 
     logger.log('%c[DappFence] Initialization complete and protection active.', 'color:green');
 }

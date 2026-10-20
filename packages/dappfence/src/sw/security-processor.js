@@ -153,7 +153,36 @@ export function createSecurityProcessor({ swContext, appStore }) {
         }
     }
 
+    async function reportOnFetch(/** @type {FetchEvent} */ event) {
+        const clientId =
+            event.request.mode === 'navigate' ? event.resultingClientId : event.clientId;
+        logger.log(`reportOnFetch clientId=${clientId}`);
+    }
+
+    async function reportOnInstall(/** @type {ExtendableEvent} */ _event) {
+        logger.log('reportOnInstall');
+    }
+
+    async function reportOnClientRequest(/** @type {ExtendableMessageEvent} */ event) {
+        logger.log(`reportOnClientRequest clientId=${event?.source?.id}`);
+    }
+
+    async function reportOnPageLoad(/** @type {ExtendableMessageEvent} */ event) {
+        logger.log(
+            `reportOnPageLoad clientId=${event?.source?.id} pageUrl=${event?.data?.pageUrl}`
+        );
+    }
+
+    async function reportOnSync(/** @type {SyncEvent} */ event) {
+        logger.log(`reportOnSync lastChance=${event?.lastChance}`);
+    }
+
     return {
         processSecurityEvent,
+        reportOnFetch,
+        reportOnInstall,
+        reportOnClientRequest,
+        reportOnPageLoad,
+        reportOnSync,
     };
 }

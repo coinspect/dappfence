@@ -4,7 +4,11 @@
  */
 
 import { createSecurityFetchHandler } from './fetch-handler.js';
-import { createActivateHandler, createInstallHandler } from './lifecycle-handlers.js';
+import {
+    createActivateHandler,
+    createInstallHandler,
+    createSyncHandler,
+} from './lifecycle-handlers.js';
 import { createHookService } from './appsw-hooks.js';
 import { verifyImportedScript } from './manifest/verification.js';
 import { createManifestService } from './manifest/manifest-service.js';
@@ -31,7 +35,6 @@ function parseConfig(swContext) {
 /**
  * Creates and wires all service worker dependencies.
  * @param {object} swGlobal - The service worker global scope (self)
- * @returns {{ hookService: object, fetchHandler: function, installHandler: function, activateHandler: function, messageHandler: function }}
  */
 export function createServices(swGlobal) {
     const swContext = createSwContext(swGlobal);
@@ -63,9 +66,13 @@ export function createServices(swGlobal) {
             onInstallDone: hookService.installEventDone,
         }),
         activateHandler: createActivateHandler(core),
+        syncHandler: createSyncHandler({ securityProcessor }),
         messageHandler: createMessageHandler({
             swContext,
             onClientReady: messageBroker.handleClientReady,
+            onReportEventsMessage: securityProcessor.reportOnClientRequest,
+            onPageLoadedMessage: securityProcessor.reportOnPageLoad,
         }),
+        securityProcessor,
     };
 }

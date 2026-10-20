@@ -23,6 +23,15 @@ describe('initializeServiceWorker', () => {
                     installHandler: vi.fn(),
                     activateHandler: vi.fn(),
                     messageHandler: vi.fn(),
+                    syncHandler: vi.fn(),
+                    securityProcessor: {
+                        processSecurityEvent: vi.fn().mockResolvedValue(false),
+                        reportOnFetch: vi.fn().mockResolvedValue(undefined),
+                        reportOnInstall: vi.fn().mockResolvedValue(undefined),
+                        reportOnClientRequest: vi.fn().mockResolvedValue(undefined),
+                        reportOnPageLoad: vi.fn().mockResolvedValue(undefined),
+                        reportOnSync: vi.fn().mockResolvedValue(undefined),
+                    },
                 };
                 return mockServices;
             }),
@@ -36,18 +45,19 @@ describe('initializeServiceWorker', () => {
         expect(mockServices.hookService.installHooks).toHaveBeenCalledTimes(1);
     });
 
-    it('registers 4 event listeners via hookService.addEventListener', () => {
+    it('registers 5 event listeners via hookService.addEventListener', () => {
         initializeServiceWorker();
-        expect(mockServices.hookService.addEventListener).toHaveBeenCalledTimes(4);
+        expect(mockServices.hookService.addEventListener).toHaveBeenCalledTimes(5);
     });
 
-    it('registers fetch, install, activate, message event types', () => {
+    it('registers fetch, install, activate, message, sync event types', () => {
         initializeServiceWorker();
         const types = mockServices.hookService.addEventListener.mock.calls.map((c) => c[0]);
         expect(types).toContain('fetch');
         expect(types).toContain('install');
         expect(types).toContain('activate');
         expect(types).toContain('message');
+        expect(types).toContain('sync');
     });
 
     it('calls hookService.addDefaultEventListeners once', () => {
@@ -60,17 +70,48 @@ describe('initializeServiceWorker', () => {
         expect(createServices).toHaveBeenCalledTimes(1);
     });
 
-    it('fetch handler callback calls event.respondWith with fetchHandler result', async () => {
+    it('sync listener wraps syncHandler in event.waitUntil', () => {
+        initializeServiceWorker();
+        const syncCall = mockServices.hookService.addEventListener.mock.calls.find(
+            (c) => c[0] === 'sync'
+        );
+        const syncCallback = syncCall[1];
+        const waitUntil = vi.fn();
+        syncCallback({ waitUntil });
+        expect(waitUntil).toHaveBeenCalled();
+        expect(mockServices.syncHandler).toHaveBeenCalled();
+    });
+
+    it('message listener wraps messageHandler in event.waitUntil', () => {
+        initializeServiceWorker();
+        const messageCall = mockServices.hookService.addEventListener.mock.calls.find(
+            (c) => c[0] === 'message'
+        );
+        const messageCallback = messageCall[1];
+        const waitUntil = vi.fn();
+        const callChildHandlers = vi.fn();
+        messageCallback({ waitUntil }, callChildHandlers);
+        expect(waitUntil).toHaveBeenCalled();
+        expect(mockServices.messageHandler).toHaveBeenCalled();
+    });
+
+    it('fetch listener calls respondWith and schedules reportOnFetch after fetch settles', async () => {
         initializeServiceWorker();
         const fetchCall = mockServices.hookService.addEventListener.mock.calls.find(
             (c) => c[0] === 'fetch'
         );
         const fetchCallback = fetchCall[1];
         const respondWith = vi.fn();
-        const callChildHandlers = vi.fn();
+        let reportWaiter;
+        const waitUntil = vi.fn((p) => {
+            reportWaiter = p;
+        });
         mockServices.fetchHandler.mockResolvedValue(new Response('ok'));
-        await fetchCallback({ respondWith }, callChildHandlers);
+        await fetchCallback({ respondWith, waitUntil }, vi.fn());
+        await reportWaiter;
         expect(respondWith).toHaveBeenCalled();
+        expect(waitUntil).toHaveBeenCalled();
+        expect(mockServices.securityProcessor.reportOnFetch).toHaveBeenCalled();
     });
 
     it('install handler callback calls event.waitUntil with installHandler result', async () => {
@@ -80,9 +121,8 @@ describe('initializeServiceWorker', () => {
         );
         const installCallback = installCall[1];
         const waitUntil = vi.fn();
-        const callChildHandlers = vi.fn();
         mockServices.installHandler.mockResolvedValue(undefined);
-        await installCallback({ waitUntil }, callChildHandlers);
+        await installCallback({ waitUntil }, vi.fn());
         expect(waitUntil).toHaveBeenCalled();
     });
 
@@ -93,9 +133,8 @@ describe('initializeServiceWorker', () => {
         );
         const activateCallback = activateCall[1];
         const waitUntil = vi.fn();
-        const callChildHandlers = vi.fn();
         mockServices.activateHandler.mockResolvedValue(undefined);
-        await activateCallback({ waitUntil }, callChildHandlers);
+        await activateCallback({ waitUntil }, vi.fn());
         expect(waitUntil).toHaveBeenCalled();
     });
 });

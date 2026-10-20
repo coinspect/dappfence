@@ -132,7 +132,7 @@ describe('createMessageHandler', () => {
         const handler = createMessageHandler({ swContext, onClientReady });
         const callChildHandlers = vi.fn();
 
-        await handler({ data: { type: 'CLAIM_CONTROL' } }, callChildHandlers);
+        await handler({ data: { type: 'DAPPFENCE_CLAIM_CONTROL' } }, callChildHandlers);
 
         expect(swContext.claimClients).toHaveBeenCalled();
         expect(onClientReady).not.toHaveBeenCalled();
@@ -147,6 +147,39 @@ describe('createMessageHandler', () => {
 
         await handler({ data: { type: 'UNKNOWN' } }, callChildHandlers);
 
+        expect(onClientReady).not.toHaveBeenCalled();
+        expect(callChildHandlers).toHaveBeenCalled();
+    });
+
+    it('calls onReportEventsMessage on DAPPFENCE_REPORT_EVENTS with the event', async () => {
+        const onClientReady = vi.fn();
+        const onReportEventsMessage = vi.fn();
+        const swContext = createMockSwContext();
+        const handler = createMessageHandler({ swContext, onClientReady, onReportEventsMessage });
+        const callChildHandlers = vi.fn();
+        const event = { data: { type: 'DAPPFENCE_REPORT_EVENTS' }, source: { id: 'c2' } };
+
+        await handler(event, callChildHandlers);
+
+        expect(onReportEventsMessage).toHaveBeenCalledWith(event);
+        expect(onClientReady).not.toHaveBeenCalled();
+        expect(callChildHandlers).toHaveBeenCalled();
+    });
+
+    it('calls onPageLoadedMessage on DAPPFENCE_PAGE_LOADED with the event', async () => {
+        const onClientReady = vi.fn();
+        const onPageLoadedMessage = vi.fn();
+        const swContext = createMockSwContext();
+        const handler = createMessageHandler({ swContext, onClientReady, onPageLoadedMessage });
+        const callChildHandlers = vi.fn();
+        const event = {
+            data: { type: 'DAPPFENCE_PAGE_LOADED', pageUrl: 'https://example.com/page' },
+            source: { id: 'c3' },
+        };
+
+        await handler(event, callChildHandlers);
+
+        expect(onPageLoadedMessage).toHaveBeenCalledWith(event);
         expect(onClientReady).not.toHaveBeenCalled();
         expect(callChildHandlers).toHaveBeenCalled();
     });
