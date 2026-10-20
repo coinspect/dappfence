@@ -1,18 +1,20 @@
 /**
  * File Verifier — hosts both basic (hash-compare) and security (rule engine
  * + action pipeline + CSP) verifier factories, sharing the same orchestration:
- * pinned-skip + manifest escalation.
+ * manifest escalation across pinned, cached, and freshly-fetched manifests.
  *
- * Manifest escalation for unpinned clients (MISMATCH / NOT_FOUND only):
- *   1. latestManifest (caller-supplied, IndexedDB cache)
- *   2. getManifestHistory — stored historic manifests, newest-first
- *   3. fetchAndStoreManifest — force network fetch (terminal)
+ * Manifest escalation (FILE_UNTRUSTED / ERROR):
+ *   1. pinned manifest (sub-resources only; navigations skip to step 2)
+ *   2. latestManifest (caller-supplied, IndexedDB cache)
+ *   3. getManifestHistory — stored historic manifests, newest-first
+ *   4. fetchAndStoreManifest — force network fetch (terminal)
  *
- * Any other result (MATCH, SKIPPED, REWRITE, DENIED_BY_RULE, ERROR) stops
- * escalation immediately — see manifestDecided().
+ * Any other result (MATCH, SKIPPED, REWRITE, DENIED_BY_RULE, CSP_PROTECTED)
+ * stops escalation immediately — see manifestDecidedAbout().
  *
- * Pinned clients skip escalation entirely: their manifest is the truth for the
- * page load, so any failure is a genuine violation.
+ * Pinned clients escalate on sub-resource failure so a legitimate deploy that
+ * changes a sub-resource (and whose fresh signed manifest covers it) is not
+ * misreported as a violation. The pin updates to the manifest that decides.
  */
 
 import {
@@ -35,12 +37,7 @@ const logger = createLogger();
 // "this manifest is broken" — escalate to a newer or historic version.
 // Any other outcome is a real policy decision that must not be bypassed.
 // null means tryManifest skipped the manifest entirely; keep escalating.
-const ESCALATE_STATUSES = new Set([
-    VERIFICATION_STATUS.MISMATCH,
-    VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST,
-    VERIFICATION_STATUS.ERROR,
-    VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE,
-]);
+const ESCALATE_STATUSES = new Set([VERIFICATION_STATUS.FILE_UNTRUSTED, VERIFICATION_STATUS.ERROR]);
 const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.has(result.status);
 
 const ACTION_HANDLERS = {
@@ -79,7 +76,8 @@ const ACTION_HANDLERS = {
             return { status: VERIFICATION_STATUS.MATCH, expectedHashes, actualHash };
         }
         return {
-            status: VERIFICATION_STATUS.MISMATCH,
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'HASH_MISMATCH',
             keepTryingActions: true,
             expectedHashes,
             actualHash,
@@ -181,20 +179,11 @@ export const createVerifier = (
         return null;
     };
 
-    // For unpinned clients, escalate from the latest manifest → historic manifests → network fetch
-    // on MISMATCH / NOT_FOUND / ERROR only. All other results (MATCH, DENIED_BY_RULE, etc.) are final.
+    // Escalate pinned (sub-resources) → latest → historic → network-fetch on
+    // FILE_UNTRUSTED / ERROR. All other results (MATCH, DENIED_BY_RULE, etc.)
+    // stop escalation immediately.
     const verifyWithManifestSearch = async (req, response, clientId, latestManifest) => {
         const isNavigation = req.mode === 'navigate';
-        if (clientId && !isNavigation) {
-            const pinned = clientIdXManifest.get(clientId);
-            if (pinned) {
-                logger.log(`[verifyResponse] clientId=${clientId} (pinned)`);
-                const result = await verifyAgainstManifest(req, response, pinned, locationHref);
-                onManifestResult(pinned, result);
-                return result;
-            }
-        }
-
         const triedVersions = new Set();
         const tryManifest = async (manifestInfo) => {
             if (
@@ -209,6 +198,18 @@ export const createVerifier = (
             onManifestResult(manifestInfo, result);
             return result;
         };
+
+        let pinnedResult = null;
+        if (clientId && !isNavigation) {
+            const pinned = clientIdXManifest.get(clientId);
+            if (pinned) {
+                logger.log(`[verifyResponse] clientId=${clientId} (pinned)`);
+                pinnedResult = await tryManifest(pinned);
+                if (manifestDecidedAbout(pinnedResult)) {
+                    return pinnedResult;
+                }
+            }
+        }
 
         const latestResult = await tryManifest(latestManifest);
         if (manifestDecidedAbout(latestResult)) {
@@ -229,13 +230,23 @@ export const createVerifier = (
         }
 
         const fetched = await fetchAndStoreManifest();
+        if (fetched.status.isViolation) {
+            return fetched;
+        }
         const fetchedResult = await tryManifest(fetched);
         if (manifestDecidedAbout(fetchedResult)) {
             pinClient(clientId, fetched);
             return fetchedResult;
         }
         // Nothing decided — return best available non-null result.
-        return [fetchedResult, latestResult, ...historicResults].find((r) => r !== null) ?? fetched;
+        return (
+            [pinnedResult, latestResult, ...historicResults, fetchedResult].find(
+                (r) => r !== null
+            ) ?? {
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NO_MANIFEST_AVAILABLE',
+            }
+        );
     };
 
     const verifyResponse = async (req, response, clientId, latestManifest) => {
@@ -251,7 +262,10 @@ export const createVerifier = (
 
         if (!response) {
             logger.log(`⏭️  Error: null response`);
-            return result({ status: VERIFICATION_STATUS.ERROR });
+            return result({
+                status: VERIFICATION_STATUS.ERROR,
+                reason: 'NULL_RESPONSE',
+            });
         }
 
         if (fileKey === manifestFileKey) {
@@ -383,20 +397,50 @@ export const basicVerifyAgainstManifest = async (req, response, manifestInfo, lo
         `Using manifest ${appVersion} for ${fileKey} hash ${actualHash} expected: ${expectedHashes.join(', ')}`
     );
     if (expectedHashes.length === 0) {
-        return { status: VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST, fileKey, actualHash };
+        return {
+            status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+            reason: 'NOT_IN_MANIFEST',
+            fileKey,
+            actualHash,
+        };
     }
     if (expectedHashes.includes(actualHash)) {
         return { status: VERIFICATION_STATUS.MATCH, fileKey, expectedHashes, actualHash };
     }
-    return { status: VERIFICATION_STATUS.MISMATCH, fileKey, expectedHashes, actualHash };
+    return {
+        status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+        reason: 'HASH_MISMATCH',
+        fileKey,
+        expectedHashes,
+        actualHash,
+    };
 };
 
+/**
+ * @typedef {{
+ *   status: import('../../core/constants.js').VerificationStatus,
+ *   fileKey: string,
+ *   expectedHashes?: string[],
+ *   actualHash?: string,
+ *   keepTryingActions?: boolean,
+ *   nonce?: string,
+ *   headers?: object,
+ * }} VerifyResult
+ */
+
+/**
+ * @param {{ url: string, destination: string, method?: string, mode?: string }} req
+ * @param {object} response
+ * @param {{ manifest: { contentRules?: object[], csp?: { enabled?: boolean } }, appVersion?: string }} manifestInfo
+ * @param {string} locationHref
+ * @returns {Promise<VerifyResult>}
+ */
 export const securityVerifyAgainstManifest = async (req, response, manifestInfo, locationHref) => {
     const { manifest } = manifestInfo;
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
     const actions = collectContentRuleActions(fileKey, req.destination, manifest?.contentRules);
     const actionsToWalk = actions.length ? actions : [{ type: 'verify' }];
-    let lastResult = { status: VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST };
+    let lastResult = { status: VERIFICATION_STATUS.FILE_UNTRUSTED, reason: 'NOT_IN_MANIFEST' };
     for (const action of actionsToWalk) {
         logger.log(
             `[securityVerifyAgainstManifest] fileKey=${fileKey} action.type=${action.type}${action.transform ? ` transform=${action.transform}` : ''}`

@@ -18,14 +18,14 @@ describe('createSecurityEventsStore', () => {
 
     describe('logSecurityEvent', () => {
         it('stores an event', async () => {
-            await store.logSecurityEvent({ status: 'MISMATCH', fileKey: '/app.js' });
+            await store.logSecurityEvent({ status: 'FILE_UNTRUSTED', fileKey: '/app.js' });
             const events = await store.getSecurityEvents();
             expect(events).toHaveLength(1);
-            expect(events[0].status).toBe('MISMATCH');
+            expect(events[0].status).toBe('FILE_UNTRUSTED');
         });
 
         it('assigns an id and timestamp to each event', async () => {
-            await store.logSecurityEvent({ status: 'MISMATCH' });
+            await store.logSecurityEvent({ status: 'FILE_UNTRUSTED' });
             const events = await store.getSecurityEvents();
             expect(events[0].id).toMatch(/^event_/);
             expect(events[0].timestamp).toBeDefined();
@@ -33,7 +33,7 @@ describe('createSecurityEventsStore', () => {
 
         it('preserves provided timestamp', async () => {
             const ts = '2024-01-01T00:00:00.000Z';
-            await store.logSecurityEvent({ status: 'MISMATCH', timestamp: ts });
+            await store.logSecurityEvent({ status: 'FILE_UNTRUSTED', timestamp: ts });
             const events = await store.getSecurityEvents();
             expect(events[0].timestamp).toBe(ts);
         });

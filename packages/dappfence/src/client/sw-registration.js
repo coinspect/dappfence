@@ -295,8 +295,8 @@ export async function initializeClient(config) {
 
     const request = indexedDB.open('AppSecurityWatchdog', 1);
     request.onerror = () => console.error(request.error);
-    request.onsuccess = (event) => {
-        const db = event.target.result;
+    request.onsuccess = () => {
+        const db = request.result;
         db.onclose = () => {
             logger.warn('Watchdog database closed, EMERGENCY!!!');
             // Re-registering may fail if the SW scope is already taken, but we still

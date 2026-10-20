@@ -217,7 +217,7 @@ describe('createApiHandler', () => {
                 {
                     id: 'block_abc',
                     timestamp: '2025-01-01T00:00:00.000Z',
-                    status: 'MISMATCH',
+                    status: 'FILE_UNTRUSTED',
                     fileKey: '/app.js',
                     expectedHashes: ['aaa'],
                     actualHash: 'bbb',
@@ -274,7 +274,7 @@ describe('createApiHandler', () => {
                 {
                     id: 'block_evil',
                     timestamp: '2025-01-01T00:00:00.000Z',
-                    status: 'MISMATCH',
+                    status: 'FILE_UNTRUSTED',
                     fileKey: nastyFileKey,
                 },
             ]);
@@ -306,7 +306,7 @@ describe('createApiHandler', () => {
                 {
                     id: 'block_quote',
                     timestamp: '2025-01-01T00:00:00.000Z',
-                    status: 'MISMATCH',
+                    status: 'FILE_UNTRUSTED',
                     fileKey: "/a'b;alert(1)//",
                 },
             ]);

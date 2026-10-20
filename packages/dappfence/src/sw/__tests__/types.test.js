@@ -6,11 +6,11 @@ describe('VERIFICATION_STATUS', () => {
         expect(VERIFICATION_STATUS.MATCH.description).toBe('MATCH');
         expect(VERIFICATION_STATUS.MATCH.isViolation).toBe(false);
         expect(VERIFICATION_STATUS.SKIPPED.isViolation).toBe(false);
-        expect(VERIFICATION_STATUS.MISMATCH.isViolation).toBe(true);
-        expect(VERIFICATION_STATUS.NOT_FOUND_IN_MANIFEST.isViolation).toBe(true);
+        expect(VERIFICATION_STATUS.FILE_UNTRUSTED.description).toBe('FILE_UNTRUSTED');
+        expect(VERIFICATION_STATUS.FILE_UNTRUSTED.isViolation).toBe(true);
         expect(VERIFICATION_STATUS.ERROR.description).toBe('ERROR');
         expect(VERIFICATION_STATUS.ERROR.isViolation).toBe(true);
-        expect(VERIFICATION_STATUS.UNSUPPORTED_SIGNATURE.isViolation).toBe(true);
-        expect(VERIFICATION_STATUS.CONFIG_ERROR.isViolation).toBe(true);
+        expect(VERIFICATION_STATUS.MANIFEST_UNTRUSTED.description).toBe('MANIFEST_UNTRUSTED');
+        expect(VERIFICATION_STATUS.MANIFEST_UNTRUSTED.isViolation).toBe(true);
     });
 });

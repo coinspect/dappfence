@@ -12,42 +12,58 @@
  */
 import { devAssert } from '../../core/utils.js';
 import { createLogger } from '../../core/logger.js';
-import { ASSET_TYPE } from '../../core/constants.js';
+// VERIFICATION_STATUS is used in JSDoc typedef below (Record<keyof typeof ...>).
+// eslint-disable-next-line no-unused-vars
+import { ASSET_TYPE, VERIFICATION_STATUS } from '../../core/constants.js';
+
+/** @typedef {import('../../core/constants.js').VerificationStatus} VerificationStatus */
+/** @typedef {import('./security-stores.js').SecurityBlockData} SecurityBlockData */
+
+/** Caller-facing shape of a violation — status is the verdict object (not its description). */
+/** @typedef {Omit<SecurityBlockData, 'status'> & { status: VerificationStatus, url: string }} ViolationDetails */
 import { createManifestStore } from './manifest-store.js';
 import {
     createActiveBlocksStore,
-    createSecurityEventsStore,
     createApiTokenStore,
+    createSecurityEventsStore,
 } from './security-stores.js';
 
 const logger = createLogger();
 
+/**
+ * Formatter signature for a status log entry.
+ * @typedef {(d: { fileKey?: string, url?: string, reason?: string, expectedHashes?: string[], actualHash?: string }) => string[]} StatusLogFormatter
+ */
+
+/** @type {Record<keyof typeof VERIFICATION_STATUS, StatusLogFormatter>} */
 const STATUS_LOG = {
     MATCH: (d) => [`SW file verification passed: ${d.fileKey}`],
     SKIPPED: (d) => [`SW file verification skipped: ${d.fileKey}`],
     REWRITE: (d) => [`SW file response rewritten: ${d.fileKey}`],
-    MISMATCH: (d) => [
-        `SECURITY ALERT: Service Worker file integrity violation!`,
-        `File: ${d.url}\nExpected: ${d.expectedHashes?.join(', ')}`,
-        `Actual: ${d.actualHash}`,
-    ],
-    NOT_FOUND_IN_MANIFEST: (d) => [
-        `SECURITY ALERT: Unknown file not in trusted manifest!`,
-        `File: ${d.fileKey}`,
-        `Hash: ${d.actualHash}`,
+    CSP_PROTECTED: (d) => [`SW file CSP-protected (verify skipped): ${d.fileKey}`],
+    FILE_UNTRUSTED: (d) => [
+        `SECURITY ALERT: File is not trusted (${d.reason ?? 'UNSPECIFIED'})!`,
+        `File: ${d.fileKey ?? d.url}`,
+        ...(d.expectedHashes ? [`Expected: ${d.expectedHashes.join(', ')}`] : []),
+        ...(d.actualHash ? [`Actual: ${d.actualHash}`] : []),
     ],
     DENIED_BY_RULE: (d) => [`SECURITY ALERT: File denied by security rule!`, `File: ${d.fileKey}`],
-    UNSUPPORTED_SIGNATURE: (d) => [
-        `SECURITY ALERT: Manifest signature algorithm not supported!`,
-        `File: ${d.fileKey}`,
-    ],
-    ERROR: (d) => [`SECURITY ALERT: Verification error!`, `File: ${d.fileKey ?? 'N/A'}`],
-    CONFIG_ERROR: (d) => [
-        `SECURITY ALERT: Security configuration error!`,
+    ERROR: (d) => [
+        `SECURITY ALERT: Verification error (${d.reason ?? 'UNSPECIFIED'})!`,
         `File: ${d.fileKey ?? 'N/A'}`,
+    ],
+    MANIFEST_UNTRUSTED: (d) => [
+        `SECURITY ALERT: Manifest cannot be trusted (${d.reason ?? 'UNSPECIFIED'})!`,
+        `File: ${d.fileKey ?? 'N/A'}`,
+        ...(d.expectedHashes ? [`Expected: ${d.expectedHashes.join(', ')}`] : []),
+        ...(d.actualHash ? [`Actual: ${d.actualHash}`] : []),
     ],
 };
 
+/**
+ * @param {object} db - Low-level Store backend from createDatabase()
+ * @param {{ userAgent?: string, origin?: string }} [env] - Environment info for log enrichment
+ */
 export function createAppStore(db, { userAgent, origin } = {}) {
     const activeBlocksStore = createActiveBlocksStore(db);
     const securityEventsStore = createSecurityEventsStore(db);
@@ -57,7 +73,7 @@ export function createAppStore(db, { userAgent, origin } = {}) {
      * Returns whether the caller must block the current request. Recurrences of
      * already-known blocks (including previously cleared ones) are still logged
      * and counted, but return false. Storage failures fail-safe and return true.
-     * @param {object} details - Violation details (status, fileKey, url, expectedHashes, actualHash, assetType)
+     * @param {ViolationDetails} details
      * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
      */
     async function recordSecurityViolation(details) {
@@ -73,6 +89,7 @@ export function createAppStore(db, { userAgent, origin } = {}) {
             const statusName = details.status.description;
             const persistedDetails = {
                 status: statusName,
+                reason: details.reason,
                 fileKey: details.fileKey,
                 url: details.url,
                 assetType: details.assetType,
@@ -94,6 +111,7 @@ export function createAppStore(db, { userAgent, origin } = {}) {
                 await securityEventsStore.logSecurityEvent({
                     type: 'SECURITY_VIOLATION',
                     status: statusName,
+                    reason: details.reason,
                     assetType: details.assetType,
                     timestamp: new Date().toISOString(),
                     url: details.url,

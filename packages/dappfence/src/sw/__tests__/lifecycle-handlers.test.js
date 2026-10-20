@@ -70,7 +70,11 @@ describe('createInstallHandler', () => {
         const manifestUrl = 'https://example.com/manifest.json';
         const deps = makeInstallDeps({
             manifestUrl,
-            fetchAndStoreManifestResult: { status: VERIFICATION_STATUS.MISMATCH, url: manifestUrl },
+            fetchAndStoreManifestResult: {
+                status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
+                reason: 'SIGNATURE_MISMATCH',
+                url: manifestUrl,
+            },
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
