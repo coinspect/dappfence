@@ -31,6 +31,8 @@ export const MSG = {
     PAGE_LOADED: 'DAPPFENCE_PAGE_LOADED',
 };
 
+export const SYNC_TAG_REPORT_EVENTS = 'dappfence-report-events';
+
 export const MODE = {
     REPORTING: 'reporting', // log to console and indexeddb
     PROTECTED: 'protected', // stop requests that are invalid

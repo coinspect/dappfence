@@ -1,5 +1,6 @@
-import { VERIFICATION_STATUS } from '../core/constants.js';
+import { SYNC_TAG_REPORT_EVENTS, VERIFICATION_STATUS } from '../core/constants.js';
 import { createLogger } from '../core/logger.js';
+import { safely } from '../core/utils.js';
 
 const logger = createLogger();
 
@@ -84,9 +85,11 @@ const STATUS_LOG = {
  * @param {object} deps
  * @param {object} deps.swContext
  * @param {object} deps.appStore
+ * @param {object} deps.manifestService
  */
-export function createSecurityProcessor({ swContext, appStore }) {
-    const { securityEventsStore, activeBlocksStore, verificationResultsStore } = appStore;
+export function createSecurityProcessor({ swContext, appStore, manifestService }) {
+    const { securityEventsStore, activeBlocksStore, verificationResultsStore, sessionIdStore } =
+        appStore;
     const userAgent = swContext.getUserAgent();
     const origin = swContext.getLocationOrigin();
 
@@ -148,7 +151,7 @@ export function createSecurityProcessor({ swContext, appStore }) {
         }
     }
 
-    async function flushPending() {
+    async function flushPendingEvents() {
         // Atomic snapshot, splice is synchronous.
         for (const details of pending.events.splice(0)) {
             if (details.status === VERIFICATION_STATUS.SKIPPED) {
@@ -173,26 +176,81 @@ export function createSecurityProcessor({ swContext, appStore }) {
         }
     }
 
-    /**
-     * Drains and persists queued security events asynchronously without blocking the fetch response.
-     * Executed inside `event.waitUntil` after the fetch response promise settles.
-     *
-     * @param {FetchEvent} event
-     */
+    async function sendPendingReports() {
+        const { telemetryUrl, appVersion } = await manifestService.resolveManifest();
+        if (!telemetryUrl) {
+            logger.log('sendPendingReports: no telemetryUrl resolved, skipping');
+            return true;
+        }
+        const pendingBlocks = await activeBlocksStore.getPendingReportBlocks();
+        if (pendingBlocks.length === 0) {
+            logger.log('sendPendingReports: no pending blocks, skipping');
+            return true;
+        }
+        const sessionId = await sessionIdStore.getSessionId();
+        const envelope = {
+            sessionId,
+            appVersion,
+            origin,
+            userAgent,
+            sentAt: new Date().toISOString(),
+            events: pendingBlocks,
+        };
+        const ok = await sendBatch(telemetryUrl, envelope);
+        if (!ok) {
+            logger.error('sendPendingReports: POST failed, scheduling sync retry');
+            try {
+                await swContext.registerSync(SYNC_TAG_REPORT_EVENTS);
+            } catch (regErr) {
+                logger.warn('sync.register failed; next fetch/ping drives retry:', regErr);
+            }
+            return false;
+        }
+        await activeBlocksStore.markReported(
+            pendingBlocks.map((b) => b.id),
+            envelope.sentAt
+        );
+        logger.log(`sendPendingReports: posted ${pendingBlocks.length} blocks`);
+        return true;
+    }
+
+    async function sendBatch(endpoint, body) {
+        try {
+            const response = await swContext.fetch(endpoint, {
+                method: 'POST',
+                keepalive: true,
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!response?.ok) {
+                logger.error(`Telemetry POST failed with status=${response?.status ?? 0}`);
+                return false;
+            }
+            return true;
+        } catch (error) {
+            logger.error('Telemetry POST threw:', error);
+            return false;
+        }
+    }
+
     async function reportAfterFetch(event) {
         const clientId =
             event.request.mode === 'navigate' ? event.resultingClientId : event.clientId;
         logger.log(`reportAfterFetch clientId=${clientId}`);
-        await flushPending();
+        await safely(flushPendingEvents, (e) => logger.error('flushPendingEvents failed:', e));
+        await safely(sendPendingReports, (e) => logger.error('sendPendingReports failed:', e));
     }
 
     async function reportAfterInstall(/** @type {ExtendableEvent} */ _event) {
         logger.log('reportAfterInstall');
-        await flushPending();
+        await safely(flushPendingEvents, (e) => logger.error('flushPendingEvents failed:', e));
+        await safely(sendPendingReports, (e) => logger.error('sendPendingReports failed:', e));
     }
 
     async function reportOnClientRequest(/** @type {ExtendableMessageEvent} */ event) {
         logger.log(`reportOnClientRequest clientId=${event?.source?.id}`);
+        await safely(flushPendingEvents, (e) => logger.error('flushPendingEvents failed:', e));
+        await safely(sendPendingReports, (e) => logger.error('sendPendingReports failed:', e));
     }
 
     async function reportOnPageLoad(/** @type {ExtendableMessageEvent} */ event) {
@@ -203,6 +261,13 @@ export function createSecurityProcessor({ swContext, appStore }) {
 
     async function reportOnSync(/** @type {SyncEvent} */ event) {
         logger.log(`reportOnSync lastChance=${event?.lastChance}`);
+        await safely(flushPendingEvents, (e) => logger.error('flushPendingEvents failed:', e));
+        const sent = await sendPendingReports();
+        if (!sent) {
+            throw new Error(
+                'sync drain POST failed rejecting waitUntil so Chromium schedules backoff + lastChance'
+            );
+        }
     }
 
     return {

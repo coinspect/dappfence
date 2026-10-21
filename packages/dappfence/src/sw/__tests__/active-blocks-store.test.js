@@ -400,4 +400,100 @@ describe('createActiveBlocksStore', () => {
             expect(result).toEqual([]);
         });
     });
+
+    describe('reporting lifecycle (reportedAt + getPendingReportBlocks + markReported)', () => {
+        it('new blocks start with reportedAt=null', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            const [block] = await store.getActiveBlocks();
+            expect(block.reportedAt).toBeNull();
+        });
+
+        it('getPendingReportBlocks returns every unreported block', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityBlock(BLOCK_DATA_2);
+            const pending = await store.getPendingReportBlocks();
+            expect(pending.map((b) => b.fileKey).sort()).toEqual(['/app.js', '/style.css']);
+        });
+
+        it('getPendingReportBlocks excludes already-reported blocks', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityBlock(BLOCK_DATA_2);
+            const [firstId] = (await store.getPendingReportBlocks()).map((b) => b.id);
+            await store.markReported([firstId], '2026-10-21T00:00:00.000Z');
+            const pending = await store.getPendingReportBlocks();
+            expect(pending.map((b) => b.id)).not.toContain(firstId);
+            expect(pending).toHaveLength(1);
+        });
+
+        it('markReported stamps reportedAt on every id in one tx (batch)', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityBlock(BLOCK_DATA_2);
+            const ids = (await store.getPendingReportBlocks()).map((b) => b.id);
+            await store.markReported(ids, '2026-10-21T00:00:00.000Z');
+            const all = await store.getAllBlocks();
+            expect(all.every((b) => b.reportedAt === '2026-10-21T00:00:00.000Z')).toBe(true);
+            expect(await store.getPendingReportBlocks()).toEqual([]);
+        });
+
+        it('markReported silently ignores unknown ids', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            const [{ id }] = await store.getActiveBlocks();
+            await expect(
+                store.markReported([id, 'block_bogus'], '2026-10-21T00:00:00.000Z')
+            ).resolves.toBeUndefined();
+            const block = await store.getSecurityBlock(id);
+            expect(block.reportedAt).toBe('2026-10-21T00:00:00.000Z');
+        });
+
+        it('markReported with empty id list is a no-op', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.markReported([], '2026-10-21T00:00:00.000Z');
+            const [block] = await store.getActiveBlocks();
+            expect(block.reportedAt).toBeNull();
+        });
+
+        it('recurrences preserve existing reportedAt (dedup contract: one report per block id)', async () => {
+            await store.recordSecurityBlock(BLOCK_DATA);
+            const [{ id }] = await store.getActiveBlocks();
+            await store.markReported([id], '2026-10-21T00:00:00.000Z');
+            await store.recordSecurityBlock(BLOCK_DATA);
+            const block = await store.getSecurityBlock(id);
+            expect(block.reportedAt).toBe('2026-10-21T00:00:00.000Z');
+            expect(block.occurrenceCount).toBe(2);
+        });
+
+        it('getPendingReportBlocks returns [] when no blocks exist', async () => {
+            expect(await store.getPendingReportBlocks()).toEqual([]);
+        });
+
+        it('getPendingReportBlocks returns [] when database.get rejects', async () => {
+            const brokenDb = {
+                get: async () => {
+                    throw new Error('get failed');
+                },
+                set: async () => {},
+                withTx: async (fn) =>
+                    fn({
+                        get: async () => undefined,
+                        set: async () => {},
+                    }),
+            };
+            const brokenStore = createActiveBlocksStore(brokenDb);
+            expect(await brokenStore.getPendingReportBlocks()).toEqual([]);
+        });
+
+        it('markReported does not throw when the tx rejects', async () => {
+            const brokenDb = {
+                get: async () => ({}),
+                set: async () => {},
+                withTx: async () => {
+                    throw new Error('tx failed');
+                },
+            };
+            const brokenStore = createActiveBlocksStore(brokenDb);
+            await expect(
+                brokenStore.markReported(['block_id'], '2026-10-21T00:00:00.000Z')
+            ).resolves.toBeUndefined();
+        });
+    });
 });

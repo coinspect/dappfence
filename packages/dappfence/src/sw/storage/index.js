@@ -13,6 +13,7 @@ import {
     createActiveBlocksStore,
     createApiTokenStore,
     createSecurityEventsStore,
+    createSessionIdStore,
 } from './security-stores.js';
 
 /**
@@ -24,5 +25,6 @@ export function createAppStore(db) {
         activeBlocksStore: createActiveBlocksStore(db),
         securityEventsStore: createSecurityEventsStore(db),
         apiTokenStore: createApiTokenStore(db),
+        sessionIdStore: createSessionIdStore(db),
     };
 }

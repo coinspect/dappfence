@@ -82,6 +82,11 @@ const simpleAppPages = {
         template: 'simple-app.html',
         manifest: 'csp-report-only-manifest.json',
     },
+    'telemetry.html': {
+        template: 'simple-app.html',
+        manifest: 'telemetry-manifest.json',
+        templateFlags: { TELEMETRY_ENDPOINT: '/capture/telemetry-from-config' },
+    },
 };
 
 const simpleAppBase = {
@@ -107,6 +112,10 @@ const simpleAppBase = {
                 reportOnly: true,
                 reportSample: true,
             },
+        },
+        'telemetry-manifest.json': {
+            ...defaultManifest,
+            telemetry: { endpoint: '/capture/telemetry-from-manifest' },
         },
     },
     pages: simpleAppPages,

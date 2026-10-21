@@ -29,6 +29,7 @@ function parseConfig(swContext) {
         manifestUrl: url.searchParams.get('manifestUrl') || '/integrity-manifest.json',
         manifestSignatureType: url.searchParams.get('manifestSignatureType'),
         manifestSignatureIdentity: url.searchParams.get('manifestSignatureIdentity'),
+        telemetryEndpoint: url.searchParams.get('telemetryEndpoint'),
     };
 }
 
@@ -42,9 +43,8 @@ export function createServices(swGlobal) {
     logger.log('Configuration:', config);
 
     const appStore = createAppStore(createDatabase(swGlobal.indexedDB));
-    const securityProcessor = createSecurityProcessor({ swContext, appStore });
-
     const manifestService = createManifestService({ swContext, appStore, config });
+    const securityProcessor = createSecurityProcessor({ swContext, appStore, manifestService });
     const messageBroker = createMessageBroker(swContext);
     const core = {
         swContext,
