@@ -1,7 +1,7 @@
 /**
  * Message Broker & Handler
  * Handles queuing and delivery of security messages to clients,
- * and dispatches incoming messages (CLAIM_CONTROL, DAPPFENCE_CLIENT_READY, etc.)
+ * and dispatches incoming messages (CLAIM_CONTROL, CLIENT_READY, REPORT_EVENTS, etc.)
  */
 
 import { API, MSG } from '../core/constants.js';
@@ -99,8 +99,15 @@ export function createMessageBroker(swContext) {
  * @param {object} deps
  * @param {object} deps.swContext
  * @param {function} deps.onClientReady
+ * @param {function} [deps.onReportEventsMessage]
+ * @param {function} [deps.onPageLoadedMessage]
  */
-export function createMessageHandler({ swContext, onClientReady }) {
+export function createMessageHandler({
+    swContext,
+    onClientReady,
+    onReportEventsMessage = async () => {},
+    onPageLoadedMessage = async () => {},
+}) {
     return async (event, callChildHandlers) => {
         logger.log('Received message:', event.data);
 
@@ -112,6 +119,12 @@ export function createMessageHandler({ swContext, onClientReady }) {
                 `Client ready - event.source.id: ${event.source.id}, event.source type: ${typeof event.source}`
             );
             await onClientReady(event.source.id);
+        } else if (event.data && event.data.type === MSG.REPORT_EVENTS) {
+            logger.log(`REPORT_EVENTS from client ${event.source?.id}`);
+            await onReportEventsMessage(event);
+        } else if (event.data && event.data.type === MSG.PAGE_LOADED) {
+            logger.log(`PAGE_LOADED from client ${event.source?.id}`);
+            await onPageLoadedMessage(event);
         } else {
             logger.log('Received message:', event.data);
         }

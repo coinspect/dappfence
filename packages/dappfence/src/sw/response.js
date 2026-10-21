@@ -2,7 +2,7 @@
 import securityWarningHtml from '../templates/security-warning.html?raw';
 import securityWarningCss from '../templates/security-warning.css?raw';
 import { isFeatureEnabled } from '../core/utils.js';
-import { API } from '../core/constants.js';
+import { API, MSG } from '../core/constants.js';
 
 // CSS and the build-time feature flag are static across all renders — fold
 // them into the template once at a module load instead of repeating the work
@@ -182,6 +182,8 @@ export function createSecurityPageResponse(apiToken, activeBlocks) {
         apiToken,
         activeBlocks: enrichActiveBlocks(activeBlocks),
         autoConfirmSiteLock: AUTO_CONFIRM_SITE_LOCK,
+        reportEventsType: MSG.REPORT_EVENTS,
+        reportEventsIntervalMs: __DEV__ ? 15_000 : 300_000,
     });
     const html = HTML_PREFIX + configScript + HTML_SUFFIX;
     return new Response(html, {

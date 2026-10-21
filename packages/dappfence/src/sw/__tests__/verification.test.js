@@ -151,14 +151,14 @@ describe('verifyImportedScript', () => {
         delete globalThis.__FEATURES__;
     });
 
-    it('does not record a violation on MATCH', async () => {
+    it('still calls processSecurityEvent on MATCH (processor no-ops internally)', async () => {
         const verifyResponse = vi.fn().mockResolvedValue({
             status: VERIFICATION_STATUS.MATCH,
             fileKey: '/lib.js',
         });
         const core = {
             manifestService: mockManifestService(verifyResponse),
-            appStore: { recordSecurityViolation: vi.fn() },
+            securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
                 fetch: vi.fn().mockResolvedValue(new Response('content')),
                 getLocationHref: () => baseHref,
@@ -171,7 +171,9 @@ describe('verifyImportedScript', () => {
             expect.objectContaining({ url: 'https://example.com/lib.js', destination: 'script' }),
             expect.anything()
         );
-        expect(core.appStore.recordSecurityViolation).not.toHaveBeenCalled();
+        expect(core.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ status: VERIFICATION_STATUS.MATCH })
+        );
     });
 
     it('records a service-worker violation on FILE_UNTRUSTED', async () => {
@@ -182,7 +184,7 @@ describe('verifyImportedScript', () => {
         });
         const core = {
             manifestService: mockManifestService(verifyResponse),
-            appStore: { recordSecurityViolation: vi.fn() },
+            securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
                 fetch: vi.fn().mockResolvedValue(new Response('bad')),
                 getLocationHref: () => baseHref,
@@ -191,7 +193,7 @@ describe('verifyImportedScript', () => {
 
         await verifyImportedScript(core, 'https://example.com/lib.js');
 
-        expect(core.appStore.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(core.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
             expect.objectContaining({
                 status: VERIFICATION_STATUS.FILE_UNTRUSTED,
                 reason: 'HASH_MISMATCH',
@@ -206,7 +208,7 @@ describe('verifyImportedScript', () => {
         const verifyResponse = vi.fn();
         const core = {
             manifestService: mockManifestService(verifyResponse),
-            appStore: { recordSecurityViolation: vi.fn() },
+            securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
                 fetch: vi.fn().mockResolvedValue({ ok: false, status: 404 }),
                 getLocationHref: () => baseHref,
@@ -216,7 +218,7 @@ describe('verifyImportedScript', () => {
         await verifyImportedScript(core, 'https://example.com/missing.js');
 
         expect(verifyResponse).not.toHaveBeenCalled();
-        expect(core.appStore.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(core.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
             expect.objectContaining({
                 status: VERIFICATION_STATUS.ERROR,
                 assetType: ASSET_TYPE.SERVICE_WORKER,
@@ -230,7 +232,7 @@ describe('verifyImportedScript', () => {
         const verifyResponse = vi.fn();
         const core = {
             manifestService: mockManifestService(verifyResponse),
-            appStore: { recordSecurityViolation: vi.fn() },
+            securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
                 fetch: vi.fn().mockRejectedValue(new Error('network down')),
                 getLocationHref: () => baseHref,
@@ -239,7 +241,7 @@ describe('verifyImportedScript', () => {
 
         await verifyImportedScript(core, 'https://example.com/lib.js');
 
-        expect(core.appStore.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(core.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
             expect.objectContaining({
                 status: VERIFICATION_STATUS.ERROR,
                 assetType: ASSET_TYPE.SERVICE_WORKER,
@@ -248,14 +250,14 @@ describe('verifyImportedScript', () => {
         );
     });
 
-    it('treats SKIPPED results as non-violations', async () => {
+    it('still calls processSecurityEvent on SKIPPED (processor no-ops internally)', async () => {
         const verifyResponse = vi.fn().mockResolvedValue({
             status: VERIFICATION_STATUS.SKIPPED,
             fileKey: '/lib.js',
         });
         const core = {
             manifestService: mockManifestService(verifyResponse),
-            appStore: { recordSecurityViolation: vi.fn() },
+            securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
                 fetch: vi.fn().mockResolvedValue(new Response('content')),
                 getLocationHref: () => baseHref,
@@ -264,6 +266,8 @@ describe('verifyImportedScript', () => {
 
         await verifyImportedScript(core, 'https://example.com/lib.js');
 
-        expect(core.appStore.recordSecurityViolation).not.toHaveBeenCalled();
+        expect(core.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ status: VERIFICATION_STATUS.SKIPPED })
+        );
     });
 });

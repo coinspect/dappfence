@@ -8,7 +8,7 @@ const logger = createLogger();
  * @param {object} deps.config - Parsed URL config (appSW, manifestUrl, etc.)
  * @param {object} deps.manifestService - Manifest verification service
  * @param {function} deps.onInstallDone - Called when install event processing completes
- * @param {object} deps.appStore - App store facade
+ * @param {object} deps.securityProcessor - Security event orchestrator
  * @returns {function} Install event handler (event, callChildHandlers) => Promise<void>
  */
 export function createInstallHandler({
@@ -16,7 +16,7 @@ export function createInstallHandler({
     config,
     manifestService,
     onInstallDone,
-    appStore,
+    securityProcessor,
 }) {
     /**
      * When a web app has its own service worker, we load it using `importScripts` but after hooking functions to maintain our code.
@@ -43,8 +43,8 @@ export function createInstallHandler({
 
             logger.log('Initializing manifest system');
             const manifestVerificationResult = await manifestService.fetchAndStoreManifest();
+            await securityProcessor.processSecurityEvent(manifestVerificationResult);
             if (manifestVerificationResult.status.isViolation) {
-                await appStore.recordSecurityViolation(manifestVerificationResult);
                 logger.error('❌ error during initialization: Failed to load manifest');
             } else {
                 logger.log(
@@ -74,6 +74,8 @@ export function createInstallHandler({
             logger.log('Install complete');
         } catch (error) {
             logger.error('❌ error during initialization:', error);
+        } finally {
+            await securityProcessor.reportAfterInstall(event);
         }
     };
 }
@@ -104,6 +106,20 @@ export function createActivateHandler({ swContext, onSecurityViolation, appStore
             logger.log('Activating - end');
         } catch (error) {
             logger.error('❌ error during activate:', error);
+        }
+    };
+}
+
+/**
+ * @param {object} deps
+ * @param {object} deps.securityProcessor
+ * @returns {(event: SyncEvent) => Promise<void>}
+ */
+export function createSyncHandler({ securityProcessor }) {
+    return async (event) => {
+        logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
+        if (event.tag === 'dappfence-report-events') {
+            await securityProcessor.reportOnSync(event);
         }
     };
 }

@@ -1,26 +1,13 @@
 /**
- * App Store Facade
+ * App Store Facade — a thin bundle of the IndexedDB-backed stores.
  *
- * Manifest Store properties (trustedManifest, verificationResults)
- * are spread at the top level since they're already uniquely named.
- * The other three are grouped objects.
+ * Manifest Store properties (trustedManifest, verificationResults) are spread at
+ * the top level since they're already uniquely named. The others are grouped.
  *
- * @param {object} db - Low-level Store backend from createDatabase()
- * @param {object} env - Environment info for log enrichment
- * @param {string} env.userAgent
- * @param {string} env.origin
+ * Orchestration of security verdicts (writing to securityEventsStore + updating
+ * activeBlocksStore + deciding mustBlock) lives in sw/security-processor.js — this
+ * module just exposes the raw stores.
  */
-import { devAssert } from '../../core/utils.js';
-import { createLogger } from '../../core/logger.js';
-// VERIFICATION_STATUS is used in JSDoc typedef below (Record<keyof typeof ...>).
-// eslint-disable-next-line no-unused-vars
-import { ASSET_TYPE, VERIFICATION_STATUS } from '../../core/constants.js';
-
-/** @typedef {import('../../core/constants.js').VerificationStatus} VerificationStatus */
-/** @typedef {import('./security-stores.js').SecurityBlockData} SecurityBlockData */
-
-/** Caller-facing shape of a violation — status is the verdict object (not its description). */
-/** @typedef {Omit<SecurityBlockData, 'status'> & { status: VerificationStatus, url: string }} ViolationDetails */
 import { createManifestStore } from './manifest-store.js';
 import {
     createActiveBlocksStore,
@@ -28,130 +15,14 @@ import {
     createSecurityEventsStore,
 } from './security-stores.js';
 
-const logger = createLogger();
-
-/**
- * Formatter signature for a status log entry.
- * @typedef {(d: { fileKey?: string, url?: string, reason?: string, expectedHashes?: string[], actualHash?: string }) => string[]} StatusLogFormatter
- */
-
-/** @type {Record<keyof typeof VERIFICATION_STATUS, StatusLogFormatter>} */
-const STATUS_LOG = {
-    MATCH: (d) => [`SW file verification passed: ${d.fileKey}`],
-    SKIPPED: (d) => [`SW file verification skipped: ${d.fileKey}`],
-    REWRITE: (d) => [`SW file response rewritten: ${d.fileKey}`],
-    CSP_PROTECTED: (d) => [`SW file CSP-protected (verify skipped): ${d.fileKey}`],
-    FILE_UNTRUSTED: (d) => [
-        `SECURITY ALERT: File is not trusted (${d.reason ?? 'UNSPECIFIED'})!`,
-        `File: ${d.fileKey ?? d.url}`,
-        ...(d.expectedHashes ? [`Expected: ${d.expectedHashes.join(', ')}`] : []),
-        ...(d.actualHash ? [`Actual: ${d.actualHash}`] : []),
-    ],
-    DENIED_BY_RULE: (d) => [`SECURITY ALERT: File denied by security rule!`, `File: ${d.fileKey}`],
-    ERROR: (d) => [
-        `SECURITY ALERT: Verification error (${d.reason ?? 'UNSPECIFIED'})!`,
-        `File: ${d.fileKey ?? 'N/A'}`,
-    ],
-    MANIFEST_UNTRUSTED: (d) => [
-        `SECURITY ALERT: Manifest cannot be trusted (${d.reason ?? 'UNSPECIFIED'})!`,
-        `File: ${d.fileKey ?? 'N/A'}`,
-        ...(d.expectedHashes ? [`Expected: ${d.expectedHashes.join(', ')}`] : []),
-        ...(d.actualHash ? [`Actual: ${d.actualHash}`] : []),
-    ],
-};
-
 /**
  * @param {object} db - Low-level Store backend from createDatabase()
- * @param {{ userAgent?: string, origin?: string }} [env] - Environment info for log enrichment
  */
-export function createAppStore(db, { userAgent, origin } = {}) {
-    const activeBlocksStore = createActiveBlocksStore(db);
-    const securityEventsStore = createSecurityEventsStore(db);
-
-    /**
-     * Logs a security violation event and records the block.
-     * Returns whether the caller must block the current request. Recurrences of
-     * already-known blocks (including previously cleared ones) are still logged
-     * and counted, but return false. Storage failures fail-safe and return true.
-     * @param {ViolationDetails} details
-     * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
-     */
-    async function recordSecurityViolation(details) {
-        devAssert(details.status && typeof details.status.description === 'string');
-        devAssert(Object.values(ASSET_TYPE).includes(details.assetType));
-        devAssert(details.url);
-        devAssert(details.fileKey);
-        try {
-            // status is the runtime verdict object; persistence + log lines want
-            // the description string. Normalize once and use it everywhere below.
-            // Explicit allowlist avoids storing non-cloneable objects (Headers)
-            // or per-response ephemera (nonce).
-            const statusName = details.status.description;
-            const persistedDetails = {
-                status: statusName,
-                reason: details.reason,
-                fileKey: details.fileKey,
-                url: details.url,
-                assetType: details.assetType,
-                expectedHashes: details.expectedHashes,
-                actualHash: details.actualHash,
-                httpStatus: details.httpStatus,
-            };
-            const method = details.status.isViolation ? 'error' : 'log';
-            const logArgs =
-                STATUS_LOG[statusName] ??
-                ((d) => [
-                    `SECURITY ALERT: {${statusName}}`,
-                    `URL: ${d.url ?? 'N/A'}`,
-                    `File: ${d.fileKey ?? 'N/A'}`,
-                ]);
-            logger[method](...logArgs(details));
-
-            try {
-                await securityEventsStore.logSecurityEvent({
-                    type: 'SECURITY_VIOLATION',
-                    status: statusName,
-                    reason: details.reason,
-                    assetType: details.assetType,
-                    timestamp: new Date().toISOString(),
-                    url: details.url,
-                    fileKey: details.fileKey,
-                    expectedHashes: details.expectedHashes,
-                    actualHash: details.actualHash,
-                    httpStatus: details.httpStatus,
-                    userAgent,
-                    origin,
-                });
-            } catch (error) {
-                logger.error('Failed to store security log:', error);
-            }
-
-            if (!details.status.isViolation) {
-                logger.log(`Security violation skipped: ${statusName} - ${details.fileKey}`);
-                return false;
-            }
-            const mustBlock = await activeBlocksStore.recordSecurityBlock(persistedDetails);
-            if (mustBlock) {
-                logger.log(`Security violation handled: ${statusName} - ${details.fileKey}`);
-            } else {
-                logger.log(
-                    `%cSecurity violation recurrence (not re-activated): ${statusName} - ${details.fileKey}`,
-                    'color:yellow'
-                );
-            }
-            return mustBlock;
-        } catch (error) {
-            logger.error('Failed to handle security violation:', error);
-            // Fail-safe: on unexpected error, tell the caller to block.
-            return true;
-        }
-    }
-
+export function createAppStore(db) {
     return {
         ...createManifestStore(db),
-        activeBlocksStore,
-        securityEventsStore,
+        activeBlocksStore: createActiveBlocksStore(db),
+        securityEventsStore: createSecurityEventsStore(db),
         apiTokenStore: createApiTokenStore(db),
-        recordSecurityViolation,
     };
 }

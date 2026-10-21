@@ -48,22 +48,6 @@ describe('generateBlockId', () => {
         expect(id).toMatch(/^block_[0-9a-f]{16}$/);
     });
 
-    it('throws when status is missing', async () => {
-        await expect(generateBlockId({ fileKey: '/app.js', assetType: 'ASSET' })).rejects.toThrow();
-    });
-
-    it('throws when assetType is missing', async () => {
-        await expect(
-            generateBlockId({ status: 'FILE_UNTRUSTED', fileKey: '/app.js' })
-        ).rejects.toThrow();
-    });
-
-    it('throws when fileKey is missing', async () => {
-        await expect(
-            generateBlockId({ status: 'FILE_UNTRUSTED', assetType: 'ASSET' })
-        ).rejects.toThrow();
-    });
-
     it('produces different ids for different asset types', async () => {
         const id1 = await generateBlockId({ ...BLOCK_DATA, assetType: 'ASSET' });
         const id2 = await generateBlockId({ ...BLOCK_DATA, assetType: 'MANIFEST' });

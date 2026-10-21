@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createInstallHandler, createActivateHandler } from '../lifecycle-handlers.js';
+import {
+    createInstallHandler,
+    createActivateHandler,
+    createSyncHandler,
+} from '../lifecycle-handlers.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 
 beforeEach(() => {
@@ -20,7 +24,8 @@ function makeInstallDeps({
         manifest: { mode: 'reporting' },
     },
     onInstallDone = vi.fn(),
-    recordSecurityViolation = vi.fn(() => Promise.resolve()),
+    processSecurityEvent = vi.fn(() => Promise.resolve(false)),
+    reportAfterInstall = vi.fn(() => Promise.resolve()),
 } = {}) {
     return {
         swContext: { skipWaiting },
@@ -29,8 +34,9 @@ function makeInstallDeps({
             fetchAndStoreManifest: vi.fn(() => Promise.resolve(fetchAndStoreManifestResult)),
         },
         onInstallDone,
-        appStore: {
-            recordSecurityViolation,
+        securityProcessor: {
+            processSecurityEvent,
+            reportAfterInstall,
         },
     };
 }
@@ -78,12 +84,12 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.appStore.recordSecurityViolation).toHaveBeenCalledWith(
+        expect(deps.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
             expect.objectContaining({ url: manifestUrl })
         );
     });
 
-    it('does not record security violation on manifest success', async () => {
+    it('still calls processSecurityEvent on manifest success (processor no-ops on MATCH)', async () => {
         const deps = makeInstallDeps({
             fetchAndStoreManifestResult: {
                 status: VERIFICATION_STATUS.MATCH,
@@ -93,7 +99,9 @@ describe('createInstallHandler', () => {
         });
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
-        expect(deps.appStore.recordSecurityViolation).not.toHaveBeenCalled();
+        expect(deps.securityProcessor.processSecurityEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ status: VERIFICATION_STATUS.MATCH })
+        );
     });
 
     it('calls importScripts when config.appSW is set', async () => {
@@ -143,6 +151,38 @@ describe('createInstallHandler', () => {
         const handler = createInstallHandler(deps);
         await handler({}, vi.fn());
         expect(deps.onInstallDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls securityProcessor.reportAfterInstall', async () => {
+        const deps = makeInstallDeps();
+        const handler = createInstallHandler(deps);
+        await handler({}, vi.fn());
+        expect(deps.securityProcessor.reportAfterInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it('still calls reportAfterInstall when install logic throws', async () => {
+        const deps = makeInstallDeps({
+            skipWaiting: vi.fn(() => Promise.reject(new Error('skipWaiting failed'))),
+        });
+        const handler = createInstallHandler(deps);
+        await handler({}, vi.fn());
+        expect(deps.securityProcessor.reportAfterInstall).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('createSyncHandler', () => {
+    it('awaits reportOnSync when the tag matches', async () => {
+        const reportOnSync = vi.fn(() => Promise.resolve());
+        const handler = createSyncHandler({ securityProcessor: { reportOnSync } });
+        await handler({ tag: 'dappfence-report-events', lastChance: false });
+        expect(reportOnSync).toHaveBeenCalled();
+    });
+
+    it('ignores unknown tags', async () => {
+        const reportOnSync = vi.fn(() => Promise.resolve());
+        const handler = createSyncHandler({ securityProcessor: { reportOnSync } });
+        await handler({ tag: 'something-else', lastChance: false });
+        expect(reportOnSync).not.toHaveBeenCalled();
     });
 });
 

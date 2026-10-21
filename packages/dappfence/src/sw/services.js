@@ -4,7 +4,11 @@
  */
 
 import { createSecurityFetchHandler } from './fetch-handler.js';
-import { createActivateHandler, createInstallHandler } from './lifecycle-handlers.js';
+import {
+    createActivateHandler,
+    createInstallHandler,
+    createSyncHandler,
+} from './lifecycle-handlers.js';
 import { createHookService } from './appsw-hooks.js';
 import { verifyImportedScript } from './manifest/verification.js';
 import { createManifestService } from './manifest/manifest-service.js';
@@ -14,6 +18,7 @@ import { createAppStore } from './storage/index.js';
 import { createSwContext } from './context.js';
 import { createLogger } from '../core/logger.js';
 import { createApiHandler } from './api-handler.js';
+import { createSecurityProcessor } from './security-processor.js';
 
 const logger = createLogger();
 
@@ -30,17 +35,14 @@ function parseConfig(swContext) {
 /**
  * Creates and wires all service worker dependencies.
  * @param {object} swGlobal - The service worker global scope (self)
- * @returns {{ hookService: object, fetchHandler: function, installHandler: function, activateHandler: function, messageHandler: function }}
  */
 export function createServices(swGlobal) {
     const swContext = createSwContext(swGlobal);
     const config = parseConfig(swContext);
     logger.log('Configuration:', config);
 
-    const appStore = createAppStore(createDatabase(swGlobal.indexedDB), {
-        userAgent: swContext.getUserAgent(),
-        origin: swContext.getLocationOrigin(),
-    });
+    const appStore = createAppStore(createDatabase(swGlobal.indexedDB));
+    const securityProcessor = createSecurityProcessor({ swContext, appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext);
@@ -48,6 +50,7 @@ export function createServices(swGlobal) {
         swContext,
         appStore,
         manifestService,
+        securityProcessor,
         onSecurityViolation: messageBroker.broadcastSecurityViolation,
     };
 
@@ -63,9 +66,13 @@ export function createServices(swGlobal) {
             onInstallDone: hookService.installEventDone,
         }),
         activateHandler: createActivateHandler(core),
+        syncHandler: createSyncHandler({ securityProcessor }),
         messageHandler: createMessageHandler({
             swContext,
             onClientReady: messageBroker.handleClientReady,
+            onReportEventsMessage: securityProcessor.reportOnClientRequest,
+            onPageLoadedMessage: securityProcessor.reportOnPageLoad,
         }),
+        securityProcessor,
     };
 }

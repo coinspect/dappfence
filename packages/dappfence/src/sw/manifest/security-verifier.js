@@ -88,7 +88,6 @@ const ACTION_HANDLERS = {
 /**
  * @param {object} deps
  * @param {object} deps.swContext
- * @param {object} deps.appStore
  * @param {object} deps.config
  * @param {object} manifestLoader
  * @param {object} strategy
@@ -96,34 +95,17 @@ const ACTION_HANDLERS = {
  * @param {Function} strategy.isAllowed - (req, locationHref, manifest) → boolean
  */
 export const createVerifier = (
-    { swContext, appStore, config },
+    { swContext, config },
     manifestLoader,
     { verifyAgainstManifest, isAllowed }
 ) => {
     const { storeManifestFromResponse, fetchAndStoreManifest, getManifestHistory } = manifestLoader;
-    const { verificationResultsStore } = appStore;
     const locationHref = swContext.getLocationHref();
     const locationOrigin = new URL(locationHref).origin;
     const manifestFileKey = config.manifestUrl
         ? toPathname(config.manifestUrl, locationHref)
         : null;
     const clientIdXManifest = new Map();
-
-    const onManifestResult = (manifestInfo, result) => {
-        if (result.status !== VERIFICATION_STATUS.MATCH) {
-            logger.log(`❌ ${result.status.description}: ${result.fileKey}`);
-            return;
-        }
-        const icon = result.fileKey.startsWith('/') ? '📄' : '🌐';
-        logger.log(`✅ ${icon} ${result.status.description}: ${result.fileKey}`);
-        verificationResultsStore
-            .add(manifestInfo.appVersion, {
-                ...result,
-                status: result.status.description,
-                timestamp: new Date().toISOString(),
-            })
-            .catch((err) => logger.error('Error storing verification result:', err));
-    };
 
     const pinClient = (clientId, manifestInfo) => {
         if (!clientId) {
@@ -195,8 +177,13 @@ export const createVerifier = (
             }
             triedVersions.add(manifestInfo.appVersion);
             const result = await verifyAgainstManifest(req, response, manifestInfo, locationHref);
-            onManifestResult(manifestInfo, result);
-            return result;
+            if (result.status === VERIFICATION_STATUS.MATCH) {
+                const icon = result.fileKey.startsWith('/') ? '📄' : '🌐';
+                logger.log(`✅ ${icon} ${result.status.description}: ${result.fileKey}`);
+            } else {
+                logger.log(`❌ ${result.status.description}: ${result.fileKey}`);
+            }
+            return { ...result, manifestInfo };
         };
 
         let pinnedResult = null;
@@ -256,6 +243,10 @@ export const createVerifier = (
         const result = (fields) => ({
             fileKey,
             url: req.url,
+            clientId,
+            destination: req.destination,
+            requestMode: req.mode,
+            method: req.method,
             ...fields,
             assetType: ASSET_TYPE.ASSET,
         });
