@@ -82,12 +82,17 @@ export function createApiHandler({ onSecurityViolation, appStore, config }) {
     }
 
     async function handleSiteUnblock(_request) {
-        await activeIdentityStore.updateActiveIdentity({
-            signatureType: config.manifestSignatureType,
-            identity: config.manifestSignatureIdentity,
-        });
+        const activeBlocks = await activeBlocksStore.getActiveBlocks();
+        // UI clears all blocks at once; accept the new identity only if a rotation is in the set.
+        const acceptingRotation = activeBlocks.some((b) => b.reason === 'SIGNER_CHANGED');
+        if (acceptingRotation) {
+            await activeIdentityStore.updateActiveIdentity({
+                signatureType: config.manifestSignatureType,
+                identity: config.manifestSignatureIdentity,
+            });
+        }
         await activeBlocksStore.clearBlockCondition();
-        logger.log('Site unblocked successfully');
+        logger.log(`Site unblocked successfully (acceptingRotation=${acceptingRotation})`);
         return new Response(
             JSON.stringify({
                 success: true,

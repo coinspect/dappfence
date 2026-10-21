@@ -105,6 +105,16 @@ describe('site-unblock and the signer anchor', () => {
 
             await handler(API.SITE_UNBLOCK, unblockRequest());
 
+            expect(appStore.activeBlocksStore.clearBlockCondition).toHaveBeenCalled();
+            expect(appStore.activeIdentityStore.updateActiveIdentity).not.toHaveBeenCalled();
+        });
+
+        it('does not re-anchor when there are no active blocks', async () => {
+            arrange([]);
+
+            await handler(API.SITE_UNBLOCK, unblockRequest());
+
+            expect(appStore.activeBlocksStore.clearBlockCondition).toHaveBeenCalled();
             expect(appStore.activeIdentityStore.updateActiveIdentity).not.toHaveBeenCalled();
         });
     });
