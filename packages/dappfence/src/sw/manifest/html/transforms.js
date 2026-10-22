@@ -11,10 +11,17 @@ export const TRANSFORMS = {
     'netlify-cdp': {
         // Only whitespace is allowed between the opening tag and the script tag, so
         // extra content cannot be hidden inside the filtered block.
+        //
+        // Netlify injects the block followed by a newline, so the strip range has to
+        // cover that newline too — otherwise it survives into the hashed body and
+        // every document misses its manifest hash by exactly one byte. `\n?` and not
+        // `\s*`: the trailing run is bounded to the single character Netlify adds, so
+        // the unverified hole cannot grow to swallow whitespace that belongs to the
+        // document itself.
         findStripRanges(text) {
             const pattern = new RegExp(
                 `<div data-netlify-deploy-id="${HEX}" data-netlify-site-id="${UUID}" data-vcs="github" style="position:fixed">` +
-                    '\\s*<script async src="/.netlify/scripts/cdp"></script>\\s*</div>',
+                    '\\s*<script async src="/.netlify/scripts/cdp"></script>\\s*</div>\\n?',
                 'g'
             );
             const ranges = [];
