@@ -263,7 +263,9 @@ describe('createApiHandler', () => {
             const { activeBlocks } = decodeInlinedConfig(await res.text());
 
             expect(activeBlocks[0].expectedHashes).toEqual([]);
-            expect(activeBlocks[0].actualHash).toBe('N/A');
+            // actualHash is null when unset; the template renders 'Not available'
+            // only for views that opt into the actual row.
+            expect(activeBlocks[0].actualHash).toBeNull();
             expect(activeBlocks[0].occurrenceCount).toBe(1);
         });
 
