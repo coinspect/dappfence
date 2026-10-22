@@ -122,6 +122,27 @@ describe('applyTransform', () => {
             expect(result).toContain('data-netlify-deploy-id');
         });
 
+        // Netlify injects the block with a trailing newline before </body>. Leaving
+        // that newline behind puts the hashed body one byte off the manifest, which
+        // surfaces as a block on every document.
+        it('strips the trailing newline Netlify injects with the snippet', () => {
+            const buf = encode(HTML(`${NETLIFY_SNIPPET()}\n`));
+            const result = decode(applyTransform(buf, 'netlify-cdp'));
+            expect(result).toBe(HTML());
+        });
+
+        it('strips only one trailing newline, leaving document whitespace intact', () => {
+            const buf = encode(HTML(`${NETLIFY_SNIPPET()}\n\n  `));
+            const result = decode(applyTransform(buf, 'netlify-cdp'));
+            expect(result).toBe(HTML('\n  '));
+        });
+
+        it('strips the snippet when no trailing newline follows it', () => {
+            const html = `<!DOCTYPE html><html><body><p>Hello</p>${NETLIFY_SNIPPET()}</body></html>`;
+            const result = decode(applyTransform(encode(html), 'netlify-cdp'));
+            expect(result).toBe(HTML());
+        });
+
         it('no-ops when snippet is absent (returns same content)', () => {
             const buf = encode(HTML());
             const result = decode(applyTransform(buf, 'netlify-cdp'));
