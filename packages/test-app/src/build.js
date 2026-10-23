@@ -32,6 +32,7 @@ function render(inputPath, outFile, signatureData, args) {
         BUILD_DATE: new Date().toISOString(),
         MANIFEST_FILE: args.manifestFile,
         TARGET_VERSION: 'VERSION: ' + args.version,
+        TELEMETRY_ENDPOINT: '',
         DOUBLE_ESCAPE_SCRIPT:
             '<script>self.__next_f.push([0,"<!--<script>"])</script>/\n' +
             '        window.__bypass_executed = true;\n' +
@@ -201,6 +202,7 @@ async function buildManifestsData(target, sharedFiles, { targetName, version, ou
             pathRules: manifest.pathRules || [],
             contentRules: manifest.contentRules || null,
             ...(csp ? { csp } : {}),
+            ...(manifest.telemetry ? { telemetry: manifest.telemetry } : {}),
             metadata: { buildTime: new Date().toISOString(), version, target: targetName },
         };
 

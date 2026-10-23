@@ -12,6 +12,21 @@ export function isFeatureEnabled(feature) {
 }
 
 /**
+ * Runs `fn` and routes any throw to the caller-supplied handler.
+ * Use at boundaries that must never reject (SW `waitUntil` chains, hooks).
+ * Return value of `fn` is intentionally discarded.
+ * @param {() => Promise<unknown>} fn
+ * @param {(error: unknown) => void} [onError]
+ */
+export async function safely(fn, onError) {
+    try {
+        await fn();
+    } catch (error) {
+        onError?.(error);
+    }
+}
+
+/**
  * Creates a single-flight wrapper: concurrent calls to the returned function
  * share one in-flight promise instead of starting duplicate work.
  * @returns {function} Wrapper that takes an async factory and deduplicates concurrent calls

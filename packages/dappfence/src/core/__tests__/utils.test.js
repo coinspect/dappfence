@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createSingleFlight, isFeatureEnabled, once } from '../utils.js';
+import { createSingleFlight, isFeatureEnabled, once, safely } from '../utils.js';
 
 describe('createSingleFlight', () => {
     it('returns the result of the function', async () => {
@@ -97,5 +97,40 @@ describe('isFeatureEnabled', () => {
     it('returns false for undefined features', () => {
         globalThis.__FEATURES__ = {};
         expect(isFeatureEnabled('nonexistent')).toBe(false);
+    });
+});
+
+describe('safely', () => {
+    it('awaits the function and resolves to undefined on success', async () => {
+        const fn = vi.fn().mockResolvedValue('result');
+        const onError = vi.fn();
+        const result = await safely(fn, onError);
+        expect(fn).toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+        expect(result).toBeUndefined();
+    });
+
+    it('routes async throws to onError and resolves', async () => {
+        const err = new Error('boom');
+        const fn = vi.fn().mockRejectedValue(err);
+        const onError = vi.fn();
+        await expect(safely(fn, onError)).resolves.toBeUndefined();
+        expect(fn).toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledWith(err);
+    });
+
+    it('routes synchronous throws to onError and resolves', async () => {
+        const err = new Error('sync boom');
+        const fn = vi.fn(() => {
+            throw err;
+        });
+        const onError = vi.fn();
+        await expect(safely(fn, onError)).resolves.toBeUndefined();
+        expect(onError).toHaveBeenCalledWith(err);
+    });
+
+    it('swallows silently when onError is omitted', async () => {
+        const fn = vi.fn().mockRejectedValue(new Error('silent'));
+        await expect(safely(fn)).resolves.toBeUndefined();
     });
 });

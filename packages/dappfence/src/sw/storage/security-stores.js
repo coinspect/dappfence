@@ -116,6 +116,7 @@ export function createActiveBlocksStore(database) {
                         timestamp: now,
                         lastSeen: now,
                         occurrenceCount: 1,
+                        reportedAt: null,
                     };
                     activeIds.push(blockId);
                     mustBlock = true;
@@ -202,6 +203,40 @@ export function createActiveBlocksStore(database) {
         }
     }
 
+    async function getPendingReportBlocks() {
+        try {
+            const blocks = (await database.get(BLOCKS_KEY)) || {};
+            return Object.values(blocks).filter((block) => !block.reportedAt);
+        } catch (error) {
+            logger.error('Failed to get pending report blocks:', error);
+            return [];
+        }
+    }
+
+    /**
+     * @param {string[]} blockIds
+     * @param {string} timestamp
+     */
+    async function markReported(blockIds, timestamp) {
+        if (!blockIds.length) {
+            logger.log('markReported called with empty id list, skipping');
+            return;
+        }
+        try {
+            await database.withTx(async (tx) => {
+                const blocks = (await tx.get(BLOCKS_KEY)) || {};
+                for (const id of blockIds) {
+                    if (blocks[id]) {
+                        blocks[id] = { ...blocks[id], reportedAt: timestamp };
+                    }
+                }
+                await tx.set(BLOCKS_KEY, blocks);
+            });
+        } catch (error) {
+            logger.error('Failed to mark blocks reported:', error);
+        }
+    }
+
     return {
         recordSecurityBlock,
         isBlocked,
@@ -209,6 +244,8 @@ export function createActiveBlocksStore(database) {
         getAllBlocks,
         getSecurityBlock,
         clearBlockCondition,
+        getPendingReportBlocks,
+        markReported,
     };
 }
 
@@ -309,4 +346,32 @@ export function createApiTokenStore(database) {
     }
 
     return { getApiToken };
+}
+
+// --- Session Id Store ---
+
+const SESSION_ID_KEY = 'session-id';
+
+/**
+ * @param {object} database - Store backend with { withTx }
+ */
+export function createSessionIdStore(database) {
+    let cached = null;
+    async function getSessionId() {
+        if (!cached) {
+            cached = database.withTx(async (tx) => {
+                const existing = await tx.get(SESSION_ID_KEY);
+                if (existing) {
+                    return existing;
+                }
+                const sessionId = crypto.randomUUID();
+                logger.log('Generated new session id', sessionId);
+                await tx.set(SESSION_ID_KEY, sessionId);
+                return sessionId;
+            });
+        }
+        return cached;
+    }
+
+    return { getSessionId };
 }

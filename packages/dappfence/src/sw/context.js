@@ -32,5 +32,8 @@ export function createSwContext(swGlobal = self) {
 
         // Network
         fetch: (input, init) => swGlobal.fetch(input, init),
+
+        // Background Sync — tag retry for telemetry drains after a POST failure.
+        registerSync: (tag) => swGlobal.registration.sync.register(tag),
     };
 }
