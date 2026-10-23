@@ -123,9 +123,14 @@ Running `astro build` triggers three steps in order:
 3. **`integrity-manifest.json` is generated** — SHA-256 hashes for every tracked file, signed with
    your `secretKey`, written to the output directory.
 
-The integration is a **no-op in `astro dev`**. Vite transforms files at request time so their bytes
-never match a static manifest; DappFence is a production-only security layer. Test against the real
-build output with `astro preview`.
+The integration is a **no-op for every command except `astro build`** — `astro dev`, `astro check`
+(which reports command `sync`) and `astro preview` all register nothing and log a one-line notice.
+Vite transforms files at request time so their bytes never match a static manifest; DappFence is a
+production-only security layer. Test against the real build output with `astro preview`.
+
+`secretKey` is therefore only required for `astro build`. Outside a build a missing key logs a
+warning rather than failing, so `astro dev` and `astro check` run in checkouts that have no
+`DAPPFENCE_SECRET_KEY` set.
 
 For details on the manifest format, signature scheme, and verification internals see the
 [DappFence README](../../README.md).
