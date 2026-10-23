@@ -191,7 +191,8 @@ npm run test:debug -w @dappfence/test-app  # Debug e2e tests
 
 ### Development Requirements
 
--   Node.js 16.0.0 or higher
+-   Node.js 22.0.0 or higher (matches `engines.node` in every published package; `.nvmrc` pins the
+    version CI and the release build use)
 -   Modern browser with service worker support
 
 ### Note on `@dappfence/test-app`
