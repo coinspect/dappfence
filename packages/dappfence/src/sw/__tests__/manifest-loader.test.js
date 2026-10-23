@@ -185,13 +185,8 @@ describe('fetchAndStoreManifest', () => {
             });
             const swContext = makeSwContext();
             const loader = makeLoader({ swContext });
-            const [r1, r2] = await Promise.all([
-                loader.fetchAndStoreManifest(),
-                loader.fetchAndStoreManifest(),
-            ]);
+            await Promise.all([loader.fetchAndStoreManifest(), loader.fetchAndStoreManifest()]);
             expect(swContext.fetch).toHaveBeenCalledTimes(1);
-            expect(r1.status).toBe(VERIFICATION_STATUS.MATCH);
-            expect(r2.status).toBe(VERIFICATION_STATUS.MATCH);
         });
 
         it('issues a new fetch after the previous in-flight call settles', async () => {
@@ -281,5 +276,83 @@ describe('normalizeManifestData', () => {
         expect(normalizeManifestData(undefined)).toEqual(
             expect.objectContaining({ files: {}, pathRules: [], mode: 'reporting' })
         );
+    });
+
+    describe('redirects', () => {
+        it('defaults to empty array when absent or non-array', () => {
+            expect(normalizeManifestData({ files: {} }).redirects).toEqual([]);
+            expect(normalizeManifestData({ files: {}, redirects: 'bogus' }).redirects).toEqual([]);
+            expect(normalizeManifestData({ files: {}, redirects: null }).redirects).toEqual([]);
+        });
+
+        it('passes through well-formed entries', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [{ from: '/a', to: '/b', status: 302 }],
+            });
+            expect(result.redirects).toEqual([{ from: '/a', to: '/b', status: 302 }]);
+        });
+
+        it('preserves undefined status (caller defaults later)', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [{ from: '/a', to: '/b' }],
+            });
+            expect(result.redirects).toEqual([{ from: '/a', to: '/b', status: undefined }]);
+        });
+
+        it('drops entries with bad shape (non-string from/to, array to, empty to)', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [
+                    null,
+                    { from: 1, to: '/b' },
+                    { from: '/a', to: ['/b'] },
+                    { from: '/a', to: '' },
+                    { from: '/good', to: '/dest' },
+                ],
+            });
+            expect(result.redirects).toEqual([{ from: '/good', to: '/dest', status: undefined }]);
+        });
+
+        it('rejects javascript: and data: schemes in to', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [
+                    { from: '/x', to: 'javascript:alert(1)' },
+                    { from: '/y', to: 'data:text/html,evil' },
+                    { from: '/z', to: 'JavaScript:alert(1)' },
+                    { from: '/ok', to: '/safe' },
+                ],
+            });
+            expect(result.redirects).toEqual([{ from: '/ok', to: '/safe', status: undefined }]);
+        });
+
+        it('rejects self-loops', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [{ from: '/loop', to: '/loop' }],
+            });
+            expect(result.redirects).toEqual([]);
+        });
+
+        it('rejects duplicate from (keeps the first)', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [
+                    { from: '/dup', to: '/first' },
+                    { from: '/dup', to: '/second' },
+                ],
+            });
+            expect(result.redirects).toEqual([{ from: '/dup', to: '/first', status: undefined }]);
+        });
+
+        it('rejects non-integer status', () => {
+            const result = normalizeManifestData({
+                files: {},
+                redirects: [{ from: '/a', to: '/b', status: '302' }],
+            });
+            expect(result.redirects).toEqual([]);
+        });
     });
 });

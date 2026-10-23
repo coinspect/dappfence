@@ -72,6 +72,7 @@ export const VERIFICATION_STATUS = Object.freeze({
     MATCH: verdict('MATCH', false),
     SKIPPED: verdict('SKIPPED', false),
     REWRITE: verdict('REWRITE', false),
+    REDIRECT: verdict('REDIRECT', false),
     CSP_PROTECTED: verdict('CSP_PROTECTED', false),
     FILE_UNTRUSTED: verdict('FILE_UNTRUSTED', true),
     DENIED_BY_RULE: verdict('DENIED_BY_RULE', true),
@@ -105,6 +106,7 @@ export const VERIFICATION_STATUS = Object.freeze({
 /**
  * @typedef {'HASH_MISMATCH'
  *         | 'NOT_IN_MANIFEST'
+ *         | 'REDIRECT_NOT_DECLARED'
  *         } FileUntrustedReason
  */
 

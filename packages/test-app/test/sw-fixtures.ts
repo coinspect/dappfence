@@ -71,6 +71,7 @@ export type InterceptPattern =
 export type ServerTestParameters = {
     appName?: string;
     appVersion?: string;
+    port?: number;
     responseHeaders?: { match: string; headers: Record<string, string> }[];
     saveResponses?: boolean;
     intercept?: InterceptPattern | InterceptPattern[];
@@ -106,6 +107,7 @@ export type SWHelper = {
     setVersion: (version: string, projectName?: string) => Promise<void>;
     setFakeTime: (time: string) => Promise<void>;
     setServerTestParameters: (testParameters?: ServerTestParameters) => Promise<void>;
+    clearServerTestParameters: (port: number) => Promise<void>;
     getServerResponses: () => Promise<ServerTestResponse[]>;
 };
 
@@ -209,11 +211,13 @@ async function swHelper(
         page,
         context,
         browser,
+        baseURL,
     }: {
         request: APIRequestContext;
         context: BrowserContext;
         page: Page;
         browser: Browser;
+        baseURL?: string;
     },
     use: (arg0: SWHelper) => Promise<void>,
     testInfo: TestInfo
@@ -457,7 +461,19 @@ async function swHelper(
         },
         setServerTestParameters: async (testParameters?: ServerTestParameters) => {
             testParametersCache = { ...testParametersCache, ...testParameters };
-            await request.post('/api/test-config', {
+            const u = new URL(baseURL ?? 'http://localhost');
+            u.pathname = '/api/test-config';
+            if (testParameters?.port) {
+                const basePort = parseInt(new URL(baseURL ?? 'http://localhost:3333').port) || 3333;
+                const minPort = basePort + (testInfo.config.workers ?? 1);
+                if (testParameters.port <= minPort) {
+                    throw new Error(
+                        `setServerTestParameters: port ${testParameters.port} must be > ${minPort} to avoid clobbering per-worker server state`
+                    );
+                }
+                u.port = String(testParameters.port);
+            }
+            await request.post(u.toString(), {
                 data: {
                     testId: testInfo.testId,
                     testTitle: testInfo.title,
@@ -466,6 +482,19 @@ async function swHelper(
                     ...testParametersCache,
                 },
             });
+        },
+        clearServerTestParameters: async (port: number) => {
+            const basePort = parseInt(new URL(baseURL ?? 'http://localhost:3333').port) || 3333;
+            const minPort = basePort + (testInfo.config.workers ?? 1);
+            if (port <= minPort) {
+                throw new Error(
+                    `clearServerTestParameters: port ${port} must be > ${minPort} to avoid clobbering per-worker server state`
+                );
+            }
+            const u = new URL(baseURL ?? 'http://localhost');
+            u.pathname = '/api/test-clear';
+            u.port = String(port);
+            await request.delete(u.toString());
         },
         getServerResponses: async () => {
             const res = await request.get('/api/test-responses');

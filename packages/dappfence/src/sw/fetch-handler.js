@@ -3,7 +3,12 @@
  * Orchestrates security checks and app service worker integration
  */
 
-import { createBlockResponse, createRewriteResponse, injectResponseHeaders } from './response.js';
+import {
+    createBlockResponse,
+    createRedirectResponse,
+    createRewriteResponse,
+    injectResponseHeaders,
+} from './response.js';
 import { createLogger } from '../core/logger.js';
 import { API_PREFIX, MODE, VERIFICATION_STATUS } from '../core/constants.js';
 
@@ -78,6 +83,12 @@ export function createSecurityFetchHandler({
 
         if (verificationResult.status === VERIFICATION_STATUS.REWRITE) {
             return createRewriteResponse(response);
+        }
+        if (verificationResult.status === VERIFICATION_STATUS.REDIRECT) {
+            return createRedirectResponse(
+                verificationResult.location,
+                verificationResult.httpStatus
+            );
         }
         if (ctx.mode === MODE.PROTECTED && mustBlock) {
             // Navigation requests get the warning inline via createBlockResponse;

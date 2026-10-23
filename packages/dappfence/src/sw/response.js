@@ -70,6 +70,9 @@ const FILE_UNTRUSTED_VIEWS = {
         title: 'File not listed in trusted manifest',
         actualLabel: 'Actual hash',
     },
+    REDIRECT_NOT_DECLARED: {
+        title: 'Redirect source not declared in trusted manifest',
+    },
 };
 
 /**
@@ -255,15 +258,16 @@ export function injectResponseHeaders(response, headers) {
 }
 
 /**
- * Creates a 302-redirect response with no-cache headers. Use this for every
+ * Creates a 3xx-redirect response with no-cache headers. Use this for every
  * SW-side redirect so behavior (body, cache policy) is consistent.
  * `Response.redirect` is not used because it requires an absolute URL and
  * doesn't let us set additional headers like `Cache-Control`.
  * @param {string} location - The Location header value (relative or absolute)
+ * @param {number} [status=302] - 301 / 302 / 303 / 307 / 308
  */
-export function createRedirectResponse(location) {
+export function createRedirectResponse(location, status = 302) {
     return new Response(null, {
-        status: 302,
+        status,
         headers: {
             Location: location,
             'Cache-Control': 'no-cache, no-store, must-revalidate',
