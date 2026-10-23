@@ -105,13 +105,42 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-sock=/var/run/docker.sock
-if [ ! -S "$sock" ]; then
-    echo "error: $sock is not a socket." >&2
-    echo "       In Docker Desktop, enable Settings -> Advanced -> 'Allow the default Docker" >&2
-    echo "       socket to be used'." >&2
+# Docker Desktop on macOS does not create /var/run/docker.sock unless "Allow the default
+# Docker socket to be used" is ticked -- the real one lives under ~/.docker/run. Ask the CLI
+# where it is instead of requiring a Docker Desktop settings change. It is mounted at the
+# container's default path, so the CLI in there needs no DOCKER_HOST of its own.
+sock=""
+case "${DOCKER_HOST:-}" in
+    unix://*) sock=${DOCKER_HOST#unix://} ;;
+esac
+
+if [ -z "$sock" ]; then
+    endpoint=$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)
+    case "$endpoint" in
+        unix://*) sock=${endpoint#unix://} ;;
+    esac
+fi
+
+found=""
+for cand in "$sock" "$HOME/.docker/run/docker.sock" /var/run/docker.sock; do
+    if [ -n "$cand" ] && [ -S "$cand" ]; then
+        found=$cand
+        break
+    fi
+done
+
+if [ -z "$found" ]; then
+    echo "error: could not locate the Docker socket." >&2
+    echo "       Tried \$DOCKER_HOST, 'docker context inspect', ~/.docker/run/docker.sock" >&2
+    echo "       and /var/run/docker.sock." >&2
+    echo >&2
+    echo "       Fix either way:" >&2
+    echo "         - export DOCKER_HOST=unix:///path/to/docker.sock, or" >&2
+    echo "         - Docker Desktop -> Settings -> Advanced -> 'Allow the default Docker" >&2
+    echo "           socket to be used'" >&2
     exit 1
 fi
+sock=$found
 
 # The inner script does `out=$(mktemp -d)` and bind-mounts $out into the build container. A
 # default /tmp would be this helper's own tmpfs, invisible to the Mac daemon, so the manifest
@@ -128,6 +157,7 @@ trap 'rm -rf "$tmp"' EXIT
 helper=${HELPER_IMAGE:-docker:cli}
 
 echo "Repo:    $repo"
+echo "Socket:  $sock"
 echo "Helper:  $helper (throwaway; supplies bash/git/node only)"
 echo "TMPDIR:  $tmp"
 echo
