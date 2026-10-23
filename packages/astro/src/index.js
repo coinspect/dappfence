@@ -143,7 +143,30 @@ export default function dappfence(options = {}) {
     return {
         name: '@dappfence/astro',
         hooks: {
-            'astro:config:setup'({ logger, config, updateConfig, addMiddleware }) {
+            // `command` is 'build' only for `astro build`. Everything this integration
+            // produces — the copied runtime, the hashes, the signed manifest — comes out of
+            // astro:build:done, which no other command runs. So registering the middleware
+            // anywhere else injects a script tag pointing at two files that were never
+            // generated (both 404), and requiring a signing key would fail `astro dev` and
+            // `astro check` (which reports command 'sync') over a key they never use.
+            //
+            // The Vite plugins have to be skipped with it, not separately: the middleware's
+            // `virtual:dappfence/attrs` import has no other provider, so registering one
+            // without the other is a resolve error.
+            'astro:config:setup'({ command, logger, config, updateConfig, addMiddleware }) {
+                if (command !== 'build') {
+                    if (!secretKey) {
+                        logger.warn(
+                            'DappFence: no secretKey set — `astro build` will fail without one. ' +
+                                `Inactive for \`astro ${command}\`.`
+                        );
+                    } else {
+                        logger.info(
+                            `DappFence: inactive for \`astro ${command}\` — protection is applied by \`astro build\`.`
+                        );
+                    }
+                    return;
+                }
                 if (!secretKey) {
                     logger.error(
                         'DappFence: secretKey is required. ' +

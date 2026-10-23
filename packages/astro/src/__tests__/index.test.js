@@ -30,6 +30,7 @@ describe('astro:config:setup base-path handling', () => {
         const plugin = dappfence({ secretKey: SECRET_KEY });
         let capturedPlugins;
         plugin.hooks['astro:config:setup']({
+            command: 'build',
             logger: { error: vi.fn() },
             config: { base: '/my-app/', build: {} },
             updateConfig: (cfg) => {
@@ -51,6 +52,7 @@ describe('astro:config:setup base-path handling', () => {
         const plugin = dappfence({ secretKey: SECRET_KEY });
         let capturedPlugins;
         plugin.hooks['astro:config:setup']({
+            command: 'build',
             logger: { error: vi.fn() },
             config: { base: '/', build: {} },
             updateConfig: (cfg) => {
@@ -68,6 +70,7 @@ describe('astro:config:setup base-path handling', () => {
         const plugin = dappfence({ secretKey: SECRET_KEY });
         expect(() =>
             plugin.hooks['astro:config:setup']({
+                command: 'build',
                 logger: { error: vi.fn() },
                 config: { base: './', build: {} },
                 updateConfig: vi.fn(),
@@ -80,12 +83,69 @@ describe('astro:config:setup base-path handling', () => {
         const plugin = dappfence({ secretKey: SECRET_KEY });
         expect(() =>
             plugin.hooks['astro:config:setup']({
+                command: 'build',
                 logger: { error: vi.fn() },
                 config: { base: 'https://cdn.example.com/assets/', build: {} },
                 updateConfig: vi.fn(),
                 addMiddleware: vi.fn(),
             })
         ).toThrow(/is a full URL/);
+    });
+});
+
+// Everything the integration emits comes from astro:build:done, which only `astro build`
+// runs. Outside a build it must register nothing — a middleware there injects a script tag
+// pointing at a runtime and a manifest that were never generated — and it must not demand a
+// signing key, which previously broke `astro dev` and `astro check` outright.
+describe('astro:config:setup is inactive outside `astro build`', () => {
+    const setup = (command, options = {}) => {
+        const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+        const updateConfig = vi.fn();
+        const addMiddleware = vi.fn();
+        const run = () =>
+            dappfence(options).hooks['astro:config:setup']({
+                command,
+                logger,
+                config: { base: '/', build: {} },
+                updateConfig,
+                addMiddleware,
+            });
+        return { run, logger, updateConfig, addMiddleware };
+    };
+
+    for (const command of ['dev', 'sync', 'preview']) {
+        it(`registers no middleware and no Vite plugins for \`astro ${command}\``, () => {
+            const { run, updateConfig, addMiddleware } = setup(command, { secretKey: SECRET_KEY });
+            run();
+            expect(addMiddleware).not.toHaveBeenCalled();
+            expect(updateConfig).not.toHaveBeenCalled();
+        });
+
+        // The regression this guards: `astro check` reports command 'sync', so a throw here
+        // failed type-checking in any repo that had not set DAPPFENCE_SECRET_KEY.
+        it(`warns instead of throwing without a secretKey for \`astro ${command}\``, () => {
+            const { run, logger, addMiddleware } = setup(command);
+            expect(run).not.toThrow();
+            expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/no secretKey set/));
+            expect(addMiddleware).not.toHaveBeenCalled();
+        });
+    }
+
+    it('still throws without a secretKey for `astro build`', () => {
+        const { run, logger } = setup('build');
+        expect(run).toThrow(/secretKey is required/);
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('registers middleware and Vite plugins for `astro build`', () => {
+        const { run, updateConfig, addMiddleware } = setup('build', { secretKey: SECRET_KEY });
+        run();
+        expect(addMiddleware).toHaveBeenCalledWith(expect.objectContaining({ order: 'pre' }));
+        expect(updateConfig).toHaveBeenCalledWith(
+            expect.objectContaining({
+                vite: expect.objectContaining({ plugins: expect.any(Array) }),
+            })
+        );
     });
 });
 
