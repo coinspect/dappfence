@@ -53,7 +53,19 @@ export const MODE = {
  */
 /** @typedef {Readonly<{description: string, isViolation: boolean}>} Verdict */
 
-/** @returns {Verdict} */
+/**
+ * Generic so each call preserves the literal types of `description` and
+ * `isViolation`. Without that narrowing, every verdict looks identical at
+ * the type level (`description: string, isViolation: boolean`) and tsc
+ * can't derive subsets like "status descriptions where isViolation is
+ * true" — see `ViolatingStatusName` below for the payoff.
+ *
+ * @template {string} D
+ * @template {boolean} V
+ * @param {D} description
+ * @param {V} isViolation
+ * @returns {Readonly<{description: D, isViolation: V}>}
+ */
 const verdict = (description, isViolation) => Object.freeze({ description, isViolation });
 
 export const VERIFICATION_STATUS = Object.freeze({
@@ -68,6 +80,18 @@ export const VERIFICATION_STATUS = Object.freeze({
 });
 
 /** @typedef {typeof VERIFICATION_STATUS[keyof typeof VERIFICATION_STATUS]} VerificationStatus */
+
+/**
+ * The subset of status descriptions that actually reach the warning page.
+ * `recordSecurityViolation` short-circuits non-violation verdicts before
+ * recording a block, so MATCH / SKIPPED / REWRITE / CSP_PROTECTED /
+ * REDIRECT never appear on stored blocks. Dispatch tables that only
+ * handle violating cases key off this type.
+ * Derived automatically via `Extract` because `verdict()` is generic —
+ * add or reclassify a status in VERIFICATION_STATUS and this type updates
+ * in lockstep.
+ * @typedef {Extract<VerificationStatus, {isViolation: true}>['description']} ViolatingStatusName
+ */
 
 /**
  * @typedef {'NULL_RESPONSE'

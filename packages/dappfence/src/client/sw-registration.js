@@ -12,7 +12,7 @@ import {
 } from './security-handler.js';
 import { hasConfigManifest } from '../core/utils.js';
 import { MSG } from '../core/constants.js';
-import { createEmergencyPanel } from '../core/emergency-panel.js';
+import { createEmergencyPanel } from './emergency-panel.js';
 
 const logger = createLogger();
 
