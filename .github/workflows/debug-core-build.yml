@@ -1,0 +1,85 @@
+# TEMPORARY DIAGNOSTIC -- delete once the hash-gate mismatch is understood.
+#
+# The release hash gate reported that CI's rebuild of @dappfence/core differs from the bytes
+# the maintainer signed, but it only prints hashes: they say THAT two builds differ, never HOW.
+# This builds core exactly as the release `build` job does and uploads dist/ as an artifact, so
+# the two can be diffed byte for byte against a local snapshot.
+#
+# It touches nothing the release depends on: separate file, no tag required, dispatched against
+# any ref. It deliberately does NOT publish, pack, or read any secret.
+#
+# Keep the recipe identical to release.yml's build job. If it drifts, it stops being evidence.
+name: Debug core build
+
+on:
+    workflow_dispatch:
+        inputs:
+            ref:
+                description: 'Commit SHA to build (use the exact commit the manifest pinned)'
+                required: true
+                type: string
+
+jobs:
+    build:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 15
+        permissions:
+            contents: read
+        # Same digest-pinned image as the release build job.
+        container:
+            image: node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
+        defaults:
+            run:
+                shell: bash
+        steps:
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+              with:
+                  ref: ${{ inputs.ref }}
+
+            - name: The image's Node must match .nvmrc and the image tag
+              run: node scripts/check-build-node.js
+
+            - name: Install a known-good npm CLI version
+              run: |
+                  set -euo pipefail
+                  npm_version=$(node -p "require('./package.json').packageManager.replace(/^npm@/, '')")
+                  npm install -g "npm@${npm_version}"
+
+            - name: Install
+              run: npm ci --ignore-scripts
+
+            # Mirrors core-build-snapshot.sh's probe block so the two are directly comparable.
+            - name: Record the toolchain
+              run: |
+                  set -euo pipefail
+                  {
+                    echo "commit        $(git rev-parse HEAD)"
+                    echo "commit_short  $(git rev-parse --short=7 HEAD)"
+                    echo "uname -m      $(uname -m)"
+                    echo "node          $(node -v)"
+                    echo "npm           $(npm -v)"
+                    echo "vite          $(node -p "require('vite/package.json').version")"
+                    echo "rollup        $(node -p "require('rollup/package.json').version")"
+                    echo "esbuild       $(node -p "require('esbuild/package.json').version")"
+                    echo "terser        $(node -p "require('terser/package.json').version")"
+                    printf 'rollup native '
+                    node -e 'try{require("@rollup/rollup-linux-x64-gnu");console.log("LOADED (native parser)")}catch(e){console.log("FAILED -> JS/WASM fallback: "+e.message)}'
+                    echo "installed optional binaries:"
+                    ls -1 node_modules/@rollup node_modules/@esbuild 2>/dev/null | sed 's/^/  /' || true
+                  } | tee dist-toolchain.txt
+
+            - name: Build core exactly as the release build job does
+              run: |
+                  set -euo pipefail
+                  rm -rf packages/dappfence/dist
+                  COMMIT_HASH=$(git rev-parse --short=7 HEAD) npm run build -w @dappfence/core
+                  ( cd packages/dappfence/dist && sha256sum ./* | sed 's|\./||' ) | tee dist-sha256.txt
+
+            - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: ci-core-dist
+                  path: |
+                      packages/dappfence/dist/
+                      dist-toolchain.txt
+                      dist-sha256.txt
+                  if-no-files-found: error
