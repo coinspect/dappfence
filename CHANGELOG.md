@@ -8,7 +8,7 @@ therefore does not always move every package, and each entry below names the pac
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.3] — 2026-10-23
+## [0.1.3] — 2026-10-26
 
 Covers `@dappfence/core` and `@dappfence/astro`. `@dappfence/manifest-tools`, `@dappfence/next` and
 `@dappfence/vite` are unchanged since `0.1.2` and are not republished.
