@@ -7,10 +7,10 @@
             "bypassActors": "allowed"
         },
         {
-            "describedAs": "protection — immutable for everyone, maintainers included",
+            "describedAs": "protection — immutable for everyone, maintainers included. bypassActors is \"unchecked\", not \"forbidden\": GitHub omits bypass_actors entirely for a caller without repository write access, and the verify job runs with contents:read, so an empty list and a populated one are indistinguishable to it. Emptying the list does not change that — the field stays invisible. Verified empty by hand on 2026-10-26 (Settings → Rules → Rulesets → protection → Bypass list); re-verify there whenever this ruleset is edited, because nothing in CI will catch it being repopulated.",
             "pattern": "refs/tags/release-*",
             "rules": ["update", "deletion", "non_fast_forward"],
-            "bypassActors": "forbidden"
+            "bypassActors": "unchecked"
         }
     ],
     "environment": {
