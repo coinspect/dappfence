@@ -9,7 +9,9 @@
  * raw stores.
  */
 import { createManifestStore } from './manifest-store.js';
-import { createActiveBlocksStore, createApiTokenStore } from './security-stores.js';
+import { createActiveBlocksStore } from './security-stores.js';
+import { createApiTokenStore } from './api-token-store.js';
+import { createVerificationResultsStore } from './verification-results-store.js';
 
 /**
  * @param {object} db - Low-level Store backend from createDatabase()
@@ -19,5 +21,6 @@ export function createAppStore(db) {
         ...createManifestStore(db),
         activeBlocksStore: createActiveBlocksStore(db),
         apiTokenStore: createApiTokenStore(db),
+        verificationResultsStore: createVerificationResultsStore(db),
     };
 }

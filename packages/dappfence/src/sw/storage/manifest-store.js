@@ -7,15 +7,9 @@
  */
 
 import { calculateHash } from '../../core/crypto.js';
-import { createLogger } from '../../core/logger.js';
-
-const logger = createLogger();
-
-/** @typedef {import('../security-processor.js').SecurityEventDetails} SecurityEventDetails */
 
 // Trusted Manifest System constants
 const TRUSTED_MANIFEST_KEY = 'trusted-manifest';
-const VERIFICATION_RESULTS_KEY = 'verification-results';
 
 // Trusted-manifest priority queue: newest-first.
 // Primary cleanup: entries older than MAX_AGE_MS are pruned on each addLatest.
@@ -100,56 +94,7 @@ export function createManifestStore(database) {
         },
     };
 
-    /**
-     * Verification Results database Operations.
-     *
-     * One row per non-SKIPPED verifier outcome, bucketed by appVersion. The UI
-     * reads this via /sw-api/status to render per-status counts and the
-     * "recent verifications" drawer. Capped at 100 rows per bucket.
-     */
-    const verificationResultsStore = {
-        async get(appVersion) {
-            const allResults = (await database.get(VERIFICATION_RESULTS_KEY)) || {};
-            return allResults[appVersion] || [];
-        },
-
-        /**
-         * Persist a verifier outcome. Projection from SecurityEventDetails to the
-         * stored shape lives inline — any field not named below is dropped.
-         * @param {SecurityEventDetails} details
-         */
-        async add(details) {
-            const appVersion = details.manifestInfo?.appVersion;
-            if (!appVersion) {
-                logger.log('verificationResultsStore.add: no appVersion on details; skipping');
-                return;
-            }
-            return database.withTx(async (tx) => {
-                const allResults = (await tx.get(VERIFICATION_RESULTS_KEY)) || {};
-                if (!allResults[appVersion]) {
-                    allResults[appVersion] = [];
-                }
-                allResults[appVersion].push({
-                    status: details.status.description,
-                    timestamp: new Date().toISOString(),
-                    fileKey: details.fileKey,
-                    reason: details.reason,
-                    expectedHashes: details.expectedHashes,
-                    actualHash: details.actualHash,
-                });
-
-                // Keep only last 100 results per app version to avoid unbounded growth
-                if (allResults[appVersion].length > 100) {
-                    allResults[appVersion] = allResults[appVersion].slice(-100);
-                }
-
-                await tx.set(VERIFICATION_RESULTS_KEY, allResults);
-            });
-        },
-    };
-
     return {
         trustedManifestStore,
-        verificationResultsStore,
     };
 }

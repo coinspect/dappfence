@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createApiTokenStore } from '../storage/security-stores.js';
+import { createApiTokenStore } from '../storage/api-token-store.js';
 
 function createInMemoryDatabase() {
     const store = new Map();

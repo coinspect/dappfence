@@ -1,24 +1,22 @@
 /**
- * Security Stores
- * Active blocks tracking and API token management.
+ * Active Blocks Store
  *
- * All stores use dependency injection: each factory takes a { get, set, withTx }
- * database interface, making them testable with in-memory backends.
+ * Tracks per-URL security blocks that gate the fetch handler's mustBlock
+ * decision. Separates two concerns:
+ *   - ACTIVE_BLOCK_IDS_KEY: the blocking *condition* — just a list of IDs.
+ *   - BLOCKS_KEY: the block *data* — keyed map of violation records.
+ *
+ * Clearing only empties the condition; data records persist as history, so
+ * occurrenceCount keeps accumulating across clear/re-trigger cycles. Once a
+ * block ID has been seen (exists in the data map), recurrences only bump its
+ * counters — they never re-enter the active set. Users dismiss blocks in bulk.
+ *
+ * Uses dependency injection: createActiveBlocksStore(database) takes a
+ * { get, set, withTx } interface, making it testable with in-memory backends.
  */
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
-
-// --- Active Blocks Store ---
-//
-// The store separates two concerns:
-//   - ACTIVE_BLOCK_IDS_KEY: the blocking *condition* — just a list of IDs.
-//   - BLOCKS_KEY: the block *data* — keyed map of violation records.
-//
-// Clearing only empties the condition; data records persist as history, so
-// occurrenceCount keeps accumulating across clear/re-trigger cycles. Once a
-// block ID has been seen (exists in the data map), recurrences only bump its
-// counters — they never re-enter the active set. Users dismiss blocks in bulk.
 
 const ACTIVE_BLOCK_IDS_KEY = 'active-block-ids';
 const BLOCKS_KEY = 'blocks';
@@ -233,41 +231,4 @@ export function createActiveBlocksStore(database) {
         getSecurityBlock,
         clearBlockCondition,
     };
-}
-
-// --- API Token Store ---
-
-const API_TOKEN_KEY = 'API_TOKEN_KEY';
-
-/**
- * @param {object} database - Store backend with { withTx }
- */
-export function createApiTokenStore(database) {
-    // The token is generated once and never rotates for the SW's lifetime, so
-    // we memoize the first getApiToken() promise: subsequent callers await the
-    // same resolved promise instead of hitting IndexedDB per request.
-    let cached = null;
-    async function getApiToken() {
-        if (!cached) {
-            cached = database.withTx(async (tx) => {
-                const key = await tx.get(API_TOKEN_KEY);
-                if (key) {
-                    logger.log('Reusing API token for secure endpoints', key);
-                    return key;
-                }
-                // put a new key if none exists
-                const array = new Uint8Array(32);
-                crypto.getRandomValues(array);
-                const tokenKey = Array.from(array, (byte) =>
-                    byte.toString(16).padStart(2, '0')
-                ).join('');
-                logger.log('API token for secure endpoints', tokenKey);
-                await tx.set(API_TOKEN_KEY, tokenKey);
-                return tokenKey;
-            });
-        }
-        return cached;
-    }
-
-    return { getApiToken };
 }
