@@ -339,6 +339,17 @@ jobs:
         # setup-node version. Keep this equal to .github/build-image; verify asserts it.
         container:
             image: node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
+        # A container job's default shell is `sh`, not the `bash` the other jobs get, and the
+        # image's /bin/sh is dash -- which has no `pipefail`, so every `set -euo pipefail` in
+        # this job aborts the step on its first line. Set it once here rather than per step, so
+        # a step added later cannot silently reintroduce it.
+        #
+        # Keep this block BELOW `image:`. The verify job extracts the image with
+        # `grep -A1 '^        container:'`, so anything inserted between the two breaks that
+        # check -- and it is the check that asserts this image matches .github/build-image.
+        defaults:
+            run:
+                shell: bash
         steps:
             - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
