@@ -7,6 +7,11 @@
  */
 
 import { calculateHash } from '../../core/crypto.js';
+import { createLogger } from '../../core/logger.js';
+
+const logger = createLogger();
+
+/** @typedef {import('../security-processor.js').SecurityEventDetails} SecurityEventDetails */
 
 // Trusted Manifest System constants
 const TRUSTED_MANIFEST_KEY = 'trusted-manifest';
@@ -96,7 +101,11 @@ export function createManifestStore(database) {
     };
 
     /**
-     * Verification Results database Operations
+     * Verification Results database Operations.
+     *
+     * One row per non-SKIPPED verifier outcome, bucketed by appVersion. The UI
+     * reads this via /sw-api/status to render per-status counts and the
+     * "recent verifications" drawer. Capped at 100 rows per bucket.
      */
     const verificationResultsStore = {
         async get(appVersion) {
@@ -104,27 +113,29 @@ export function createManifestStore(database) {
             return allResults[appVersion] || [];
         },
 
-        async add(
-            appVersion,
-            { status, timestamp, fileKey, url, assetType, expectedHashes, actualHash }
-        ) {
+        /**
+         * Persist a verifier outcome. Projection from SecurityEventDetails to the
+         * stored shape lives inline — any field not named below is dropped.
+         * @param {SecurityEventDetails} details
+         */
+        async add(details) {
+            const appVersion = details.manifestInfo?.appVersion;
+            if (!appVersion) {
+                logger.log('verificationResultsStore.add: no appVersion on details; skipping');
+                return;
+            }
             return database.withTx(async (tx) => {
                 const allResults = (await tx.get(VERIFICATION_RESULTS_KEY)) || {};
                 if (!allResults[appVersion]) {
                     allResults[appVersion] = [];
                 }
-
-                // Named params act as the allowlist: extra fields passed by callers
-                // (per-response nonce, response Headers) are dropped by
-                // destructuring — nothing non-cloneable can reach IndexedDB.
                 allResults[appVersion].push({
-                    status,
-                    timestamp: timestamp || new Date().toISOString(),
-                    fileKey,
-                    url,
-                    assetType,
-                    expectedHashes,
-                    actualHash,
+                    status: details.status.description,
+                    timestamp: new Date().toISOString(),
+                    fileKey: details.fileKey,
+                    reason: details.reason,
+                    expectedHashes: details.expectedHashes,
+                    actualHash: details.actualHash,
                 });
 
                 // Keep only last 100 results per app version to avoid unbounded growth

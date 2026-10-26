@@ -130,6 +130,23 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(false);
     });
 
+    it('persists non-SKIPPED non-MATCH events (FILE_UNTRUSTED) via verificationResultsStore', async () => {
+        const { securityProcessor, appStore } = createProcessor();
+        await processAndDrain(securityProcessor, {
+            ...mismatchDetails,
+            manifestInfo: { appVersion: 'v1' },
+        });
+        const results = await appStore.verificationResultsStore.get('v1');
+        expect(results).toHaveLength(1);
+        expect(results[0]).toMatchObject({
+            status: 'FILE_UNTRUSTED',
+            reason: 'HASH_MISMATCH',
+            fileKey: '/app.js',
+        });
+        expect(results[0].url).toBeUndefined();
+        expect(results[0].assetType).toBeUndefined();
+    });
+
     it('does not persist SKIPPED to any store', async () => {
         const { securityProcessor, appStore } = createProcessor();
         await processAndDrain(securityProcessor, {

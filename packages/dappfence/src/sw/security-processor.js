@@ -83,13 +83,10 @@ const STATUS_LOG = {
  * cannot pass malformed payloads, so no runtime devAsserts.
  *
  * @param {object} deps
- * @param {object} deps.swContext
  * @param {object} deps.appStore
  */
-export function createSecurityProcessor({ swContext, appStore }) {
+export function createSecurityProcessor({ appStore }) {
     const { activeBlocksStore, verificationResultsStore } = appStore;
-    const userAgent = swContext.getUserAgent();
-    const origin = swContext.getLocationOrigin();
 
     // Shared in-memory buffer drained by reportAfterFetch / reportAfterInstall.
     // SW is single-threaded; multiple drains are idempotent (second finds empty).
@@ -124,16 +121,7 @@ export function createSecurityProcessor({ swContext, appStore }) {
         try {
             // Block records stay awaited on the hot path — losing one across
             // SW restart is worse than paying the IDB cost on a rare violation.
-            const mustBlock = await activeBlocksStore.recordSecurityBlock({
-                status: statusName,
-                reason: details.reason,
-                fileKey: details.fileKey,
-                url: details.url,
-                assetType: details.assetType,
-                expectedHashes: details.expectedHashes,
-                actualHash: details.actualHash,
-                httpStatus: details.httpStatus,
-            });
+            const mustBlock = await activeBlocksStore.recordSecurityBlock(details);
             if (mustBlock) {
                 logger.log(`Security violation handled: ${statusName} - ${details.fileKey}`);
             } else {
@@ -156,16 +144,7 @@ export function createSecurityProcessor({ swContext, appStore }) {
                 continue;
             }
             try {
-                const record = {
-                    ...details,
-                    status: details.status.description,
-                    appVersion: details.manifestInfo?.appVersion,
-                    userAgent,
-                    origin,
-                };
-                if (details.status === VERIFICATION_STATUS.MATCH) {
-                    await verificationResultsStore.add(record.appVersion, record);
-                }
+                await verificationResultsStore.add(details);
             } catch (error) {
                 logger.error('Failed to persist event:', error);
             }

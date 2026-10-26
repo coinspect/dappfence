@@ -28,13 +28,15 @@ const BLOCKS_KEY = 'blocks';
 /** @typedef {import('../../core/constants.js').AssetErrorReason} AssetErrorReason */
 /** @typedef {import('../../core/constants.js').FileUntrustedReason} FileUntrustedReason */
 /** @typedef {import('../../core/constants.js').ManifestLoadReason} ManifestLoadReason */
+/** @typedef {import('../security-processor.js').SecurityEventDetails} SecurityEventDetails */
 /** @typedef {VerificationStatus['description']} VerificationStatusName */
 
 /**
- * Block record shape. The first three fields are the identity (changes break
- * dedup across SW restarts). Per-status field invariants (actualHash on hash
- * verdicts, reason on ERROR / MANIFEST_UNTRUSTED, etc.) are statically enforced
- * via this typedef and verified by tests.
+ * Block record shape as persisted. Derived from `SecurityEventDetails` by
+ * extracting the identity + payload fields; `status` is the string form
+ * (`.description`) so IndexedDB structuredClone succeeds. Per-status field
+ * invariants (actualHash on hash verdicts, reason on ERROR / MANIFEST_UNTRUSTED,
+ * etc.) are statically enforced upstream via `SecurityEventDetails`.
  * @typedef {{
  *   status: VerificationStatusName,
  *   assetType: AssetType,
@@ -46,6 +48,26 @@ const BLOCKS_KEY = 'blocks';
  *   httpStatus?: number,
  * }} SecurityBlockData
  */
+
+/**
+ * Project the processor's `SecurityEventDetails` down to the subset the store
+ * persists. Keeps extraction + status-string conversion in one place so callers
+ * never hand-pick fields.
+ * @param {SecurityEventDetails} details
+ * @returns {SecurityBlockData}
+ */
+function toBlockData(details) {
+    return {
+        status: details.status.description,
+        assetType: details.assetType,
+        fileKey: details.fileKey,
+        url: details.url,
+        reason: details.reason,
+        actualHash: details.actualHash,
+        expectedHashes: details.expectedHashes,
+        httpStatus: details.httpStatus,
+    };
+}
 
 /**
  * Generate deterministic block ID using SHA-256 hash.
@@ -88,10 +110,11 @@ export function createActiveBlocksStore(database) {
      * true means "block the current request", regardless of whether that's because
      * we just added it to the active set or because we couldn't write and want to
      * fail-safe.
-     * @param {SecurityBlockData} blockData
+     * @param {SecurityEventDetails} details
      * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
      */
-    async function recordSecurityBlock(blockData) {
+    async function recordSecurityBlock(details) {
+        const blockData = toBlockData(details);
         const blockId = await generateBlockId(blockData);
         const mustBlock = await database.withTx(async (tx) => {
             try {

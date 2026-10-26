@@ -42,7 +42,7 @@ export function createServices(swGlobal) {
     logger.log('Configuration:', config);
 
     const appStore = createAppStore(createDatabase(swGlobal.indexedDB));
-    const securityProcessor = createSecurityProcessor({ swContext, appStore });
+    const securityProcessor = createSecurityProcessor({ appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext);
