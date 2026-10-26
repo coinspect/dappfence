@@ -282,4 +282,35 @@ describe('normalizeManifestData', () => {
             expect.objectContaining({ files: {}, pathRules: [], mode: 'reporting' })
         );
     });
+
+    describe('telemetry block', () => {
+        it('defaults telemetry.endpoint to null when absent', () => {
+            const result = normalizeManifestData({ files: {} });
+            expect(result.telemetry).toEqual({ endpoint: null });
+        });
+
+        it('keeps a string telemetry.endpoint', () => {
+            const result = normalizeManifestData({
+                files: {},
+                telemetry: { endpoint: 'https://logs.example/collect' },
+            });
+            expect(result.telemetry.endpoint).toBe('https://logs.example/collect');
+        });
+
+        it('coerces non-string telemetry.endpoint to null', () => {
+            expect(
+                normalizeManifestData({ files: {}, telemetry: { endpoint: 123 } }).telemetry
+                    .endpoint
+            ).toBeNull();
+            expect(
+                normalizeManifestData({ files: {}, telemetry: { endpoint: true } }).telemetry
+                    .endpoint
+            ).toBeNull();
+        });
+
+        it('coerces non-object telemetry to the default shape', () => {
+            const result = normalizeManifestData({ files: {}, telemetry: 'not an object' });
+            expect(result.telemetry).toEqual({ endpoint: null });
+        });
+    });
 });

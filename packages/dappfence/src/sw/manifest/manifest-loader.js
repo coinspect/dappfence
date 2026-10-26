@@ -156,6 +156,14 @@ export const normalizeManifestData = (manifestData) => {
                 : {},
     };
 
+    const rawTelemetry =
+        manifestData?.telemetry && typeof manifestData.telemetry === 'object'
+            ? manifestData.telemetry
+            : {};
+    const telemetry = {
+        endpoint: typeof rawTelemetry.endpoint === 'string' ? rawTelemetry.endpoint : null,
+    };
+
     return {
         ...(typeof manifestData === 'object' && manifestData !== null ? manifestData : {}),
         files: normalizedFiles,
@@ -163,6 +171,7 @@ export const normalizeManifestData = (manifestData) => {
         contentRules: Array.isArray(manifestData?.contentRules) ? manifestData.contentRules : [],
         mode: manifestData?.mode ?? MODE.REPORTING,
         csp,
+        telemetry,
     };
 };
 

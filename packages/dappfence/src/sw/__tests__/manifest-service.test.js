@@ -71,3 +71,71 @@ describe('createManifestService — composition', () => {
         expect(result.reason).toBe('CONFIG_ERROR');
     });
 });
+
+describe('resolveManifest — telemetry fields', () => {
+    beforeEach(() => {
+        globalThis.__FEATURES__ = {};
+    });
+    afterEach(() => {
+        delete globalThis.__FEATURES__;
+    });
+
+    it('prefers the manifest endpoint over the config fallback', async () => {
+        const latestManifest = {
+            appVersion: 'v1',
+            manifest: {
+                files: {},
+                telemetry: { endpoint: 'https://logs.manifest/collect' },
+            },
+        };
+        const { deps } = setup({
+            latestManifest,
+            config: { telemetryEndpoint: 'https://logs.config/collect' },
+        });
+        const ctx = await createManifestService(deps).resolveManifest();
+        expect(ctx.telemetryUrl).toBe('https://logs.manifest/collect');
+        expect(ctx.appVersion).toBe('v1');
+    });
+
+    it('falls back to config.telemetryEndpoint when manifest endpoint is null', async () => {
+        const latestManifest = {
+            appVersion: 'v2',
+            manifest: { files: {}, telemetry: { endpoint: null } },
+        };
+        const { deps } = setup({
+            latestManifest,
+            config: { telemetryEndpoint: 'https://logs.config/collect' },
+        });
+        const ctx = await createManifestService(deps).resolveManifest();
+        expect(ctx.telemetryUrl).toBe('https://logs.config/collect');
+        expect(ctx.appVersion).toBe('v2');
+    });
+
+    it('returns null telemetryUrl when neither manifest nor config supply one', async () => {
+        const latestManifest = {
+            appVersion: 'v3',
+            manifest: { files: {}, telemetry: { endpoint: null } },
+        };
+        const { deps } = setup({ latestManifest, config: {} });
+        const ctx = await createManifestService(deps).resolveManifest();
+        expect(ctx.telemetryUrl).toBeNull();
+        expect(ctx.appVersion).toBe('v3');
+    });
+
+    it('returns null appVersion when no manifest is cached, still honors config endpoint', async () => {
+        const { deps } = setup({ config: { telemetryEndpoint: 'https://logs.config/collect' } });
+        const ctx = await createManifestService(deps).resolveManifest();
+        expect(ctx.telemetryUrl).toBe('https://logs.config/collect');
+        expect(ctx.appVersion).toBeNull();
+    });
+
+    it('does not leak the raw manifest on the returned context', async () => {
+        const latestManifest = {
+            appVersion: 'v4',
+            manifest: { files: {}, telemetry: { endpoint: 'https://logs/' } },
+        };
+        const { deps } = setup({ latestManifest });
+        const ctx = await createManifestService(deps).resolveManifest();
+        expect(ctx).not.toHaveProperty('manifest');
+    });
+});

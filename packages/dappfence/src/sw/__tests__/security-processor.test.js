@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createAppStore } from '../storage/index.js';
 import { createSecurityProcessor } from '../security-processor.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
@@ -19,17 +19,34 @@ function createInMemoryDatabase() {
     };
 }
 
-function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com' } = {}) {
+function createSwContext({
+    userAgent = 'test-ua',
+    origin = 'https://example.com',
+    fetch = vi.fn(),
+    registerSync = vi.fn().mockResolvedValue(undefined),
+} = {}) {
     return {
         getUserAgent: () => userAgent,
         getLocationOrigin: () => origin,
+        fetch,
+        registerSync,
     };
 }
 
-function createProcessor({ db = createInMemoryDatabase(), swContext = createSwContext() } = {}) {
+function createManifestService({ telemetryUrl = null, appVersion = null } = {}) {
+    return {
+        resolveManifest: vi.fn().mockResolvedValue({ telemetryUrl, appVersion }),
+    };
+}
+
+function createProcessor({
+    db = createInMemoryDatabase(),
+    swContext = createSwContext(),
+    manifestService = createManifestService(),
+} = {}) {
     const appStore = createAppStore(db);
-    const securityProcessor = createSecurityProcessor({ swContext, appStore });
-    return { appStore, securityProcessor };
+    const securityProcessor = createSecurityProcessor({ swContext, appStore, manifestService });
+    return { appStore, securityProcessor, manifestService, swContext };
 }
 
 function createFetchEvent(clientId = 'c1') {
@@ -282,5 +299,227 @@ describe('processSecurityEvent', () => {
             const blocks = await appStore.activeBlocksStore.getActiveBlocks();
             expect(blocks).toHaveLength(2);
         });
+    });
+});
+
+describe('sendPendingReports (via reportAfterFetch)', () => {
+    const mismatchDetails = {
+        status: VERIFICATION_STATUS.FILE_UNTRUSTED,
+        reason: 'HASH_MISMATCH',
+        fileKey: '/app.js',
+        url: 'https://example.com/app.js',
+        expectedHashes: ['aaaa1111'],
+        actualHash: 'cccc3333',
+        assetType: 'asset',
+    };
+    const mismatchDetails2 = { ...mismatchDetails, fileKey: '/other.js' };
+
+    const okFetch = () =>
+        vi.fn().mockResolvedValue(new Response(null, { status: 204, statusText: 'No Content' }));
+    const failFetch = () =>
+        vi.fn().mockResolvedValue(new Response(null, { status: 500, statusText: 'Server Error' }));
+    const throwFetch = () => vi.fn().mockRejectedValue(new Error('network down'));
+
+    it('skips when telemetryUrl is null (no manifest, no config)', async () => {
+        const fetch = okFetch();
+        const { securityProcessor, appStore } = createProcessor({
+            swContext: createSwContext({ fetch }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect(fetch).not.toHaveBeenCalled();
+        const [block] = await appStore.activeBlocksStore.getActiveBlocks();
+        expect(block.reportedAt).toBeNull();
+    });
+
+    it('skips when there are no pending blocks', async () => {
+        const fetch = okFetch();
+        const { securityProcessor } = createProcessor({
+            swContext: createSwContext({ fetch }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('POSTs a batched envelope and marks blocks reported on 2xx', async () => {
+        const fetch = okFetch();
+        const { securityProcessor, appStore } = createProcessor({
+            swContext: createSwContext({
+                fetch,
+                userAgent: 'ua-x',
+                origin: 'https://x.example',
+            }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs.example/collect',
+                appVersion: 'v-42',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.processSecurityEvent(mismatchDetails2);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const [url, init] = fetch.mock.calls[0];
+        expect(url).toBe('https://logs.example/collect');
+        expect(init.method).toBe('POST');
+        expect(init.keepalive).toBe(true);
+        const body = JSON.parse(init.body);
+        expect(body).toMatchObject({
+            appVersion: 'v-42',
+            origin: 'https://x.example',
+            userAgent: 'ua-x',
+        });
+        expect(body.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(body.events).toHaveLength(2);
+        expect(body.events.map((e) => e.fileKey).sort()).toEqual(['/app.js', '/other.js']);
+
+        const blocks = await appStore.activeBlocksStore.getAllBlocks();
+        expect(blocks.every((b) => b.reportedAt === body.sentAt)).toBe(true);
+        expect(await appStore.activeBlocksStore.getPendingReportBlocks()).toEqual([]);
+    });
+
+    it('leaves blocks unreported AND registers a sync retry when POST returns non-2xx', async () => {
+        const fetch = failFetch();
+        const registerSync = vi.fn().mockResolvedValue(undefined);
+        const { securityProcessor, appStore } = createProcessor({
+            swContext: createSwContext({ fetch, registerSync }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(registerSync).toHaveBeenCalledWith('dappfence-report-events');
+        const [block] = await appStore.activeBlocksStore.getPendingReportBlocks();
+        expect(block.fileKey).toBe('/app.js');
+        expect(block.reportedAt).toBeNull();
+    });
+
+    it('reportOnSync throws on POST failure so Chromium Background Sync retries', async () => {
+        const { securityProcessor } = createProcessor({
+            swContext: createSwContext({ fetch: failFetch() }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await expect(
+            securityProcessor.reportOnSync({ tag: 'dappfence-report-events', lastChance: false })
+        ).rejects.toThrow(/POST failed/);
+    });
+
+    it('reportOnSync drives the drain and clears pending on success', async () => {
+        // First POST fails (500) → sync registered, block stays pending.
+        // Then reportOnSync fires with fetch now succeeding → block marked.
+        const fetch = vi
+            .fn()
+            .mockResolvedValueOnce(new Response(null, { status: 500 }))
+            .mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const { securityProcessor, appStore } = createProcessor({
+            swContext: createSwContext({ fetch }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect((await appStore.activeBlocksStore.getPendingReportBlocks()).length).toBe(1);
+
+        await securityProcessor.reportOnSync({
+            tag: 'dappfence-report-events',
+            lastChance: false,
+        });
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(await appStore.activeBlocksStore.getPendingReportBlocks()).toEqual([]);
+    });
+
+    it('swallows fetch exceptions and leaves blocks unreported', async () => {
+        const fetch = throwFetch();
+        const { securityProcessor, appStore } = createProcessor({
+            swContext: createSwContext({ fetch }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await expect(
+            securityProcessor.reportAfterFetch({
+                request: { mode: 'no-cors' },
+                clientId: 'c1',
+                resultingClientId: '',
+            })
+        ).resolves.toBeUndefined();
+        const pending = await appStore.activeBlocksStore.getPendingReportBlocks();
+        expect(pending).toHaveLength(1);
+    });
+
+    it('a successful send then a recurrence re-triggers no POST (dedup via reportedAt)', async () => {
+        const fetch = okFetch();
+        const { securityProcessor } = createProcessor({
+            swContext: createSwContext({ fetch }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+
+        // recurrence: same block id, reportedAt stays stamped, nothing new to POST
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterFetch({
+            request: { mode: 'no-cors' },
+            clientId: 'c1',
+            resultingClientId: '',
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('reportAfterInstall also drives sendPendingReports', async () => {
+        const fetch = okFetch();
+        const { securityProcessor } = createProcessor({
+            swContext: createSwContext({ fetch }),
+            manifestService: createManifestService({
+                telemetryUrl: 'https://logs/',
+                appVersion: 'v1',
+            }),
+        });
+        await securityProcessor.processSecurityEvent(mismatchDetails);
+        await securityProcessor.reportAfterInstall();
+        expect(fetch).toHaveBeenCalledTimes(1);
     });
 });

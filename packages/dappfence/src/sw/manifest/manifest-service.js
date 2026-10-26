@@ -36,10 +36,17 @@ export const createManifestService = (deps) => {
     const resolveManifest = async () => {
         const latestManifest = await manifestLoader.resolveLatest();
         const mode = getEffectiveMode(latestManifest?.manifest);
-        logger.log(`Resolved manifest ${latestManifest?.appVersion} with mode ${mode}`);
+        // Priority: signed manifest's telemetry.endpoint beats the config URL-param fallback.
+        const telemetryUrl =
+            latestManifest?.manifest?.telemetry?.endpoint ?? deps.config?.telemetryEndpoint ?? null;
+        logger.log(
+            `Resolved manifest ${latestManifest?.appVersion} with mode ${mode} and telemetryUrl ${telemetryUrl}`
+        );
 
         return {
             mode,
+            appVersion: latestManifest?.appVersion ?? null,
+            telemetryUrl,
             prepareRequest: (request) => verifier.prepareRequest(request, latestManifest),
             verifyResponse: (req, response, clientId = null) =>
                 verifier.verifyResponse(req, response, clientId, latestManifest),
