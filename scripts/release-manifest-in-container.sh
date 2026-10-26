@@ -67,7 +67,10 @@ docker run --rm \
     -e "SHA=$sha" \
     "$image" \
     bash -euo pipefail -c '
+        # /src is owned by the host user, not root. A local clone checks the .git directory
+        # itself as well as the worktree, so both need the exception.
         git config --global --add safe.directory /src
+        git config --global --add safe.directory /src/.git
         git clone --quiet --no-hardlinks /src /build
         cd /build
         git checkout --quiet --detach "$SHA"
