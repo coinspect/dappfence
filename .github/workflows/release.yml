@@ -385,6 +385,27 @@ jobs:
                     exit 1
                   fi
 
+                  # This job runs in a container as root against a checkout owned by another
+                  # uid, so git refuses it as "dubious ownership" unless the directory is
+                  # declared safe. actions/checkout does declare it, but under a HOME it
+                  # overrides only for its own duration, so the setting is gone by the time
+                  # this step runs. Every `git` call below then fails, and each one fails
+                  # SILENTLY in a way that looks like success:
+                  #
+                  #   - `$(git status --porcelain)` is empty, so both working-tree guards pass
+                  #     without checking anything;
+                  #   - `$(git rev-parse --short=7 HEAD)` is empty, so COMMIT_HASH is unset and
+                  #     vite.config.js substitutes its 'not-for-release' fallback into the
+                  #     published bundle.
+                  #
+                  # Declare it, then prove git actually works before relying on it.
+                  git config --global --add safe.directory "$PWD"
+                  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+                    echo "::error::git cannot read this checkout, so the guards below would pass without checking anything"
+                    git status 2>&1 | head -5
+                    exit 1
+                  fi
+
                   # Nothing tracked may differ from the verified SHA. With tests in their own
                   # job this is cheap insurance rather than the main control -- only the
                   # install and the allowlist read have happened so far -- but it costs
@@ -408,7 +429,18 @@ jobs:
                   # output. That build used to happen via its prepublishOnly script during
                   # `npm publish`; the publish job no longer runs repo code, so it happens
                   # here instead, with COMMIT_HASH set exactly as prepublishOnly set it.
-                  COMMIT_HASH=$(git rev-parse --short=7 HEAD) npm run build -w @dappfence/core
+                  #
+                  # Resolved into a variable and asserted rather than inlined as a command
+                  # prefix: `COMMIT_HASH=$(cmd) npm run ...` does not abort under `set -e` when
+                  # the substitution fails, it just runs the build with an empty value. The
+                  # bundle then ships vite.config.js's 'not-for-release' fallback, which is a
+                  # silent loss of the commit provenance the manifest exists to bind.
+                  commit_hash=$(git rev-parse --short=7 HEAD)
+                  if [ -z "$commit_hash" ]; then
+                    echo "::error::could not resolve the commit hash to stamp into the bundle"
+                    exit 1
+                  fi
+                  COMMIT_HASH="$commit_hash" npm run build -w @dappfence/core
 
                   # The build is itself repository code (packages/dappfence/vite.config.js and
                   # whatever it loads), so it runs after the check above and could edit another

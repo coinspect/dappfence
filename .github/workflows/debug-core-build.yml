@@ -69,6 +69,28 @@ jobs:
               run: npm ci --ignore-scripts
 
             # Mirrors core-build-snapshot.sh's probe block so the two are directly comparable.
+            # Diagnostic: show what git does BEFORE safe.directory is declared. This is the
+            # failure that made CI stamp 'not-for-release' into the bundle, and it is silent
+            # -- the command substitution yields an empty string and the build carries on.
+            - name: Show git's state before the fix
+              continue-on-error: true
+              run: |
+                  echo "--- git rev-parse HEAD (stderr included) ---"
+                  git rev-parse HEAD 2>&1 || echo "(exit $?)"
+                  echo "--- git status --porcelain (stderr included) ---"
+                  git status --porcelain 2>&1 | head -5 || echo "(exit $?)"
+
+            # Same fix as release.yml's build job.
+            - name: Declare the checkout safe and prove git works
+              run: |
+                  set -euo pipefail
+                  git config --global --add safe.directory "$PWD"
+                  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+                    echo "::error::git still cannot read this checkout"
+                    git status 2>&1 | head -5
+                    exit 1
+                  fi
+
             - name: Record the toolchain
               run: |
                   set -euo pipefail
