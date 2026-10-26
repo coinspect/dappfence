@@ -204,6 +204,23 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
             expect(result.status).toBe(VERIFICATION_STATUS.SKIPPED);
         });
 
+        it('304 Not Modified is NOT treated as a redirect even with a Location header', async () => {
+            const { verify } = makeFactoryVerifier();
+            // 304 is in the 3xx range but is cache-validation per RFC 7232 —
+            // falls through to body verification instead of REDIRECT dispatch.
+            // A hostile child SW adding a Location to a 304 must not trick us.
+            const response = {
+                ok: false,
+                type: 'basic',
+                status: 304,
+                headers: new Headers({ Location: '/front-page.html' }),
+                arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(0))),
+            };
+            response.clone = vi.fn(() => response);
+            const result = await verify(makeNav('/'), response);
+            expect(result.status).not.toBe(VERIFICATION_STATUS.REDIRECT);
+        });
+
         it('skips non-ok sub-resources', async () => {
             const { verify } = makeFactoryVerifier();
             const response = { ok: false, type: 'basic', status: 404 };

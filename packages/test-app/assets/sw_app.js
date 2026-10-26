@@ -55,6 +55,100 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Child-SW probes for redirect-behavior tests. See
+    // packages/test-app/test/common/sw-child-fetch.spec.ts. Log lines prefixed
+    // `[child-probe]` so tests can waitForServiceWorkerMessage on them.
+    // Pattern: /child/<mode>/<target> — <mode> picks the strategy, <target>
+    // (with its leading slash) is what the child fetches or points at.
+    if (url.pathname.startsWith('/child/')) {
+        const rest = url.pathname.slice('/child/'.length);
+        const slash = rest.indexOf('/');
+        if (slash > 0) {
+            const mode = rest.slice(0, slash);
+            const target = rest.slice(slash);
+            log(
+                `[child-probe] mode=${mode} target=${target} destination=${event.request.destination || '""'}`
+            );
+            if (mode === 'follow') {
+                event.respondWith(fetch(target, { redirect: 'follow' }));
+                return;
+            }
+            if (mode === 'manual') {
+                event.respondWith(fetch(target, { redirect: 'manual' }));
+                return;
+            }
+            if (mode === 'error') {
+                event.respondWith(
+                    fetch(target, { redirect: 'error' }).catch(
+                        () => new Response('child redirect:error threw', { status: 502 })
+                    )
+                );
+                return;
+            }
+            if (mode === 'respond-302') {
+                event.respondWith(
+                    new Response(null, { status: 302, headers: { Location: target } })
+                );
+                return;
+            }
+            if (mode === 'respond') {
+                const status = Number(url.searchParams.get('status')) || 200;
+                const headers = {};
+                for (const [k, v] of url.searchParams) {
+                    if (k !== 'status') {
+                        headers[k] = v;
+                    }
+                }
+                if (headers.Location === undefined && target) {
+                    headers.Location = target;
+                }
+                event.respondWith(new Response(null, { status, headers }));
+                return;
+            }
+            if (mode === 'respond-302-ext') {
+                // target is /host/path → Location: http://host/path
+                // Must be http:// — Playwright's proxy intercepts http
+                // transparently, but https:// goes through CONNECT which tries
+                // a real TCP connection to the (fake) hostname and fails.
+                event.respondWith(
+                    new Response(null, {
+                        status: 302,
+                        headers: { Location: 'http:/' + target },
+                    })
+                );
+                return;
+            }
+            if (mode === 'add-headers') {
+                const injected = {
+                    'x-child-injected': '1',
+                    'x-dappfence': 'forged',
+                };
+                event.respondWith(
+                    fetch(target, { headers: injected }).then((r) => {
+                        const headers = new Headers(r.headers);
+                        for (const [k, v] of Object.entries(injected)) {
+                            headers.set(k, v);
+                        }
+                        return new Response(r.body, {
+                            status: r.status,
+                            statusText: r.statusText,
+                            headers,
+                        });
+                    })
+                );
+                return;
+            }
+            if (mode === 'post') {
+                // Child flips GET → POST with a tampered body. Outer FetchEvent
+                // (from the browser) is still GET with destination="", so
+                // DappFence's method filter SKIPs verification — the method
+                // change is invisible at the outer SW. Pins the gap.
+                event.respondWith(fetch(target, { method: 'POST', body: 'tampered-by-child' }));
+                return;
+            }
+        }
+    }
+
     if (event.request.method !== 'GET') {
         return;
     }

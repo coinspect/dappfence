@@ -161,9 +161,52 @@ export const normalizeManifestData = (manifestData) => {
         files: normalizedFiles,
         pathRules: Array.isArray(manifestData?.pathRules) ? manifestData.pathRules : [],
         contentRules: Array.isArray(manifestData?.contentRules) ? manifestData.contentRules : [],
+        redirects: normalizeRedirects(manifestData?.redirects),
         mode: manifestData?.mode ?? MODE.REPORTING,
         csp,
     };
+};
+
+const normalizeRedirects = (raw) => {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const seenFroms = new Set();
+    const kept = [];
+    for (const entry of raw) {
+        const skip = (why) => {
+            logger.warn(`Dropping redirect entry (${why}): ${JSON.stringify(entry)}`);
+            return null;
+        };
+        if (
+            !entry ||
+            typeof entry.from !== 'string' ||
+            typeof entry.to !== 'string' ||
+            entry.to.length === 0
+        ) {
+            skip('bad shape');
+            continue;
+        }
+        if (/^(javascript|data):/i.test(entry.to)) {
+            skip('unsafe scheme in to');
+            continue;
+        }
+        if (entry.to === entry.from) {
+            skip('self-loop');
+            continue;
+        }
+        if (seenFroms.has(entry.from)) {
+            skip('duplicate from');
+            continue;
+        }
+        if (entry.status !== undefined && !Number.isInteger(entry.status)) {
+            skip('non-integer status');
+            continue;
+        }
+        seenFroms.add(entry.from);
+        kept.push({ from: entry.from, to: entry.to, status: entry.status });
+    }
+    return kept;
 };
 
 /**
