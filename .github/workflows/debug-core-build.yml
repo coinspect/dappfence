@@ -32,9 +32,29 @@ jobs:
             run:
                 shell: bash
         steps:
+            # Deliberately NOT `ref: ${{ inputs.ref }}`. Passing a raw commit SHA there makes
+            # checkout treat it as an unqualified ref name and fetch
+            # `+refs/heads/<sha>*` / `+refs/tags/<sha>*`, which match nothing and fail. So:
+            # clone the full history (and tags), then resolve whatever was asked for locally,
+            # which works for a SHA, a tag or a branch alike.
             - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
               with:
-                  ref: ${{ inputs.ref }}
+                  fetch-depth: 0
+                  fetch-tags: true
+
+            # Via env, not direct interpolation into the script -- a workflow_dispatch input is
+            # attacker-controllable in principle and must never be pasted into a shell command.
+            - name: Check out the requested commit
+              env:
+                  REF: ${{ inputs.ref }}
+              run: |
+                  set -euo pipefail
+                  if ! git rev-parse --verify --quiet "${REF}^{commit}" >/dev/null; then
+                    echo "::error::'${REF}' does not resolve to a commit in this repository"
+                    exit 1
+                  fi
+                  git checkout --quiet --detach "${REF}^{commit}"
+                  echo "HEAD is now $(git rev-parse HEAD)"
 
             - name: The image's Node must match .nvmrc and the image tag
               run: node scripts/check-build-node.js
