@@ -1,6 +1,6 @@
 /**
  * Security Stores
- * Active blocks tracking, security event logging, and API token management.
+ * Active blocks tracking and API token management.
  *
  * All stores use dependency injection: each factory takes a { get, set, withTx }
  * database interface, making them testable with in-memory backends.
@@ -210,68 +210,6 @@ export function createActiveBlocksStore(database) {
         getSecurityBlock,
         clearBlockCondition,
     };
-}
-
-// --- Security Events Store ---
-
-const SECURITY_EVENTS_KEY = 'security-events';
-
-/**
- * @param {object} database - Storage backend with { get, set }
- */
-export function createSecurityEventsStore(database) {
-    async function logSecurityEvent({
-        status,
-        reason,
-        assetType,
-        fileKey,
-        url,
-        expectedHashes,
-        actualHash,
-        httpStatus,
-        userAgent,
-        origin,
-        timestamp,
-    }) {
-        try {
-            const events = (await database.get(SECURITY_EVENTS_KEY)) || [];
-            events.push({
-                status,
-                reason,
-                assetType,
-                fileKey,
-                url,
-                expectedHashes,
-                actualHash,
-                httpStatus,
-                userAgent,
-                origin,
-                id: `event_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                timestamp: timestamp || new Date().toISOString(),
-            });
-
-            // Keep only last 1000 events to prevent storage bloat
-            if (events.length > 1000) {
-                events.splice(0, events.length - 1000);
-            }
-            await database.set(SECURITY_EVENTS_KEY, events);
-            logger.log('Security event logged:', status);
-        } catch (error) {
-            logger.error('Failed to log security event:', error);
-        }
-    }
-
-    async function getSecurityEvents(limit = 100) {
-        try {
-            const events = (await database.get(SECURITY_EVENTS_KEY)) || [];
-            return events.slice(-limit).reverse(); // Most recent first
-        } catch (error) {
-            logger.error('Failed to get security events:', error);
-            return [];
-        }
-    }
-
-    return { logSecurityEvent, getSecurityEvents };
 }
 
 // --- API Token Store ---

@@ -24,7 +24,6 @@ describe('createAppStore', () => {
         expect(appStore.trustedManifestStore).toBeDefined();
         expect(appStore.verificationResultsStore).toBeDefined();
         expect(appStore.activeBlocksStore).toBeDefined();
-        expect(appStore.securityEventsStore).toBeDefined();
         expect(appStore.apiTokenStore).toBeDefined();
     });
 
@@ -41,12 +40,6 @@ describe('createAppStore', () => {
         const appStore = createAppStore(createInMemoryDatabase());
         const blocks = await appStore.activeBlocksStore.getActiveBlocks();
         expect(blocks).toEqual([]);
-    });
-
-    it('security events store is functional', async () => {
-        const appStore = createAppStore(createInMemoryDatabase());
-        const events = await appStore.securityEventsStore.getSecurityEvents();
-        expect(events).toEqual([]);
     });
 
     it('api token store is functional', async () => {

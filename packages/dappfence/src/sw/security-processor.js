@@ -65,7 +65,7 @@ const STATUS_LOG = {
  * Security Processor
  *
  * Owns the orchestration of what happens with a verification verdict:
- *   - persists the event (securityEventsStore)
+ *   - persists MATCH records (verificationResultsStore)
  *   - registers the active block when the verdict is a violation (activeBlocksStore)
  *   - returns mustBlock for the caller
  *
@@ -87,7 +87,7 @@ const STATUS_LOG = {
  * @param {object} deps.appStore
  */
 export function createSecurityProcessor({ swContext, appStore }) {
-    const { securityEventsStore, activeBlocksStore, verificationResultsStore } = appStore;
+    const { activeBlocksStore, verificationResultsStore } = appStore;
     const userAgent = swContext.getUserAgent();
     const origin = swContext.getLocationOrigin();
 
@@ -165,8 +165,6 @@ export function createSecurityProcessor({ swContext, appStore }) {
                 };
                 if (details.status === VERIFICATION_STATUS.MATCH) {
                     await verificationResultsStore.add(record.appVersion, record);
-                } else {
-                    await securityEventsStore.logSecurityEvent(record);
                 }
             } catch (error) {
                 logger.error('Failed to persist event:', error);
