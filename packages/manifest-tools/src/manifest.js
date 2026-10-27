@@ -247,6 +247,10 @@ export async function walk(base, dir, excludes, pathPrefix = '') {
  * @param {object}   opts.logger            - Logger with .info / .warn / .error
  * @param {object}   [opts.extraHashes]     - Pre-computed { webPath: sriHash } entries merged into files
  *                                           (e.g. SSR routes hashed by the integration at build time)
+ * @param {object}   [opts.scriptHash]      - Pre-computed { webPath: sriHash } for the dappfence script
+ *                                           itself, which integrations copy in and exclude from the walk.
+ *                                           Merged into files like extraHashes but logged separately, so
+ *                                           the pre-computed count reports only real route hashes.
  * @param {string}   [opts.pathPrefix]      - URL prefix prepended to every hashed file's web path.
  *                                           Use when outDir maps to a URL sub-path (e.g. '/_next/static').
  * @param {object}   [opts.csp]             - CSP configuration merged into the manifest.
@@ -286,6 +290,7 @@ export async function generateManifest({
     scriptAttrs,
     logger,
     extraHashes,
+    scriptHash,
     pathPrefix = '',
     csp,
 }) {
@@ -331,10 +336,22 @@ export async function generateManifest({
         }
     }
 
-    if (extraHashes) {
-        const count = Object.keys(extraHashes).length;
+    // The dappfence script is copied into outDir but excluded from the walk, so
+    // its hash arrives pre-computed under the exact scriptSrc URL. It is merged
+    // first (extraHashes still wins on conflict) and reported on its own line:
+    // folding it into the extraHashes count made every static build claim one
+    // pre-computed route hash it never had.
+    if (scriptHash) {
+        Object.assign(fileHashes, scriptHash);
+        for (const webPath of Object.keys(scriptHash)) {
+            logger.info(`DappFence: hashed dappfence script → ${webPath}`);
+        }
+    }
+
+    const extraHashCount = extraHashes ? Object.keys(extraHashes).length : 0;
+    if (extraHashCount > 0) {
         Object.assign(fileHashes, extraHashes);
-        logger.info(`DappFence: merged ${count} pre-computed SSR route hash(es) into manifest`);
+        logger.info(`DappFence: merged ${extraHashCount} pre-computed hash(es) into manifest`);
     }
 
     const cspPages = { ...cspBuiltPages, ...(csp?.pages ?? {}) };

@@ -203,6 +203,62 @@ describe('generateManifest', () => {
         expect(manifest.pay.contentRules).toEqual([]);
     });
 
+    it('merges scriptHash into files without counting it as a pre-computed hash', async () => {
+        const outDir = await setup();
+        const logs = [];
+        await generateManifest({
+            outDir,
+            manifestPath: 'integrity-manifest.json',
+            exclude: [],
+            mode: 'protected',
+            logger: { ...LOGGER, info: (m) => logs.push(m) },
+            scriptAttrs: MINIMAL,
+            scriptHash: { '/dappfence.js': 'sha256-script' },
+        });
+        const manifest = JSON.parse(
+            await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
+        );
+        expect(manifest.pay.files['/dappfence.js']).toBe('sha256-script');
+        expect(logs).toContain('DappFence: hashed dappfence script → /dappfence.js');
+        expect(logs.some((m) => m.includes('pre-computed'))).toBe(false);
+    });
+
+    it('reports only extraHashes in the pre-computed count, and extraHashes wins on conflict', async () => {
+        const outDir = await setup();
+        const logs = [];
+        await generateManifest({
+            outDir,
+            manifestPath: 'integrity-manifest.json',
+            exclude: [],
+            mode: 'protected',
+            logger: { ...LOGGER, info: (m) => logs.push(m) },
+            scriptAttrs: MINIMAL,
+            scriptHash: { '/dappfence.js': 'sha256-script' },
+            extraHashes: { '/ssr': 'sha256-ssr', '/dappfence.js': 'sha256-override' },
+        });
+        const manifest = JSON.parse(
+            await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
+        );
+        expect(manifest.pay.files['/ssr']).toBe('sha256-ssr');
+        expect(manifest.pay.files['/dappfence.js']).toBe('sha256-override');
+        expect(logs).toContain('DappFence: merged 2 pre-computed hash(es) into manifest');
+    });
+
+    it('does not log a pre-computed count when extraHashes is empty', async () => {
+        const outDir = await setup();
+        const logs = [];
+        await generateManifest({
+            outDir,
+            manifestPath: 'integrity-manifest.json',
+            exclude: [],
+            mode: 'protected',
+            logger: { ...LOGGER, info: (m) => logs.push(m) },
+            scriptAttrs: MINIMAL,
+            extraHashes: {},
+        });
+        expect(logs.some((m) => m.includes('pre-computed'))).toBe(false);
+    });
+
     it('skips injection when scriptAttrs is omitted', async () => {
         const outDir = await setup();
         await generateManifest({

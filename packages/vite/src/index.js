@@ -167,12 +167,12 @@ export default function dappfence(options = {}) {
             await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
             logger.info(`DappFence: copied dappfence.js → ${destRel}`);
 
-            // Hash the copied file and add explicitly to extraHashes so it is
-            // always in the manifest under the exact scriptSrc URL, and exclude
-            // it from the walk so a stale dappfence build file in outDir cannot
-            // appear in the manifest under the wrong key.
+            // Hash the copied file and pass it as scriptHash so it is always in
+            // the manifest under the exact scriptSrc URL, and exclude it from the
+            // walk so a stale dappfence build file in outDir cannot appear in the
+            // manifest under the wrong key.
             const scriptSrcWebKey = resolvedBase + opts.scriptSrc;
-            const scriptHash = calculateFileHash(await fs.readFile(destAbs));
+            const dappfenceScriptHash = calculateFileHash(await fs.readFile(destAbs));
 
             const fallbackWebPaths = new Set();
             if (opts.spaFallback.length) {
@@ -227,7 +227,7 @@ export default function dappfence(options = {}) {
                     manifestUrl: opts.manifestUrl && resolvedBase + opts.manifestUrl,
                 },
                 logger,
-                extraHashes: { [scriptSrcWebKey]: scriptHash },
+                scriptHash: { [scriptSrcWebKey]: dappfenceScriptHash },
                 pathPrefix: resolvedBase,
                 csp: opts.csp,
             });
