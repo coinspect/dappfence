@@ -6,7 +6,7 @@
  * "recent verifications" drawer. Capped at 100 rows per bucket.
  *
  * Uses dependency injection: createVerificationResultsStore(database) takes a
- * { get, withTx } interface, making it testable with in-memory backends.
+ * { get, db } interface, making it testable with in-memory backends.
  */
 
 import { createLogger } from '../../core/logger.js';
@@ -18,12 +18,15 @@ const logger = createLogger();
 const VERIFICATION_RESULTS_KEY = 'verification-results';
 
 /**
- * @param {object} database - Store backend with { get, withTx }
+ * @param {import('./indexeddb.js').Database} db
  */
-export function createVerificationResultsStore(database) {
+export function createVerificationResultsStore(db) {
     return {
         async get(appVersion) {
-            const allResults = (await database.get(VERIFICATION_RESULTS_KEY)) || {};
+            const allResults =
+                (await db(({ verificationResults }) =>
+                    verificationResults.get(VERIFICATION_RESULTS_KEY)
+                )) || {};
             return allResults[appVersion] || [];
         },
 
@@ -38,27 +41,30 @@ export function createVerificationResultsStore(database) {
                 logger.log('verificationResultsStore.add: no appVersion on details; skipping');
                 return;
             }
-            return database.withTx(async (tx) => {
-                const allResults = (await tx.get(VERIFICATION_RESULTS_KEY)) || {};
-                if (!allResults[appVersion]) {
-                    allResults[appVersion] = [];
-                }
-                allResults[appVersion].push({
-                    status: details.status.description,
-                    timestamp: new Date().toISOString(),
-                    fileKey: details.fileKey,
-                    reason: details.reason,
-                    expectedHashes: details.expectedHashes,
-                    actualHash: details.actualHash,
-                });
+            return db(
+                async ({ verificationResults }) => {
+                    const allResults =
+                        (await verificationResults.get(VERIFICATION_RESULTS_KEY)) || {};
+                    if (!allResults[appVersion]) {
+                        allResults[appVersion] = [];
+                    }
+                    allResults[appVersion].push({
+                        status: details.status.description,
+                        timestamp: new Date().toISOString(),
+                        fileKey: details.fileKey,
+                        reason: details.reason,
+                        expectedHashes: details.expectedHashes,
+                        actualHash: details.actualHash,
+                    });
 
-                // Keep only last 100 results per app version to avoid unbounded growth
-                if (allResults[appVersion].length > 100) {
-                    allResults[appVersion] = allResults[appVersion].slice(-100);
-                }
+                    if (allResults[appVersion].length > 100) {
+                        allResults[appVersion] = allResults[appVersion].slice(-100);
+                    }
 
-                await tx.set(VERIFICATION_RESULTS_KEY, allResults);
-            });
+                    await verificationResults.put(allResults, VERIFICATION_RESULTS_KEY);
+                },
+                { mode: 'readwrite' }
+            );
         },
     };
 }

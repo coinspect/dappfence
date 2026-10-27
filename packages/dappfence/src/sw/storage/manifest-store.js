@@ -2,8 +2,8 @@
  * Manifest Store Abstraction
  * Handles all Store operations with a clear separation of concerns
  *
- * Uses dependency injection: createManifestStore(Store) takes a
- * { get, set, delete } interface, making it testable with in-memory backends.
+ * Uses dependency injection: createManifestStore(database) takes a
+ * { db } interface, making it testable with in-memory backends.
  */
 
 import { calculateHash } from '../../core/crypto.js';
@@ -32,9 +32,9 @@ const createSyntheticAppVersion = async (manifestData) => {
 
 /**
  * Create all manifest database operations with an injected database backend.
- * @param {object} database - database backend with { get(key), set(key, value), delete(key) }
+ * @param {import('./indexeddb.js').Database} db
  */
-export function createManifestStore(database) {
+export function createManifestStore(db) {
     /**
      * Trusted Manifest database Operations
      *
@@ -51,26 +51,29 @@ export function createManifestStore(database) {
 
     const readList = async () => {
         if (cachedList === null) {
-            cachedList = (await database.get(TRUSTED_MANIFEST_KEY)) || [];
+            cachedList = (await db(({ manifests }) => manifests.get(TRUSTED_MANIFEST_KEY))) || [];
         }
         return cachedList;
     };
 
-    const trustedManifestStore = {
+    return {
         async addLatest(manifest) {
             const appVersion = await createSyntheticAppVersion(manifest);
             // Read-modify-write under a single transaction so concurrent
             // addLatest calls can't clobber each other's updates.
             let newList;
-            await database.withTx(async (tx) => {
-                const list = (await tx.get(TRUSTED_MANIFEST_KEY)) || [];
-                const now = Date.now();
-                const deduped = list.filter((m) => m.appVersion !== appVersion);
-                deduped.unshift({ appVersion, manifest, storedAt: now });
-                const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
-                newList = pruned.slice(0, MAX_MANIFESTS);
-                await tx.set(TRUSTED_MANIFEST_KEY, newList);
-            });
+            await db(
+                async ({ manifests }) => {
+                    const list = (await manifests.get(TRUSTED_MANIFEST_KEY)) || [];
+                    const now = Date.now();
+                    const deduped = list.filter((m) => m.appVersion !== appVersion);
+                    deduped.unshift({ appVersion, manifest, storedAt: now });
+                    const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
+                    newList = pruned.slice(0, MAX_MANIFESTS);
+                    await manifests.put(newList, TRUSTED_MANIFEST_KEY);
+                },
+                { mode: 'readwrite' }
+            );
             cachedList = newList;
             return { appVersion, manifest };
         },
@@ -92,9 +95,5 @@ export function createManifestStore(database) {
         async getAll() {
             return readList();
         },
-    };
-
-    return {
-        trustedManifestStore,
     };
 }

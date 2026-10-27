@@ -1,22 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createActiveBlocksStore, generateBlockId } from '../storage/security-stores.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
-
-function createInMemoryDatabase() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        delete: async (key) => store.delete(key),
-        withTx: async (fn) => {
-            const result = await fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            });
-            return result;
-        },
-    };
-}
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
 const DETAILS = {
     status: VERIFICATION_STATUS.FILE_UNTRUSTED,
@@ -40,7 +25,7 @@ describe('createActiveBlocksStore', () => {
     let store;
 
     beforeEach(() => {
-        store = createActiveBlocksStore(createInMemoryDatabase());
+        store = createActiveBlocksStore(createInMemoryDb());
     });
 
     describe('recordSecurityBlock', () => {
@@ -81,20 +66,15 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('fails safe: returns mustBlock=true on storage errors', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('storage unavailable');
-                },
-                set: async () => {},
-                withTx: async (fn) => {
-                    return fn({
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async () => {
                             throw new Error('storage unavailable');
                         },
-                        set: async () => {},
-                    });
-                },
-            };
+                        put: async () => {},
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             const mustBlock = await brokenStore.recordSecurityBlock(DETAILS);
             expect(mustBlock).toBe(true);
@@ -253,36 +233,31 @@ describe('createActiveBlocksStore', () => {
             expect(await store.isBlocked()).toBe(false);
         });
 
-        it('does not throw when database.set rejects', async () => {
-            const brokenDb = {
-                get: async () => [],
-                set: async () => {
-                    throw new Error('set failed');
-                },
-                withTx: async (fn) =>
-                    fn({
+        it('does not throw when activeBlocks.put rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
+                        put: async () => {
+                            throw new Error('put failed');
+                        },
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             await expect(brokenStore.clearBlockCondition()).resolves.not.toThrow();
         });
     });
 
     describe('getSecurityBlock error path', () => {
-        it('does not throw when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
+        it('does not throw when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             const result = await brokenStore.getSecurityBlock('block_id');
             expect(result).toBeUndefined();
@@ -290,36 +265,33 @@ describe('createActiveBlocksStore', () => {
     });
 
     describe('getActiveBlocks error path', () => {
-        it('returns empty array when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
+        it('returns empty array when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             const result = await brokenStore.getActiveBlocks();
             expect(result).toEqual([]);
         });
 
         it('line 135: getActiveBlocks handles missing blocks key gracefully', async () => {
-            const store = new Map();
-            store.set('active-block-ids', ['block_fake_id_here']);
-            const db = {
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-                withTx: async (fn) =>
-                    fn({
-                        get: async (key) => store.get(key),
-                        set: async (key, value) => store.set(key, value),
-                    }),
-            };
-            const s = createActiveBlocksStore(db);
+            const map = new Map();
+            map.set('active-block-ids', ['block_fake_id_here']);
+            const withTx = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async (key) => map.get(key),
+                        put: async (value, key) => {
+                            map.set(key, value);
+                        },
+                    },
+                });
+            const s = createActiveBlocksStore(withTx);
             const result = await s.getActiveBlocks();
             expect(result).toEqual([]);
         });
@@ -348,16 +320,16 @@ describe('createActiveBlocksStore', () => {
                 },
             });
             store.set('active-block-ids', [blockId]);
-            const db = {
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-                withTx: async (fn) =>
-                    fn({
+            const withTx = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async (key) => store.get(key),
-                        set: async (key, value) => store.set(key, value),
-                    }),
-            };
-            const s = createActiveBlocksStore(db);
+                        put: async (value, key) => {
+                            store.set(key, value);
+                        },
+                    },
+                });
+            const s = createActiveBlocksStore(withTx);
             const mustBlock = await s.recordSecurityBlock(details);
             expect(mustBlock).toBe(false);
             const blocks = await s.getActiveBlocks();
@@ -366,18 +338,15 @@ describe('createActiveBlocksStore', () => {
     });
 
     describe('isBlocked error path', () => {
-        it('returns false when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
+        it('returns false when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             const result = await brokenStore.isBlocked();
             expect(result).toBe(false);
@@ -385,18 +354,15 @@ describe('createActiveBlocksStore', () => {
     });
 
     describe('getAllBlocks error path', () => {
-        it('returns empty array when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
+        it('returns empty array when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
             const brokenStore = createActiveBlocksStore(brokenDb);
             const result = await brokenStore.getAllBlocks();
             expect(result).toEqual([]);

@@ -1,26 +1,46 @@
 /**
  * App Store Facade — a thin bundle of the IndexedDB-backed stores.
  *
- * Manifest Store properties (trustedManifest, verificationResults) are spread at
- * the top level since they're already uniquely named. The others are grouped.
- *
  * Orchestration of security verdicts (updating activeBlocksStore + deciding
  * mustBlock) lives in sw/security-processor.js — this module just exposes the
  * raw stores.
  */
+import { createDatabase } from './indexeddb.js';
 import { createManifestStore } from './manifest-store.js';
 import { createActiveBlocksStore } from './security-stores.js';
 import { createApiTokenStore } from './api-token-store.js';
 import { createVerificationResultsStore } from './verification-results-store.js';
 
+const NAME = 'AppSecurity';
+const VERSION = 1;
+
 /**
- * @param {object} db - Low-level Store backend from createDatabase()
+ * @satisfies {import('./indexeddb.js').Schema}
  */
-export function createAppStore(db) {
+const SCHEMA = {
+    manifests: {},
+    activeBlocks: {},
+    settings: {},
+    verificationResults: {},
+};
+
+/**
+ * @param {import('./indexeddb.js').Database} db
+ */
+export function createAppStoreFromDb(db) {
     return {
-        ...createManifestStore(db),
+        trustedManifestStore: createManifestStore(db),
         activeBlocksStore: createActiveBlocksStore(db),
         apiTokenStore: createApiTokenStore(db),
         verificationResultsStore: createVerificationResultsStore(db),
     };
+}
+
+/**
+ * @param {IDBFactory} idb
+ */
+export function createAppStore(idb) {
+    return createAppStoreFromDb(
+        createDatabase(idb, { name: NAME, version: VERSION, schema: SCHEMA })
+    );
 }

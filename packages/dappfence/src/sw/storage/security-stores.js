@@ -11,8 +11,8 @@
  * block ID has been seen (exists in the data map), recurrences only bump its
  * counters — they never re-enter the active set. Users dismiss blocks in bulk.
  *
- * Uses dependency injection: createActiveBlocksStore(database) takes a
- * { get, set, withTx } interface, making it testable with in-memory backends.
+ * Uses dependency injection: createActiveBlocksStore(db) takes a
+ * Database function, making it testable with in-memory backends.
  */
 import { createLogger } from '../../core/logger.js';
 
@@ -31,8 +31,8 @@ const BLOCKS_KEY = 'blocks';
 
 /**
  * Block record shape as persisted. Derived from `SecurityEventDetails` by
- * extracting the identity + payload fields; `status` is the string form
- * (`.description`) so IndexedDB structuredClone succeeds. Per-status field
+ * extracting the identity and payload fields; `status` is the string form
+ * (`.description`), so IndexedDB structuredClone succeeds. Per-status field
  * invariants (actualHash on hash verdicts, reason on ERROR / MANIFEST_UNTRUSTED,
  * etc.) are statically enforced upstream via `SecurityEventDetails`.
  * @typedef {{
@@ -49,7 +49,7 @@ const BLOCKS_KEY = 'blocks';
 
 /**
  * Project the processor's `SecurityEventDetails` down to the subset the store
- * persists. Keeps extraction + status-string conversion in one place so callers
+ * persists. Keeps extraction and status-string conversion in one place so callers
  * never hand-pick fields.
  * @param {SecurityEventDetails} details
  * @returns {SecurityBlockData}
@@ -91,12 +91,12 @@ export async function generateBlockId({
 }
 
 /**
- * @param {object} database - Store backend with { get, set, withTx }
+ * @param {import('./indexeddb.js').Database} db
  */
-export function createActiveBlocksStore(database) {
+export function createActiveBlocksStore(db) {
     // In-memory cache: null = unhydrated, boolean = known state.
     // Shared across all tabs (single SW instance). Updated synchronously
-    // after every writing so subsequent isBlocked() calls never touch IndexedDB.
+    // after every writing so later isBlocked() calls never touch IndexedDB.
     let blocked = null;
 
     /**
@@ -114,45 +114,48 @@ export function createActiveBlocksStore(database) {
     async function recordSecurityBlock(details) {
         const blockData = toBlockData(details);
         const blockId = await generateBlockId(blockData);
-        const mustBlock = await database.withTx(async (tx) => {
-            try {
-                const blocks = (await tx.get(BLOCKS_KEY)) || {};
-                const activeIds = (await tx.get(ACTIVE_BLOCK_IDS_KEY)) || [];
-                const now = new Date().toISOString();
-                const existing = blocks[blockId];
-                let mustBlock = false;
+        const mustBlock = await db(
+            async ({ activeBlocks }) => {
+                try {
+                    const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
+                    const activeIds = (await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || [];
+                    const now = new Date().toISOString();
+                    const existing = blocks[blockId];
+                    let mustBlock = false;
 
-                if (existing) {
-                    blocks[blockId] = {
-                        ...existing,
-                        ...blockData,
-                        id: blockId,
-                        lastSeen: now,
-                        occurrenceCount: (existing.occurrenceCount || 0) + 1,
-                    };
-                } else {
-                    blocks[blockId] = {
-                        ...blockData,
-                        id: blockId,
-                        timestamp: now,
-                        lastSeen: now,
-                        occurrenceCount: 1,
-                    };
-                    activeIds.push(blockId);
-                    mustBlock = true;
-                }
+                    if (existing) {
+                        blocks[blockId] = {
+                            ...existing,
+                            ...blockData,
+                            id: blockId,
+                            lastSeen: now,
+                            occurrenceCount: (existing.occurrenceCount || 0) + 1,
+                        };
+                    } else {
+                        blocks[blockId] = {
+                            ...blockData,
+                            id: blockId,
+                            timestamp: now,
+                            lastSeen: now,
+                            occurrenceCount: 1,
+                        };
+                        activeIds.push(blockId);
+                        mustBlock = true;
+                    }
 
-                await tx.set(BLOCKS_KEY, blocks);
-                if (mustBlock) {
-                    await tx.set(ACTIVE_BLOCK_IDS_KEY, activeIds);
+                    await activeBlocks.put(blocks, BLOCKS_KEY);
+                    if (mustBlock) {
+                        await activeBlocks.put(activeIds, ACTIVE_BLOCK_IDS_KEY);
+                    }
+                    return mustBlock;
+                } catch (error) {
+                    logger.error(`Failed to record block ${blockId}`, error);
+                    // Fail-safe: on storage error, tell the caller to block.
+                    return true;
                 }
-                return mustBlock;
-            } catch (error) {
-                logger.error(`Failed to record block ${blockId}`, error);
-                // Fail-safe: on storage error, tell the caller to block.
-                return true;
-            }
-        });
+            },
+            { mode: 'readwrite' }
+        );
         if (mustBlock) {
             blocked = true;
         }
@@ -162,7 +165,8 @@ export function createActiveBlocksStore(database) {
     async function isBlocked() {
         try {
             if (blocked === null) {
-                const activeIds = (await database.get(ACTIVE_BLOCK_IDS_KEY)) || [];
+                const activeIds =
+                    (await db(({ activeBlocks }) => activeBlocks.get(ACTIVE_BLOCK_IDS_KEY))) || [];
                 blocked = activeIds.length > 0;
             }
             return blocked;
@@ -174,12 +178,14 @@ export function createActiveBlocksStore(database) {
 
     async function getActiveBlocks() {
         try {
-            const activeIds = (await database.get(ACTIVE_BLOCK_IDS_KEY)) || [];
-            if (activeIds.length === 0) {
-                return [];
-            }
-            const blocks = (await database.get(BLOCKS_KEY)) || {};
-            return activeIds.map((id) => blocks[id]).filter(Boolean);
+            return await db(async ({ activeBlocks }) => {
+                const activeIds = (await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || [];
+                if (activeIds.length === 0) {
+                    return [];
+                }
+                const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
+                return activeIds.map((id) => blocks[id]).filter(Boolean);
+            });
         } catch (error) {
             logger.error('Failed to get active blocks:', error);
             return [];
@@ -192,12 +198,14 @@ export function createActiveBlocksStore(database) {
      */
     async function getAllBlocks() {
         try {
-            const blocks = (await database.get(BLOCKS_KEY)) || {};
-            const activeIds = new Set((await database.get(ACTIVE_BLOCK_IDS_KEY)) || []);
-            return Object.values(blocks).map((block) => ({
-                ...block,
-                active: activeIds.has(block.id),
-            }));
+            return await db(async ({ activeBlocks }) => {
+                const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
+                const activeIds = new Set((await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || []);
+                return Object.values(blocks).map((block) => ({
+                    ...block,
+                    active: activeIds.has(block.id),
+                }));
+            });
         } catch (error) {
             logger.error('Failed to get all blocks:', error);
             return [];
@@ -206,7 +214,7 @@ export function createActiveBlocksStore(database) {
 
     async function getSecurityBlock(blockId) {
         try {
-            const blocks = (await database.get(BLOCKS_KEY)) || {};
+            const blocks = (await db(({ activeBlocks }) => activeBlocks.get(BLOCKS_KEY))) || {};
             return blocks[blockId];
         } catch (error) {
             logger.error(`Failed to get block ${blockId}:`, error);
@@ -215,7 +223,9 @@ export function createActiveBlocksStore(database) {
 
     async function clearBlockCondition() {
         try {
-            await database.set(ACTIVE_BLOCK_IDS_KEY, []);
+            await db(({ activeBlocks }) => activeBlocks.put([], ACTIVE_BLOCK_IDS_KEY), {
+                mode: 'readwrite',
+            });
             blocked = false;
             logger.log('Block condition cleared');
         } catch (error) {

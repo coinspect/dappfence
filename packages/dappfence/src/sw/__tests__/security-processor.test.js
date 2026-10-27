@@ -1,23 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createAppStore } from '../storage/index.js';
+import { createAppStoreFromDb } from '../storage/index.js';
 import { createSecurityProcessor } from '../security-processor.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
-
-function createInMemoryDatabase() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        delete: async (key) => store.delete(key),
-        withTx: async (fn) => {
-            const result = await fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            });
-            return result;
-        },
-    };
-}
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
 function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com' } = {}) {
     return {
@@ -26,8 +11,8 @@ function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com'
     };
 }
 
-function createProcessor({ db = createInMemoryDatabase(), swContext = createSwContext() } = {}) {
-    const appStore = createAppStore(db);
+function createProcessor({ db = createInMemoryDb(), swContext = createSwContext() } = {}) {
+    const appStore = createAppStoreFromDb(db);
     const securityProcessor = createSecurityProcessor({ swContext, appStore });
     return { appStore, securityProcessor };
 }
@@ -190,13 +175,8 @@ describe('processSecurityEvent', () => {
     });
 
     it('fail-safes to mustBlock=true when outer recordSecurityBlock call throws', async () => {
-        const db = {
-            get: async () => undefined,
-            set: async () => {},
-            delete: async () => {},
-            withTx: async () => {
-                throw new Error('simulated DB failure');
-            },
+        const db = async () => {
+            throw new Error('simulated DB failure');
         };
         const { securityProcessor } = createProcessor({ db });
         const details = {

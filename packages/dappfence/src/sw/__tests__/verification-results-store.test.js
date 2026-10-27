@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createVerificationResultsStore } from '../storage/verification-results-store.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
 const detailsFor = (appVersion, extras = {}) => ({
     status: VERIFICATION_STATUS.MATCH,
@@ -9,25 +10,11 @@ const detailsFor = (appVersion, extras = {}) => ({
     ...extras,
 });
 
-function createInMemoryStorage() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        delete: async (key) => store.delete(key),
-        withTx: async (fn) =>
-            fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            }),
-    };
-}
-
 describe('createVerificationResultsStore', () => {
     let store;
 
     beforeEach(() => {
-        store = createVerificationResultsStore(createInMemoryStorage());
+        store = createVerificationResultsStore(createInMemoryDb());
     });
 
     it('returns empty array for unknown version', async () => {

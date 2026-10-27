@@ -1,26 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createApiTokenStore } from '../storage/api-token-store.js';
-
-function createInMemoryDatabase() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        withTx: async (fn) => {
-            const result = await fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            });
-            return result;
-        },
-    };
-}
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
 describe('createApiTokenStore', () => {
     let store;
 
     beforeEach(() => {
-        store = createApiTokenStore(createInMemoryDatabase());
+        store = createApiTokenStore(createInMemoryDb());
     });
 
     it('generates a hex token on first call', async () => {
@@ -35,7 +21,7 @@ describe('createApiTokenStore', () => {
     });
 
     it('generates different tokens for different store instances', async () => {
-        const store2 = createApiTokenStore(createInMemoryDatabase());
+        const store2 = createApiTokenStore(createInMemoryDb());
         const token1 = await store.getApiToken();
         const token2 = await store2.getApiToken();
         // Statistically near-impossible to collide
