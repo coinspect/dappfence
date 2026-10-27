@@ -88,14 +88,14 @@ export function createInstallHandler({
  * @returns {function} Activate event handler (event, callChildHandlers) => Promise<void>
  */
 export function createActivateHandler({ swContext, onSecurityViolation, appStore }) {
-    const { activeBlocksStore } = appStore;
+    const { securityStore } = appStore;
     return async (event, callChildHandlers) => {
         try {
             logger.log('Activating - claiming all clients');
             await swContext.claimClients();
 
             logger.log('Activating - start');
-            if (await activeBlocksStore.isBlocked()) {
+            if (await securityStore.isBlocked()) {
                 logger.log('Activating - broadcasting active block condition');
                 await onSecurityViolation();
             }

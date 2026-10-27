@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateBlockId } from '../storage/security-stores.js';
+import { generateBlockId } from '../storage/security-store.js';
 
 describe('generateBlockId', () => {
     const BLOCK_DATA = {

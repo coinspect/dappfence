@@ -16,10 +16,11 @@ const TOKEN = 'test-token-123';
 
 function createMockAppStore() {
     return {
-        apiTokenStore: {
+        settingsStore: {
             getApiToken: vi.fn().mockResolvedValue(TOKEN),
+            getSessionId: vi.fn().mockResolvedValue('00000000-0000-4000-8000-000000000000'),
         },
-        activeBlocksStore: {
+        securityStore: {
             isBlocked: vi.fn().mockResolvedValue(false),
             getActiveBlocks: vi.fn().mockResolvedValue([]),
             getAllBlocks: vi.fn().mockResolvedValue([]),
@@ -151,7 +152,7 @@ describe('createApiHandler', () => {
         });
 
         it('includes blockHistory and counts active vs total blocks', async () => {
-            appStore.activeBlocksStore.getAllBlocks.mockResolvedValue([
+            appStore.securityStore.getAllBlocks.mockResolvedValue([
                 { id: 'block_a', fileKey: '/a.js', active: true, occurrenceCount: 2 },
                 { id: 'block_b', fileKey: '/b.js', active: false, occurrenceCount: 5 },
                 { id: 'block_c', fileKey: '/c.js', active: true, occurrenceCount: 1 },
@@ -168,7 +169,7 @@ describe('createApiHandler', () => {
 
     describe('GET /sw-api/security-warning', () => {
         it('falls through (undefined) when accessed without navigate mode', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
 
             const res = await handler('/sw-api/security-warning', req('/sw-api/security-warning'));
             expect(res).toBeUndefined();
@@ -176,7 +177,7 @@ describe('createApiHandler', () => {
         });
 
         it('redirects to / when there are no active blocks', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(false);
+            appStore.securityStore.isBlocked.mockResolvedValue(false);
 
             const res = await handler(
                 '/sw-api/security-warning',
@@ -188,7 +189,7 @@ describe('createApiHandler', () => {
         });
 
         it('renders the security page and broadcasts when blocked', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
 
             const res = await handler(
                 '/sw-api/security-warning',
@@ -212,8 +213,8 @@ describe('createApiHandler', () => {
         }
 
         it('inlines apiToken, activeBlocks, and autoConfirmSiteLock into DAPPFENCE_CONFIG', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
-            appStore.activeBlocksStore.getActiveBlocks.mockResolvedValue([
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.getActiveBlocks.mockResolvedValue([
                 {
                     id: 'block_abc',
                     timestamp: '2025-01-01T00:00:00.000Z',
@@ -246,8 +247,8 @@ describe('createApiHandler', () => {
         });
 
         it('defaults missing optional block fields in the inlined payload', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
-            appStore.activeBlocksStore.getActiveBlocks.mockResolvedValue([
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.getActiveBlocks.mockResolvedValue([
                 {
                     id: 'block_xyz',
                     timestamp: '2025-01-01T00:00:00.000Z',
@@ -270,9 +271,9 @@ describe('createApiHandler', () => {
         });
 
         it('keeps HTML-sensitive chars out of the inlined payload while preserving them on decode', async () => {
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
             const nastyFileKey = '/x.js?</script><script>alert(1&2)"\\  ';
-            appStore.activeBlocksStore.getActiveBlocks.mockResolvedValue([
+            appStore.securityStore.getActiveBlocks.mockResolvedValue([
                 {
                     id: 'block_evil',
                     timestamp: '2025-01-01T00:00:00.000Z',
@@ -303,8 +304,8 @@ describe('createApiHandler', () => {
             // `'` is in encodeURIComponent's unreserved set, so an attacker-
             // supplied apostrophe would survive unescaped. Wrapping in `'...'`
             // would let them close the literal.
-            appStore.activeBlocksStore.isBlocked.mockResolvedValue(true);
-            appStore.activeBlocksStore.getActiveBlocks.mockResolvedValue([
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
+            appStore.securityStore.getActiveBlocks.mockResolvedValue([
                 {
                     id: 'block_quote',
                     timestamp: '2025-01-01T00:00:00.000Z',
@@ -333,11 +334,11 @@ describe('createApiHandler', () => {
 
             expect(res.status).toBe(200);
             expect(body.success).toBe(true);
-            expect(appStore.activeBlocksStore.clearBlockCondition).toHaveBeenCalledTimes(1);
+            expect(appStore.securityStore.clearBlockCondition).toHaveBeenCalledTimes(1);
         });
 
         it('returns a plain-text 500 when clearBlockCondition throws', async () => {
-            appStore.activeBlocksStore.clearBlockCondition.mockRejectedValue(new Error('DB error'));
+            appStore.securityStore.clearBlockCondition.mockRejectedValue(new Error('DB error'));
 
             const res = await handler(
                 '/sw-api/site-unblock',

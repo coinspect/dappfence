@@ -101,7 +101,7 @@ describe('processSecurityEvent', () => {
         const { securityProcessor, appStore } = createProcessor();
         await securityProcessor.processSecurityEvent(mismatchDetails);
 
-        const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+        const blocks = await appStore.securityStore.getActiveBlocks();
         expect(blocks.length).toBe(1);
         expect(blocks[0].fileKey).toBe('/app.js');
     });
@@ -142,7 +142,7 @@ describe('processSecurityEvent', () => {
 
         const matches = await appStore.verificationResultsStore.get('v1');
         expect(matches).toEqual([]);
-        const blocks = await appStore.activeBlocksStore.getAllBlocks();
+        const blocks = await appStore.securityStore.getAllBlocks();
         expect(blocks).toHaveLength(0);
     });
 
@@ -174,7 +174,7 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(true);
     });
 
-    it('fail-safes to mustBlock=true when outer recordSecurityBlock call throws', async () => {
+    it('fail-safes to mustBlock=true when outer recordSecurityViolation call throws', async () => {
         const db = async () => {
             throw new Error('simulated DB failure');
         };
@@ -194,7 +194,7 @@ describe('processSecurityEvent', () => {
         it('persists expectedHashes in the active block record', async () => {
             const { securityProcessor, appStore } = createProcessor();
             await securityProcessor.processSecurityEvent(mismatchDetails);
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
         });
 
@@ -208,7 +208,7 @@ describe('processSecurityEvent', () => {
             const second = await securityProcessor.processSecurityEvent(multiHash);
             expect(first).toBe(true);
             expect(second).toBe(false);
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks).toHaveLength(1);
         });
 
@@ -222,7 +222,7 @@ describe('processSecurityEvent', () => {
                 ...mismatchDetails,
                 expectedHashes: ['hash-b'],
             });
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks).toHaveLength(2);
         });
     });

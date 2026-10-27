@@ -66,7 +66,7 @@ const STATUS_LOG = {
  *
  * Owns the orchestration of what happens with a verification verdict:
  *   - persists MATCH records (verificationResultsStore)
- *   - registers the active block when the verdict is a violation (activeBlocksStore)
+ *   - registers the active block when the verdict is a violation (securityStore)
  *   - returns mustBlock for the caller
  *
  * Call sites pass every verdict unconditionally; this service decides what to
@@ -86,7 +86,7 @@ const STATUS_LOG = {
  * @param {object} deps.appStore
  */
 export function createSecurityProcessor({ appStore }) {
-    const { activeBlocksStore, verificationResultsStore } = appStore;
+    const { securityStore, verificationResultsStore } = appStore;
 
     // Shared in-memory buffer drained by reportAfterFetch / reportAfterInstall.
     // SW is single-threaded; multiple drains are idempotent (second finds empty).
@@ -121,7 +121,7 @@ export function createSecurityProcessor({ appStore }) {
         try {
             // Block records stay awaited on the hot path — losing one across
             // SW restart is worse than paying the IDB cost on a rare violation.
-            const mustBlock = await activeBlocksStore.recordSecurityBlock(details);
+            const mustBlock = await securityStore.recordSecurityViolation(details);
             if (mustBlock) {
                 logger.log(`Security violation handled: ${statusName} - ${details.fileKey}`);
             } else {

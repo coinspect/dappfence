@@ -1,8 +1,8 @@
 /**
- * Active Blocks Store
+ * Security Store
  *
- * Tracks per-URL security blocks that gate the fetch handler's mustBlock
- * decision. Separates two concerns:
+ * Tracks security blocks that gate the fetch handler's mustBlock decision.
+ * Separates two concerns:
  *   - ACTIVE_BLOCK_IDS_KEY: the blocking *condition* — just a list of IDs.
  *   - BLOCKS_KEY: the block *data* — keyed map of violation records.
  *
@@ -11,7 +11,7 @@
  * block ID has been seen (exists in the data map), recurrences only bump its
  * counters — they never re-enter the active set. Users dismiss blocks in bulk.
  *
- * Uses dependency injection: createActiveBlocksStore(db) takes a
+ * Uses dependency injection: createSecurityStore(db) takes a
  * Database function, making it testable with in-memory backends.
  */
 import { createLogger } from '../../core/logger.js';
@@ -93,7 +93,7 @@ export async function generateBlockId({
 /**
  * @param {import('./indexeddb.js').Database} db
  */
-export function createActiveBlocksStore(db) {
+export function createSecurityStore(db) {
     // In-memory cache: null = unhydrated, boolean = known state.
     // Shared across all tabs (single SW instance). Updated synchronously
     // after every writing so later isBlocked() calls never touch IndexedDB.
@@ -111,7 +111,7 @@ export function createActiveBlocksStore(db) {
      * @param {SecurityEventDetails} details
      * @returns {Promise<boolean>} mustBlock — true if the caller should block the request
      */
-    async function recordSecurityBlock(details) {
+    async function recordSecurityViolation(details) {
         const blockData = toBlockData(details);
         const blockId = await generateBlockId(blockData);
         const mustBlock = await db(
@@ -234,7 +234,7 @@ export function createActiveBlocksStore(db) {
     }
 
     return {
-        recordSecurityBlock,
+        recordSecurityViolation,
         isBlocked,
         getActiveBlocks,
         getAllBlocks,

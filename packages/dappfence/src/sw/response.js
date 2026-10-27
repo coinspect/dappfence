@@ -82,7 +82,7 @@ const FILE_UNTRUSTED_VIEWS = {
  * same stale-key guard STATUS_LOG uses, scoped to just the subset of
  * verdicts that produce blocks. Non-violation verdicts never reach the
  * warning page (`recordSecurityViolation` short-circuits before
- * `recordSecurityBlock`), so they're intentionally outside the key set.
+ * `recordSecurityViolation`), so they're intentionally outside the key set.
  * @type {Record<import('../core/constants.js').ViolatingStatusName, (block: object) => BlockView>}
  */
 const BLOCK_VIEW = {

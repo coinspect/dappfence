@@ -8,8 +8,8 @@ describe('createAppStore', () => {
 
         expect(appStore.trustedManifestStore).toBeDefined();
         expect(appStore.verificationResultsStore).toBeDefined();
-        expect(appStore.activeBlocksStore).toBeDefined();
-        expect(appStore.apiTokenStore).toBeDefined();
+        expect(appStore.securityStore).toBeDefined();
+        expect(appStore.settingsStore).toBeDefined();
     });
 
     it('manifest stores are functional', async () => {
@@ -21,15 +21,17 @@ describe('createAppStore', () => {
         expect(latest.appVersion).toBe(appVersion);
     });
 
-    it('active blocks store is functional', async () => {
+    it('security store is functional', async () => {
         const appStore = createAppStoreFromDb(createInMemoryDb());
-        const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+        const blocks = await appStore.securityStore.getActiveBlocks();
         expect(blocks).toEqual([]);
     });
 
-    it('api token store is functional', async () => {
+    it('settings store is functional', async () => {
         const appStore = createAppStoreFromDb(createInMemoryDb());
-        const token = await appStore.apiTokenStore.getApiToken();
+        const token = await appStore.settingsStore.getApiToken();
         expect(token).toMatch(/^[0-9a-f]{64}$/);
+        const sessionId = await appStore.settingsStore.getSessionId();
+        expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
     });
 });

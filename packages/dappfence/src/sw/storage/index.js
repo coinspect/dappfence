@@ -1,14 +1,14 @@
 /**
  * App Store Facade — a thin bundle of the IndexedDB-backed stores.
  *
- * Orchestration of security verdicts (updating activeBlocksStore + deciding
+ * Orchestration of security verdicts (updating securityStore + deciding
  * mustBlock) lives in sw/security-processor.js — this module just exposes the
  * raw stores.
  */
 import { createDatabase } from './indexeddb.js';
 import { createManifestStore } from './manifest-store.js';
-import { createActiveBlocksStore } from './security-stores.js';
-import { createApiTokenStore } from './api-token-store.js';
+import { createSecurityStore } from './security-store.js';
+import { createSettingsStore } from './settings-store.js';
 import { createVerificationResultsStore } from './verification-results-store.js';
 
 const NAME = 'AppSecurity';
@@ -30,8 +30,8 @@ const SCHEMA = {
 export function createAppStoreFromDb(db) {
     return {
         trustedManifestStore: createManifestStore(db),
-        activeBlocksStore: createActiveBlocksStore(db),
-        apiTokenStore: createApiTokenStore(db),
+        securityStore: createSecurityStore(db),
+        settingsStore: createSettingsStore(db),
         verificationResultsStore: createVerificationResultsStore(db),
     };
 }
