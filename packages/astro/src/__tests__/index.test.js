@@ -149,6 +149,76 @@ describe('astro:config:setup is inactive outside `astro build`', () => {
     });
 });
 
+// Astro does not copy `.env` into process.env before evaluating
+// astro.config.mjs, so the integration has to load the env files itself or a
+// key that lives only in `.env` is invisible and every local build fails.
+describe('secretKey resolution from `.env`', () => {
+    async function makeProjectRoot(envContents) {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dappfence-astro-env-'));
+        tmpDirs.push(dir);
+        if (envContents !== null) {
+            await fs.writeFile(path.join(dir, '.env'), envContents, 'utf8');
+        }
+        return dir;
+    }
+
+    const setup = (command, root, options = {}) => {
+        const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+        const run = () =>
+            dappfence(options).hooks['astro:config:setup']({
+                command,
+                logger,
+                config: { base: '/', build: {}, root: pathToFileURL(root + path.sep) },
+                updateConfig: vi.fn(),
+                addMiddleware: vi.fn(),
+            });
+        return { run, logger };
+    };
+
+    it('reads DAPPFENCE_SECRET_KEY from the project `.env` for `astro build`', async () => {
+        const root = await makeProjectRoot(`DAPPFENCE_SECRET_KEY=${SECRET_KEY}\n`);
+        const { run } = setup('build', root);
+        expect(run).not.toThrow();
+    });
+
+    it('does not warn during `astro dev` when the key is only in `.env`', async () => {
+        const root = await makeProjectRoot(`DAPPFENCE_SECRET_KEY=${SECRET_KEY}\n`);
+        const { run, logger } = setup('dev', root);
+        run();
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('still throws for `astro build` when `.env` has no key', async () => {
+        const root = await makeProjectRoot('SOMETHING_ELSE=1\n');
+        const { run } = setup('build', root);
+        expect(run).toThrow(/secretKey is required/);
+    });
+
+    // loadEnv overlays process.env on top of the parsed files, so the
+    // documented precedence (explicit option > env var > `.env`) is preserved.
+    it('lets a real environment variable outrank the `.env` entry', async () => {
+        const root = await makeProjectRoot('DAPPFENCE_SECRET_KEY=not-a-valid-key\n');
+        process.env.DAPPFENCE_SECRET_KEY = SECRET_KEY;
+        try {
+            const { run } = setup('build', root);
+            expect(run).not.toThrow();
+        } finally {
+            delete process.env.DAPPFENCE_SECRET_KEY;
+        }
+    });
+
+    it('lets the explicit secretKey option outrank both', async () => {
+        const root = await makeProjectRoot('DAPPFENCE_SECRET_KEY=not-a-valid-key\n');
+        process.env.DAPPFENCE_SECRET_KEY = 'also-not-valid';
+        try {
+            const { run } = setup('build', root, { secretKey: SECRET_KEY });
+            expect(run).not.toThrow();
+        } finally {
+            delete process.env.DAPPFENCE_SECRET_KEY;
+        }
+    });
+});
+
 describe('manifestSignatureType validation', () => {
     it('rejects a manifestSignatureType the build-time signer cannot produce', () => {
         expect(() =>

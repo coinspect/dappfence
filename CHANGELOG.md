@@ -8,6 +8,41 @@ therefore does not always move every package, and each entry below names the pac
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Covers `@dappfence/astro` and `@dappfence/vite`.
+
+### Fixed
+
+-   **`DAPPFENCE_SECRET_KEY` in a `.env` file is now actually read** (#73). Neither Astro nor Vite
+    copies `.env` into `process.env` — they load the env files themselves and expose the result
+    through `import.meta.env` / `astro:env`, long after `astro.config.mjs` or `vite.config.js` has
+    been evaluated. Both plugins resolved the key from `process.env` while the config file was being
+    constructed, so a key stored exactly where the README said to put it was invisible and every
+    local build failed with `secretKey is required`. Both now load the env files the same way their
+    host does, at a point in the lifecycle where the project root is known. The documented
+    precedence is unchanged: an explicit `secretKey` option beats a real environment variable, which
+    beats a `.env` entry.
+
+    Two consequences worth noting. `@dappfence/astro` now declares `vite` as a peer dependency, as
+    `@dappfence/vite` already did. And because the `astro:config:setup` hook is not told the build's
+    `--mode`, the integration assumes `production` for `astro build` and `development` for
+    `astro dev`; a mode-specific file such as `.env.staging` still needs the key passed explicitly.
+
+-   `@dappfence/astro`: the signer identity is now derived inside the build path rather than when
+    the integration object is constructed, so a malformed key no longer fails `astro dev` and
+    `astro check` — commands that never use the key.
+
+### Documentation
+
+-   The `.env` caveat above is documented in the `@dappfence/astro` and `@dappfence/vite` READMEs,
+    including the `loadEnv` snippet needed for non-default `--mode` builds.
+-   Corrected the key-resolution example in the `@dappfence/astro` README (and the matching comment
+    in the Astro example app), which claimed an explicit `secretKey` option was "overridden by
+    `DAPPFENCE_SECRET_KEY` if set" — the opposite of the documented and implemented precedence.
+-   `@dappfence/manifest-tools`: noted that its CLI, unlike the bundler plugins, does not read
+    `.env` on its own and needs `node --env-file` or an exported variable.
+
 ## [0.1.3] — 2026-10-26
 
 Covers `@dappfence/core` and `@dappfence/astro`. `@dappfence/manifest-tools`, `@dappfence/next` and

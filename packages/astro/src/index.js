@@ -11,16 +11,18 @@
  *       sitemap(),
  *       // dappfence must be listed last — its astro:build:done hook walks and hashes
  *       // the output directory, so all integrations that write files must run first.
- *       dappfence({
- *         secretKey: process.env.DAPPFENCE_SECRET_KEY,
- *       }),
+ *       dappfence(),
  *     ],
  *   });
  *
+ * The signing key is read from DAPPFENCE_SECRET_KEY — either a real environment
+ * variable or an entry in the project's `.env` file — unless a `secretKey`
+ * option is passed explicitly.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 import {
     generateManifest,
     extractFixedRoutes,
@@ -94,6 +96,32 @@ const baseScriptAttrs = (o, base) => ({
     manifestUrl: o.manifestUrl && base + o.manifestUrl,
 });
 
+// Astro never copies `.env` into `process.env`. It loads the env files itself
+// with Vite's loadEnv and exposes the result through import.meta.env /
+// astro:env — which happens long after astro.config.mjs has been evaluated. So
+// a key that lives only in `.env` is invisible to
+// `process.env.DAPPFENCE_SECRET_KEY`, and the build fails even though the key
+// is right there in the file the README tells you to put it in.
+//
+// Resolve it the way Astro itself does (astro/dist/env/env-loader.js), reading
+// only the one variable we need instead of leaking the whole environment into
+// the plugin. loadEnv overlays process.env on top of the parsed files, so a
+// real environment variable still beats a `.env` entry — the resolution order
+// the README documents is preserved.
+//
+// `mode` is not part of the astro:config:setup payload, so it has to be derived
+// from `command`: `astro build --mode staging` will not pick up
+// `.env.staging`, and such a setup has to pass `secretKey` explicitly.
+function resolveSecretKey(explicitKey, command, config) {
+    if (explicitKey) {
+        return explicitKey;
+    }
+    const envDir =
+        config.vite?.envDir ?? (config.root ? fileURLToPath(config.root) : process.cwd());
+    const mode = command === 'dev' ? 'development' : 'production';
+    return loadEnv(mode, envDir, '').DAPPFENCE_SECRET_KEY || null;
+}
+
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
     manifestUrl: '/integrity-manifest.json',
@@ -124,12 +152,9 @@ export default function dappfence(options = {}) {
         );
     }
 
-    const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
-
-    // Derive the signer identity from secretKey so users don't have to supply it.
-    if (secretKey && !opts.manifestSignatureIdentity) {
-        opts.manifestSignatureIdentity = deriveIdentity(secretKey);
-    }
+    // Resolved in astro:config:setup, not here: reading `.env` needs the
+    // project root, which only the hook's `config` provides.
+    let secretKey = null;
 
     // Captured in astro:routes:resolved (Astro 6 moved routes out of build:done).
     let resolvedRoutes = [];
@@ -154,6 +179,8 @@ export default function dappfence(options = {}) {
             // `virtual:dappfence/attrs` import has no other provider, so registering one
             // without the other is a resolve error.
             'astro:config:setup'({ command, logger, config, updateConfig, addMiddleware }) {
+                secretKey = resolveSecretKey(explicitKey, command, config);
+
                 if (command !== 'build') {
                     if (!secretKey) {
                         logger.warn(
@@ -174,6 +201,15 @@ export default function dappfence(options = {}) {
                     );
                     throw new Error('[@dappfence/astro] secretKey is required');
                 }
+
+                // Derive the signer identity from secretKey so users don't have to
+                // supply it. Build-only, like the key itself: deriveIdentity throws on
+                // a malformed key, and `astro dev` / `astro check` must not fail over a
+                // key they never use.
+                if (!opts.manifestSignatureIdentity) {
+                    opts.manifestSignatureIdentity = deriveIdentity(secretKey);
+                }
+
                 resolvedBuildFormat = config.build?.format ?? 'directory';
                 if (config.build?.server) {
                     resolvedServerDir = fileURLToPath(config.build.server);
