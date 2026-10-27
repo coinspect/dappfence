@@ -14,7 +14,7 @@ import { createSettingsStore } from './settings-store.js';
 import { createVerificationResultsStore } from './verification-results-store.js';
 
 export const NAME = 'AppSecurity';
-export const VERSION = 2;
+export const VERSION = 3;
 
 /**
  * @satisfies {import('./indexeddb.js').Schema}
@@ -23,7 +23,10 @@ export const SCHEMA = {
     manifests: {},
     activeBlocks: {},
     settings: {},
-    verificationResults: {},
+    verificationResults: {
+        objectStore: 'verificationResults2',
+        primaryKeyPath: 'id',
+    },
 };
 
 /**
@@ -40,6 +43,15 @@ export const HISTORICAL_SCHEMAS = {
         activeBlocks: {},
         settings: {},
         verificationResults: {},
+    },
+    3: {
+        manifests: {},
+        activeBlocks: {},
+        settings: {},
+        verificationResults: {
+            objectStore: 'verificationResults2',
+            primaryKeyPath: 'id',
+        },
     },
 };
 
