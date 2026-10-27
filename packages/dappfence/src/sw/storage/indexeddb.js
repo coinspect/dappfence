@@ -6,16 +6,23 @@
  */
 
 /**
- * @typedef {{ name: string, keyPath: string, unique?: boolean, multiEntry?: boolean }} IndexSchema
+ * @typedef {{ name: string, keyPath: string | string[], unique?: boolean, multiEntry?: boolean }} IndexSchema
  * @typedef {{ objectStore?: string, primaryKeyPath?: string, autoIncrement?: boolean, indexes?: IndexSchema[] }} StoreSchema
  * @typedef {Record<string, StoreSchema>} Schema
  */
 
 /**
+ * Range descriptor used in place of IDBKeyRange so caller code stays free of
+ * IDB-world globals. The wrapper translates to a real IDBKeyRange before
+ * calling native IDB; the in-memory test mock reads `lower`/`upper` directly.
+ * @typedef {{ lower?: IDBValidKey, upper?: IDBValidKey, lowerOpen?: boolean, upperOpen?: boolean }} RangeDesc
+ *
+ * @typedef {{ query?: IDBValidKey | RangeDesc, count?: number, direction?: IDBCursorDirection }} GetAllOptions
+ *
  * @typedef {{
- *   getAll: (query?: IDBValidKey | IDBKeyRange, count?: number) => Promise<any[]>,
- *   count: (query?: IDBValidKey | IDBKeyRange) => Promise<number>,
- *   openCursor: (range?: IDBValidKey | IDBKeyRange, direction?: IDBCursorDirection) => IDBRequest,
+ *   getAll: (options?: GetAllOptions) => Promise<any[]>,
+ *   count: (query?: IDBValidKey | RangeDesc) => Promise<number>,
+ *   openCursor: (range?: IDBValidKey | RangeDesc, direction?: IDBCursorDirection) => IDBRequest,
  * }} IndexHandle
  *
  * @typedef {{
@@ -85,6 +92,29 @@ export function applyMigration(request, schema) {
 export function createDatabase(idb, { name, version, schema }) {
     let connectionPromise = null;
 
+    function toIDBKeyRange(query) {
+        if (query === undefined || query === null) {
+            return undefined;
+        }
+        if (query instanceof IDBKeyRange) {
+            return query;
+        }
+        if (typeof query !== 'object' || Array.isArray(query)) {
+            return query;
+        }
+        const { lower, upper, lowerOpen = false, upperOpen = false } = query;
+        if (lower !== undefined && upper !== undefined) {
+            return IDBKeyRange.bound(lower, upper, lowerOpen, upperOpen);
+        }
+        if (lower !== undefined) {
+            return IDBKeyRange.lowerBound(lower, lowerOpen);
+        }
+        if (upper !== undefined) {
+            return IDBKeyRange.upperBound(upper, upperOpen);
+        }
+        return undefined;
+    }
+
     function requestToPromise(request) {
         return new Promise((resolve, reject) => {
             request.onsuccess = () => resolve(request.result);
@@ -131,14 +161,21 @@ export function createDatabase(idb, { name, version, schema }) {
                         key === undefined ? objectStore.add(value) : objectStore.add(value, key)
                     ),
                 delete: (key) => requestToPromise(objectStore.delete(key)),
-                getAll: (query, count) => requestToPromise(objectStore.getAll(query, count)),
-                count: (query) => requestToPromise(objectStore.count(query)),
+                getAll: (query, count) =>
+                    requestToPromise(objectStore.getAll(toIDBKeyRange(query), count)),
+                count: (query) => requestToPromise(objectStore.count(toIDBKeyRange(query))),
                 index: (indexName) => {
                     const idx = objectStore.index(indexName);
                     return {
-                        getAll: (query, count) => requestToPromise(idx.getAll(query, count)),
-                        count: (query) => requestToPromise(idx.count(query)),
-                        openCursor: (range, direction) => idx.openCursor(range, direction),
+                        getAll: (options) => {
+                            const nativeOptions = options
+                                ? { ...options, query: toIDBKeyRange(options.query) }
+                                : undefined;
+                            return requestToPromise(idx.getAll(nativeOptions));
+                        },
+                        count: (query) => requestToPromise(idx.count(toIDBKeyRange(query))),
+                        openCursor: (range, direction) =>
+                            idx.openCursor(toIDBKeyRange(range), direction),
                     };
                 },
             };
