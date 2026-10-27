@@ -127,7 +127,7 @@ export function createMessageHandler({
             await onPageLoadedMessage(event);
         } else {
             logger.log('Received message:', event.data);
+            callChildHandlers(event);
         }
-        callChildHandlers(event);
     };
 }
