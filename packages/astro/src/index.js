@@ -314,10 +314,10 @@ export default function dappfence(options = {}) {
                 await fs.copyFile(resolveDappfenceJsPath(opts.scriptSrc), destAbs);
                 logger.info(`DappFence: copied dappfence.js → ${destRel}`);
 
-                // Hash the copied file and add explicitly to extraHashes so it is
-                // always in the manifest under the exact scriptSrc URL. Also exclude
-                // it from the walk so stale dappfence build files in outDir cannot
-                // appear in the manifest under the wrong key.
+                // Hash the copied file and pass it as scriptHash so it is always in
+                // the manifest under the exact scriptSrc URL. Also exclude it from
+                // the walk so stale dappfence build files in outDir cannot appear in
+                // the manifest under the wrong key.
                 const scriptSrcWebKey = (resolvedBase || '') + opts.scriptSrc;
                 const dappfenceScriptHash = sriHash(await fs.readFile(destAbs));
 
@@ -389,7 +389,8 @@ export default function dappfence(options = {}) {
                     base: resolvedBase,
                     scriptAttrs: baseScriptAttrs(opts, resolvedBase),
                     logger,
-                    extraHashes: { ...scriptHash, ...(extraHashes || {}) },
+                    scriptHash,
+                    ...(extraHashes && { extraHashes }),
                     enumerablePatterns,
                     ...(cspPages && Object.keys(cspPages).length > 0 && { cspPages }),
                 });
