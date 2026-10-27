@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createDatabase } from '../storage/indexeddb.js';
+import { makeMockIDB, makeMockIDBWithOpenError } from './helpers/mock-idb.js';
 
 const STORE_NAMES = ['manifests', 'activeBlocks', 'settings', 'verificationResults'];
 const TEST_CONFIG = {
@@ -7,119 +8,6 @@ const TEST_CONFIG = {
     version: 1,
     schema: Object.fromEntries(STORE_NAMES.map((n) => [n, {}])),
 };
-
-function makeMockIDB(opts = {}) {
-    const stores = Object.fromEntries(STORE_NAMES.map((n) => [n, new Map()]));
-    const trace = { opens: 0, transactions: [], createdStores: [] };
-    const hooks = opts.hooks || {};
-
-    const makeReq = (producer) => {
-        const req = {};
-        Promise.resolve().then(() => {
-            try {
-                req.result = producer();
-                req.onsuccess?.();
-            } catch (e) {
-                req.error = e;
-                req.onerror?.();
-            }
-        });
-        return req;
-    };
-
-    const makeObjectStore = (name) => {
-        const data = stores[name];
-        return {
-            get indexNames() {
-                return { contains: () => false };
-            },
-            createIndex: () => {},
-            get(key) {
-                return makeReq(() => {
-                    hooks.onGet?.(name, key);
-                    return data.get(key);
-                });
-            },
-            put(value, key) {
-                return makeReq(() => {
-                    hooks.onPut?.(name, value, key);
-                    data.set(key, value);
-                });
-            },
-            delete(key) {
-                return makeReq(() => {
-                    data.delete(key);
-                });
-            },
-            getAll(_range, count) {
-                return makeReq(() => {
-                    const all = Array.from(data.values());
-                    return count !== undefined ? all.slice(0, count) : all;
-                });
-            },
-            count() {
-                return makeReq(() => data.size);
-            },
-        };
-    };
-
-    const makeTransaction = (storeNames, mode, options = {}) => {
-        trace.transactions.push({ storeNames: [...storeNames], mode, options });
-        const tx = {
-            objectStore: (name) => makeObjectStore(name),
-            commit: () => {},
-            mode,
-        };
-        Object.defineProperty(tx, 'oncomplete', {
-            set(fn) {
-                Promise.resolve().then(() => fn?.());
-            },
-            configurable: true,
-        });
-        return tx;
-    };
-
-    const db = {
-        objectStoreNames: { contains: (name) => trace.createdStores.includes(name) },
-        createObjectStore: (name) => {
-            trace.createdStores.push(name);
-            return makeObjectStore(name);
-        },
-        transaction: (storeNames, mode, options) => {
-            const names = Array.isArray(storeNames) ? storeNames : [storeNames];
-            return makeTransaction(names, mode, options);
-        },
-    };
-
-    return {
-        open: () => {
-            trace.opens++;
-            const req = {};
-            Promise.resolve().then(() => {
-                req.result = db;
-                const upgradeTx = { objectStore: (name) => makeObjectStore(name) };
-                req.onupgradeneeded?.({ target: { result: db, transaction: upgradeTx } });
-                req.onsuccess?.();
-            });
-            return req;
-        },
-        _trace: trace,
-        _stores: stores,
-    };
-}
-
-function makeMockIDBWithOpenError() {
-    return {
-        open: () => {
-            const req = {};
-            Promise.resolve().then(() => {
-                req.error = new Error('IDB open failed');
-                req.onerror?.();
-            });
-            return req;
-        },
-    };
-}
 
 describe('createDatabase', () => {
     describe('schema application', () => {
@@ -130,6 +18,28 @@ describe('createDatabase', () => {
             for (const name of STORE_NAMES) {
                 expect(idb._trace.createdStores).toContain(name);
             }
+        });
+
+        it('creates stores missing from a database left by an older schema', async () => {
+            // The 0.1.x layout: same database name, one catch-all 'data' store.
+            const idb = makeMockIDB({ existing: { version: 1, stores: ['data'] } });
+            const db = createDatabase(idb, { ...TEST_CONFIG, version: 2 });
+            await db(async ({ manifests }) => manifests.get('x'));
+            for (const name of STORE_NAMES) {
+                expect(idb._trace.createdStores).toContain(name);
+            }
+        });
+
+        it('cannot create stores when the version is not raised past the stored one', async () => {
+            // Guards the actual defect: reusing the stored version skips
+            // onupgradeneeded, so a renamed store is never created and the
+            // first transaction naming it fails.
+            const idb = makeMockIDB({ existing: { version: 1, stores: ['data'] } });
+            const db = createDatabase(idb, { ...TEST_CONFIG, version: 1 });
+            await expect(db(async ({ manifests }) => manifests.get('x'))).rejects.toThrow(
+                /NotFoundError/
+            );
+            expect(idb._trace.upgrades).toEqual([]);
         });
     });
 
