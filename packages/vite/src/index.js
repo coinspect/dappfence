@@ -11,11 +11,13 @@
  *       // dappfence should be listed last — its closeBundle hook walks and
  *       // hashes the output directory, so plugins that write extra files
  *       // into outDir must run first.
- *       dappfence({
- *         secretKey: process.env.DAPPFENCE_SECRET_KEY,
- *       }),
+ *       dappfence(),
  *     ],
  *   });
+ *
+ * The signing key is read from DAPPFENCE_SECRET_KEY — either a real environment
+ * variable or an entry in the project's `.env` file — unless a `secretKey`
+ * option is passed explicitly.
  *
  * Scope: plain Vite SPA/MPA builds with static HTML output. Meta-frameworks
  * built on Vite (Astro, Next.js, SvelteKit, Nuxt, Remix, …) have their own
@@ -25,6 +27,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 import {
     calculateFileHash,
     deriveIdentity,
@@ -85,12 +88,9 @@ export default function dappfence(options = {}) {
         );
     }
 
-    const secretKey = explicitKey || process.env.DAPPFENCE_SECRET_KEY || null;
-
-    // Derive the signer identity from secretKey so users don't have to supply it.
-    if (secretKey && !opts.manifestSignatureIdentity) {
-        opts.manifestSignatureIdentity = deriveIdentity(secretKey);
-    }
+    // Resolved in configResolved, not here: reading `.env` needs the resolved
+    // envDir and mode, which only the hook's `config` provides.
+    let secretKey = null;
 
     let resolvedOutDir;
     // Normalized base path (e.g. '/my-app'); empty string when site is at root.
@@ -102,12 +102,31 @@ export default function dappfence(options = {}) {
         enforce: 'post',
 
         configResolved(config) {
+            // Vite never copies `.env` into `process.env` — the parsed files only
+            // reach `import.meta.env`, and only for keys matching envPrefix. So a key
+            // that lives solely in `.env` is invisible to
+            // `process.env.DAPPFENCE_SECRET_KEY`. Load it the same way Vite does,
+            // taking only the one variable we need rather than the whole environment.
+            // loadEnv overlays process.env on top of the parsed files, so a real
+            // environment variable still outranks a `.env` entry, as documented.
+            const envDir = config.envDir ?? config.root ?? process.cwd();
+            secretKey =
+                explicitKey ||
+                loadEnv(config.mode ?? 'production', envDir, '').DAPPFENCE_SECRET_KEY ||
+                null;
+
             if (!secretKey) {
                 throw new Error(
                     '[@dappfence/vite] secretKey is required. ' +
                         'Pass it via the plugin option or set the DAPPFENCE_SECRET_KEY environment variable.'
                 );
             }
+
+            // Derive the signer identity from secretKey so users don't have to supply it.
+            if (!opts.manifestSignatureIdentity) {
+                opts.manifestSignatureIdentity = deriveIdentity(secretKey);
+            }
+
             resolvedOutDir = path.resolve(config.root, config.build.outDir);
             resolvedBase = normalizeBase(config.base ?? '/', '[@dappfence/vite]');
         },

@@ -34,9 +34,9 @@ directory (e.g. `@astrojs/sitemap`) must finish first. If `dappfence` runs befor
 integration that adds files, those files will be missing from the manifest and the service worker
 will block them at runtime.
 
-The integration reads the signing key from the `DAPPFENCE_SECRET_KEY` environment variable
-automatically. If the variable is not set and no `secretKey` option is passed, the build fails with
-a clear error.
+The integration reads the signing key from `DAPPFENCE_SECRET_KEY` automatically — either a real
+environment variable or an entry in your project's `.env` file. If neither is set and no `secretKey`
+option is passed, the build fails with a clear error.
 
 Generate a key once and store it in your CI secrets / `.env` file:
 
@@ -57,7 +57,8 @@ automatically — you only need to supply the secret key.
 
 1. `secretKey` option passed to `dappfence({ secretKey: '…' })` — highest priority
 2. `DAPPFENCE_SECRET_KEY` environment variable
-3. Neither provided → **build error**
+3. `DAPPFENCE_SECRET_KEY` in the project's `.env` file
+4. None provided → **build error**
 
 Prefer the environment variable in production, so the key is never committed to source control. The
 explicit option is useful for local development fallbacks:
@@ -69,27 +70,64 @@ const DEV_KEY = 'f0570667f495…'; // local dev only, not secret
 export default defineConfig({
     integrations: [
         dappfence({
-            secretKey: DEV_KEY, // overridden by DAPPFENCE_SECRET_KEY if set
+            // An explicit option wins over DAPPFENCE_SECRET_KEY — drop it in CI,
+            // or gate it so the environment can take over:
+            //   secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY
+            secretKey: DEV_KEY,
         }),
     ],
 });
 ```
 
+#### A note on `.env` and `astro.config.mjs`
+
+Astro does not copy `.env` into `process.env`. It loads the env files itself and exposes them
+through `import.meta.env` / `astro:env`, which happens well after `astro.config.mjs` has been
+evaluated — so `process.env.DAPPFENCE_SECRET_KEY` is `undefined` inside your config file even when
+the key is sitting in `.env`.
+
+The integration handles this for you: it loads the env files the same way Astro does, so a key in
+`.env` is picked up with no config changes. You only need to be careful if you read the variable
+yourself:
+
+```js
+// ✗ undefined when the key lives in .env — this is NOT needed, the integration
+//   already resolves DAPPFENCE_SECRET_KEY on its own
+dappfence({ secretKey: process.env.DAPPFENCE_SECRET_KEY });
+
+// ✓ just let the integration resolve it
+dappfence();
+```
+
+One limitation: the `astro:config:setup` hook is not told which `--mode` the build is running under,
+so the integration assumes `production` for `astro build` and `development` for `astro dev`. If you
+keep the key in a mode-specific file such as `.env.staging` and build with
+`astro build --mode staging`, load it yourself and pass it explicitly:
+
+```js
+import { loadEnv } from 'vite';
+const { DAPPFENCE_SECRET_KEY } = loadEnv('staging', process.cwd(), '');
+
+export default defineConfig({
+    integrations: [dappfence({ secretKey: DAPPFENCE_SECRET_KEY })],
+});
+```
+
 ## Options
 
-| Option                      | Type       | Default                                               | Description                                                                                                                                                                         |
-| --------------------------- | ---------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `secretKey`                 | `string`   | `DAPPFENCE_SECRET_KEY` env var                        | **Required.** Hex secret key (with or without `0x` prefix) used to sign the manifest. Falls back to the `DAPPFENCE_SECRET_KEY` environment variable; build fails if neither is set. |
-| `scriptSrc`                 | `string`   | `'/dappfence.js'`                                     | URL path where `dappfence.js` will be served.                                                                                                                                       |
-| `manifestUrl`               | `string`   | `'/integrity-manifest.json'`                          | URL path where the manifest will be served.                                                                                                                                         |
-| `manifestPath`              | `string`   | `'integrity-manifest.json'`                           | Output filename for the manifest relative to the build output dir.                                                                                                                  |
-| `manifestSignatureType`     | `string`   | `'noble-secp256k1-recovered-eth'`                     | Signature algorithm written into the manifest.                                                                                                                                      |
-| `manifestSignatureIdentity` | `string`   | derived from `secretKey`                              | Expected signer Ethereum address. Auto-derived if `secretKey` is set.                                                                                                               |
-| `mode`                      | `string`   | `'protected'`                                         | Enforcement mode: `'protected'` blocks requests that fail verification; `'reporting'` logs violations without blocking.                                                             |
-| `appSW`                     | `string`   | `null`                                                | Path to your app's own service worker, loaded by DappFence via `importScripts()`.                                                                                                   |
-| `warningUrl`                | `string`   | `null`                                                | URL shown on the security warning page for tamper alerts.                                                                                                                           |
-| `extensions`                | `string[]` | `['.js','.mjs','.css','.html','.htm','.json','.svg']` | File extensions included in the manifest.                                                                                                                                           |
-| `exclude`                   | `string[]` | `[]`                                                  | Web paths to exclude from the manifest (e.g. `['/admin']`).                                                                                                                         |
+| Option                      | Type       | Default                                               | Description                                                                                                                                                                                           |
+| --------------------------- | ---------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secretKey`                 | `string`   | `DAPPFENCE_SECRET_KEY` env var or `.env`              | **Required.** Hex secret key (with or without `0x` prefix) used to sign the manifest. Falls back to `DAPPFENCE_SECRET_KEY` in the environment or in the project's `.env`; build fails if none is set. |
+| `scriptSrc`                 | `string`   | `'/dappfence.js'`                                     | URL path where `dappfence.js` will be served.                                                                                                                                                         |
+| `manifestUrl`               | `string`   | `'/integrity-manifest.json'`                          | URL path where the manifest will be served.                                                                                                                                                           |
+| `manifestPath`              | `string`   | `'integrity-manifest.json'`                           | Output filename for the manifest relative to the build output dir.                                                                                                                                    |
+| `manifestSignatureType`     | `string`   | `'noble-secp256k1-recovered-eth'`                     | Signature algorithm written into the manifest.                                                                                                                                                        |
+| `manifestSignatureIdentity` | `string`   | derived from `secretKey`                              | Expected signer Ethereum address. Auto-derived if `secretKey` is set.                                                                                                                                 |
+| `mode`                      | `string`   | `'protected'`                                         | Enforcement mode: `'protected'` blocks requests that fail verification; `'reporting'` logs violations without blocking.                                                                               |
+| `appSW`                     | `string`   | `null`                                                | Path to your app's own service worker, loaded by DappFence via `importScripts()`.                                                                                                                     |
+| `warningUrl`                | `string`   | `null`                                                | URL shown on the security warning page for tamper alerts.                                                                                                                                             |
+| `extensions`                | `string[]` | `['.js','.mjs','.css','.html','.htm','.json','.svg']` | File extensions included in the manifest.                                                                                                                                                             |
+| `exclude`                   | `string[]` | `[]`                                                  | Web paths to exclude from the manifest (e.g. `['/admin']`).                                                                                                                                           |
 
 ## What Happens at Build Time
 

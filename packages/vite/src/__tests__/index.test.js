@@ -63,6 +63,40 @@ describe('@dappfence/vite plugin shape', () => {
             delete process.env.DAPPFENCE_SECRET_KEY;
         }
     });
+
+    // Vite never copies `.env` into process.env — the parsed files only reach
+    // import.meta.env, and only for envPrefix-matching keys — so the plugin has
+    // to load them itself or a key kept solely in `.env` is invisible.
+    it('reads DAPPFENCE_SECRET_KEY from `.env` in envDir', async () => {
+        const root = await makeOutDir({ '.env': `DAPPFENCE_SECRET_KEY=${SECRET_KEY}\n` });
+        const plugin = dappfence({});
+        expect(() =>
+            plugin.configResolved({
+                root,
+                envDir: root,
+                mode: 'production',
+                build: { outDir: '.' },
+            })
+        ).not.toThrow();
+    });
+
+    it('lets a real environment variable outrank the `.env` entry', async () => {
+        const root = await makeOutDir({ '.env': 'DAPPFENCE_SECRET_KEY=not-a-valid-key\n' });
+        process.env.DAPPFENCE_SECRET_KEY = SECRET_KEY;
+        try {
+            const plugin = dappfence({});
+            expect(() =>
+                plugin.configResolved({
+                    root,
+                    envDir: root,
+                    mode: 'production',
+                    build: { outDir: '.' },
+                })
+            ).not.toThrow();
+        } finally {
+            delete process.env.DAPPFENCE_SECRET_KEY;
+        }
+    });
 });
 
 describe('@dappfence/vite closeBundle', () => {

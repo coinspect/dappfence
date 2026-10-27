@@ -43,16 +43,32 @@ The plugin only runs during `vite build` (`apply: 'build'`); it is a no-op under
 same reason `@dappfence/astro` skips `astro dev` — Vite transforms files at request time, so their
 bytes never match a static manifest. Test against the real build with `vite preview`.
 
-The plugin reads the signing key from the `DAPPFENCE_SECRET_KEY` environment variable automatically.
-If neither that nor the `secretKey` option is set, the build fails with a clear error — see
+The plugin reads the signing key from `DAPPFENCE_SECRET_KEY` automatically — either a real
+environment variable or an entry in your project's `.env` file. If none of those nor the `secretKey`
+option is set, the build fails with a clear error — see
 [Key resolution order](../astro/README.md#key-resolution-order) in the astro package docs (same
 behavior here).
+
+Note that Vite does not copy `.env` into `process.env`: the parsed files reach `import.meta.env`
+only, and only for keys matching `envPrefix` (`VITE_` by default). So
+`process.env.DAPPFENCE_SECRET_KEY` is `undefined` inside `vite.config.js` even when the key is in
+`.env`. The plugin loads the env files itself — using the build's resolved `mode` and `envDir`, so
+mode-specific files like `.env.production` work — which means you should let it resolve the key
+rather than reading `process.env` yourself:
+
+```js
+// ✗ undefined when the key lives in .env
+dappfence({ secretKey: process.env.DAPPFENCE_SECRET_KEY });
+
+// ✓ just let the plugin resolve it
+dappfence();
+```
 
 ## Options
 
 | Option                             | Type                | Default                           | Description                                                                                            |
 | ---------------------------------- | ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `secretKey`                        | `string`            | `DAPPFENCE_SECRET_KEY` env        | **Required.** Hex secret key used to sign the manifest.                                                |
+| `secretKey`                        | `string`            | `DAPPFENCE_SECRET_KEY` env/`.env` | **Required.** Hex secret key used to sign the manifest.                                                |
 | `scriptSrc`                        | `string`            | `'/dappfence.js'`                 | URL path where `dappfence.js` will be served.                                                          |
 | `manifestUrl`                      | `string`            | `'/integrity-manifest.json'`      | URL path where the manifest will be served.                                                            |
 | `manifestPath`                     | `string`            | `'integrity-manifest.json'`       | Output filename for the manifest relative to `outDir`.                                                 |
@@ -80,7 +96,6 @@ manifest exactly like any other page, with no separate postbuild copy step:
 
 ```js
 dappfence({
-    secretKey: process.env.DAPPFENCE_SECRET_KEY,
     spaFallback: ['/btc', '/baby', '/rewards'],
 });
 ```

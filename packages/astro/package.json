@@ -37,6 +37,9 @@
     "publishConfig": {
         "access": "public"
     },
+    "peerDependencies": {
+        "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
+    },
     "dependencies": {
         "@dappfence/core": "~0.1.0",
         "@dappfence/manifest-tools": "~0.1.0"
