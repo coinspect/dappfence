@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -96,6 +96,60 @@ describe('@dappfence/vite plugin shape', () => {
         } finally {
             delete process.env.DAPPFENCE_SECRET_KEY;
         }
+    });
+});
+
+// A dev key hardcoded in vite.config.js silently outranks CI's real key, so the
+// production manifest gets signed with a key committed to the repository. The
+// precedence is intended; the silence is what makes it dangerous.
+describe('@dappfence/vite conflicting secretKey sources', () => {
+    const OTHER_KEY = 'a'.repeat(64);
+
+    const run = async (options, env) => {
+        const root = await makeOutDir({});
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const prev = process.env.DAPPFENCE_SECRET_KEY;
+        if (env === undefined) {
+            delete process.env.DAPPFENCE_SECRET_KEY;
+        } else {
+            process.env.DAPPFENCE_SECRET_KEY = env;
+        }
+        try {
+            dappfence(options).configResolved({
+                root,
+                envDir: root,
+                mode: 'production',
+                build: { outDir: '.' },
+            });
+            return warn.mock.calls.map(([m]) => m).join('\n');
+        } finally {
+            warn.mockRestore();
+            if (prev === undefined) {
+                delete process.env.DAPPFENCE_SECRET_KEY;
+            } else {
+                process.env.DAPPFENCE_SECRET_KEY = prev;
+            }
+        }
+    };
+
+    it('warns when an explicit option and the env var are both set and differ', async () => {
+        expect(await run({ secretKey: SECRET_KEY }, OTHER_KEY)).toMatch(
+            /both set, and they differ/
+        );
+    });
+
+    it('does not warn when only the explicit option is set', async () => {
+        expect(await run({ secretKey: SECRET_KEY }, undefined)).toBe('');
+    });
+
+    it('does not warn when the two sources agree', async () => {
+        expect(await run({ secretKey: SECRET_KEY }, SECRET_KEY)).toBe('');
+    });
+
+    // signManifest strips `0x` and decodes case-insensitively, so these are the
+    // same key and must not be reported as a conflict.
+    it('treats `0x`-prefixed and upper-case spellings as the same key', async () => {
+        expect(await run({ secretKey: `0x${SECRET_KEY.toUpperCase()}` }, SECRET_KEY)).toBe('');
     });
 });
 

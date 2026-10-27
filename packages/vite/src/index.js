@@ -52,6 +52,11 @@ const logger = {
     error: (msg) => console.error(msg),
 };
 
+// The same key can be written with or without the `0x` prefix and in either
+// case — signManifest strips and decodes both — so compare the decoded form,
+// not the literal strings, or an equivalent pair reads as a conflict.
+const sameKey = (a, b) => a.replace(/^0x/, '').toLowerCase() === b.replace(/^0x/, '').toLowerCase();
+
 const DEFAULTS = {
     scriptSrc: '/dappfence.js',
     manifestUrl: '/integrity-manifest.json',
@@ -109,16 +114,33 @@ export default function dappfence(options = {}) {
             // taking only the one variable we need rather than the whole environment.
             // loadEnv overlays process.env on top of the parsed files, so a real
             // environment variable still outranks a `.env` entry, as documented.
+            // The environment value is read even when an explicit key wins, so a
+            // silent conflict between the two can be reported below.
             const envDir = config.envDir ?? config.root ?? process.cwd();
-            secretKey =
-                explicitKey ||
-                loadEnv(config.mode ?? 'production', envDir, '').DAPPFENCE_SECRET_KEY ||
-                null;
+            const envKey =
+                loadEnv(config.mode ?? 'production', envDir, '').DAPPFENCE_SECRET_KEY || null;
+            secretKey = explicitKey || envKey || null;
 
             if (!secretKey) {
                 throw new Error(
                     '[@dappfence/vite] secretKey is required. ' +
                         'Pass it via the plugin option or set the DAPPFENCE_SECRET_KEY environment variable.'
+                );
+            }
+
+            // A hardcoded development key in vite.config.js silently outranks the
+            // real key in CI, so the production manifest ends up signed with a key
+            // committed to the repository — and anyone who can read the repo can then
+            // sign a manifest the deployed site trusts. The precedence is intended and
+            // documented; what makes it dangerous is that it is invisible.
+            if (explicitKey && envKey && !sameKey(explicitKey, envKey)) {
+                logger.warn(
+                    'DappFence: a `secretKey` option and DAPPFENCE_SECRET_KEY are both set, ' +
+                        'and they differ. The explicit option wins, so this manifest is signed ' +
+                        'with the key in your config — not the one in the environment. If the ' +
+                        'config key is a development fallback, write it as ' +
+                        '`secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY` so the ' +
+                        'environment takes over, or drop the option entirely.'
                 );
             }
 

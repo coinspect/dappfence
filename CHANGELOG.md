@@ -33,8 +33,28 @@ Covers `@dappfence/astro` and `@dappfence/vite`.
     the integration object is constructed, so a malformed key no longer fails `astro dev` and
     `astro check` — commands that never use the key.
 
+### Security
+
+-   **A hardcoded `secretKey` no longer overrides CI's key silently.** An explicit option outranks
+    `DAPPFENCE_SECRET_KEY` by design, but nothing said so at build time — so a development key
+    committed to `astro.config.mjs` or `vite.config.js` would also win in CI, and the production
+    manifest was signed with a key anyone who can read the repository knows. That key's address is
+    what the deployed service worker trusts, so the protection was defeated for exactly the people
+    the threat model excludes.
+
+    The precedence is unchanged — it is the documented contract, and flipping it would break builds
+    that deliberately override the environment. Instead both plugins now warn when an explicit
+    option and a `DAPPFENCE_SECRET_KEY` (environment or `.env`) are both set and differ, naming the
+    `process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY` form that lets the environment take over. The
+    comparison ignores an `0x` prefix and case, since `signManifest` accepts either spelling and an
+    equivalent pair is not a conflict.
+
 ### Documentation
 
+-   The `@dappfence/astro` README no longer presents a hardcoded `secretKey` as the key-resolution
+    example. It now recommends passing no option at all, carries an explicit warning about the
+    precedence, and shows the `??` form for projects that genuinely want a local fallback. The same
+    warning was added to the `@dappfence/vite` README.
 -   The `.env` caveat above is documented in the `@dappfence/astro` and `@dappfence/vite` READMEs,
     including the `loadEnv` snippet needed for non-default `--mode` builds.
 -   Corrected the key-resolution example in the `@dappfence/astro` README (and the matching comment

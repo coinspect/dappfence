@@ -112,14 +112,38 @@ const baseScriptAttrs = (o, base) => ({
 // `mode` is not part of the astro:config:setup payload, so it has to be derived
 // from `command`: `astro build --mode staging` will not pick up
 // `.env.staging`, and such a setup has to pass `secretKey` explicitly.
+//
+// The environment value is read even when an explicit key wins, so that a
+// silent conflict between the two can be reported — see warnOnKeyConflict.
 function resolveSecretKey(explicitKey, command, config) {
-    if (explicitKey) {
-        return explicitKey;
-    }
     const envDir =
         config.vite?.envDir ?? (config.root ? fileURLToPath(config.root) : process.cwd());
     const mode = command === 'dev' ? 'development' : 'production';
-    return loadEnv(mode, envDir, '').DAPPFENCE_SECRET_KEY || null;
+    const envKey = loadEnv(mode, envDir, '').DAPPFENCE_SECRET_KEY || null;
+    return { secretKey: explicitKey || envKey || null, envKey };
+}
+
+// The same key can be written with or without the `0x` prefix and in either
+// case — signManifest strips and decodes both — so compare the decoded form,
+// not the literal strings, or an equivalent pair reads as a conflict.
+const sameKey = (a, b) => a.replace(/^0x/, '').toLowerCase() === b.replace(/^0x/, '').toLowerCase();
+
+// A hardcoded development key in astro.config.mjs silently outranks the real
+// key in CI, so the production manifest ends up signed with a key committed to
+// the repository — and anyone who can read the repo can then sign a manifest
+// the deployed site trusts. The precedence itself is intended and documented;
+// what makes it dangerous is that it is invisible, so say so at build time.
+function warnOnKeyConflict(explicitKey, envKey, logger) {
+    if (!explicitKey || !envKey || sameKey(explicitKey, envKey)) {
+        return;
+    }
+    logger.warn(
+        'DappFence: a `secretKey` option and DAPPFENCE_SECRET_KEY are both set, and they ' +
+            'differ. The explicit option wins, so this manifest is signed with the key in ' +
+            'your config — not the one in the environment. If the config key is a development ' +
+            'fallback, write it as `secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY` so ' +
+            'the environment takes over, or drop the option entirely.'
+    );
 }
 
 const DEFAULTS = {
@@ -179,7 +203,8 @@ export default function dappfence(options = {}) {
             // `virtual:dappfence/attrs` import has no other provider, so registering one
             // without the other is a resolve error.
             'astro:config:setup'({ command, logger, config, updateConfig, addMiddleware }) {
-                secretKey = resolveSecretKey(explicitKey, command, config);
+                let envKey;
+                ({ secretKey, envKey } = resolveSecretKey(explicitKey, command, config));
 
                 if (command !== 'build') {
                     if (!secretKey) {
@@ -201,6 +226,10 @@ export default function dappfence(options = {}) {
                     );
                     throw new Error('[@dappfence/astro] secretKey is required');
                 }
+
+                // Build-only: the choice between the two keys only has consequences
+                // for the manifest this command is about to sign.
+                warnOnKeyConflict(explicitKey, envKey, logger);
 
                 // Derive the signer identity from secretKey so users don't have to
                 // supply it. Build-only, like the key itself: deriveIdentity throws on

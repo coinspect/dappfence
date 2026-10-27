@@ -64,6 +64,14 @@ dappfence({ secretKey: process.env.DAPPFENCE_SECRET_KEY });
 dappfence();
 ```
 
+> **⚠️ A hardcoded key beats the environment, not the other way round.** An explicit `secretKey`
+> option **outranks `DAPPFENCE_SECRET_KEY`** — it does not defer to it. A development key hardcoded
+> in `vite.config.js` therefore wins in CI too, and the production manifest gets signed with a key
+> that is committed to your repository. Anyone who can read the repo can then sign a manifest your
+> deployed site will trust. The plugin warns at build time when both are set and differ; if you need
+> a local fallback, write it as `secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY` so the
+> environment still takes priority.
+
 ## Options
 
 | Option                             | Type                | Default                           | Description                                                                                            |
