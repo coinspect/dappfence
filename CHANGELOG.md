@@ -10,9 +10,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Covers `@dappfence/astro` and `@dappfence/vite`.
+Covers `@dappfence/core`, `@dappfence/astro` and `@dappfence/vite`.
 
 ### Fixed
+
+-   **`@dappfence/core`: upgrading from `0.1.x` no longer breaks the service worker's storage.** The
+    storage layer moved from a single catch-all `data` object store to one store per concern
+    (`manifests`, `activeBlocks`, `settings`, `verificationResults`) but kept both the database name
+    (`AppSecurity`) and its schema version at `1`. IndexedDB decides whether to run migrations
+    purely from that version, so a browser already holding the `0.1.x` database opened it, skipped
+    `onupgradeneeded`, and never created the new stores — the first transaction naming one of them
+    threw `NotFoundError`, and because nothing wraps that call, every storage operation in the
+    service worker failed. Fresh installs were unaffected, which is why it survived the test suite.
+    The schema version is now `2`, so the existing upgrade handler runs and creates the stores.
+
+    Data written under the old layout is not migrated — the stale `data` store is left in place,
+    unused — so an upgraded client starts from the same state as a fresh install: the trusted
+    manifest is re-fetched and re-verified, a new API token is issued, and recorded verification
+    results are gone. The signer identity is unaffected, since it comes from the service worker's
+    build-time configuration rather than from storage. One consequence is worth stating plainly: an
+    active site-wide block does not survive the upgrade, so a client sitting on the warning page
+    returns to the site until the next violation re-triggers the block.
 
 -   **`DAPPFENCE_SECRET_KEY` in a `.env` file is now actually read** (#73). Neither Astro nor Vite
     copies `.env` into `process.env` — they load the env files themselves and expose the result
