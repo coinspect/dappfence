@@ -57,6 +57,14 @@ DAPPFENCE_SECRET_KEY=f0570667f495...
 The key can also be passed via the `DAPPFENCE_SECRET_KEY` environment variable instead of
 `--secret-key`.
 
+Unlike the `@dappfence/astro` and `@dappfence/vite` plugins, this CLI is a plain Node process and
+does **not** read `.env` by itself — the variable has to be in the real environment. Export it, or
+have Node load the file for you:
+
+```bash
+node --env-file=.env node_modules/.bin/dappfence-manifest sign …
+```
+
 #### Options for `sign`
 
 | Option           | Default                    | Description                                     |
