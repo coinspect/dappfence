@@ -10,7 +10,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Covers `@dappfence/core`, `@dappfence/astro` and `@dappfence/vite`.
+## [0.1.4] — 2026-10-27
+
+Covers `@dappfence/core` (`0.1.4`), `@dappfence/astro` (`0.1.4`), `@dappfence/manifest-tools`
+(`0.1.3`) and `@dappfence/vite` (`0.1.3`). `@dappfence/next` is unchanged since `0.1.2` and is not
+republished.
+
+### Changed
+
+-   **Breaking (`@dappfence/core`): a redirect that the manifest does not declare is now a
+    violation.** Redirects were previously waved through — `shouldSkipVerification` treated an
+    `opaqueredirect` response as an empty body and skipped it, and a materialized 3xx fell through
+    the same way. There was no record of where a request had been sent, so a redirect was an
+    unverified hole in the middle of an otherwise verified load. A redirect now resolves against a
+    new `redirects` list in the manifest: a declared one is synthesized by the service worker and
+    reported as the new non-violating `REDIRECT` status, and an undeclared one is `FILE_UNTRUSTED`
+    with `reason: 'REDIRECT_NOT_DECLARED'`, which blocks in protected mode.
+
+    **This needs action before upgrading a site that redirects.** No integration emits
+    `manifest.redirects` yet, so the list has to be authored by hand; a site that relied on the old
+    skip behaviour and redirects anything — a trailing-slash normalization, a login bounce, a locale
+    prefix — will start blocking in protected mode until each redirect is declared. In reporting
+    mode it surfaces as a report rather than a block. See
+    [docs/redirect-handling.md](docs/redirect-handling.md) for the schema and the reasoning.
+
+-   `@dappfence/core`: `resolveManifestKey` keys off `response.url` only when `response.redirected`
+    is set, rather than whenever the response carried a URL. The old form let any response that
+    reported a URL silently re-point the manifest lookup away from the requested path.
+-   `@dappfence/core`: `/sw-api/status` reports more than it used to. Verification results
+    previously held `MATCH` records only, with everything else written to a separate security-event
+    log; all non-`SKIPPED` outcomes now land in verification results, so failures appear alongside
+    passes. The payload's shape is unchanged, but each record is now a fixed projection — `status`,
+    `timestamp`, `fileKey`, `reason`, `expectedHashes`, `actualHash` — and no longer carries
+    `userAgent` or `origin`.
+-   `@dappfence/core`: the service worker's IndexedDB layout is now one object store per concern
+    (`manifests`, `activeBlocks`, `settings`, `verificationResults`) instead of a single `data`
+    store, and the dead security-events store is gone. This is internal to the bundle — no exported
+    API changes — but see the upgrade note under Fixed.
+
+### Added
+
+-   **`@dappfence/core`: `manifest.redirects`.** Each entry is `{ from, to, status? }`, where
+    `status` defaults to `302`. The list is validated when the manifest is normalized, and a bad
+    entry is dropped with a warning rather than failing the load: entries of the wrong shape, a `to`
+    using a `javascript:` or `data:` scheme, a self-loop, a duplicate `from`, or a non-integer
+    `status`.
+-   `@dappfence/core`: a `REDIRECT` verification status and a `REDIRECT_NOT_DECLARED` file-untrusted
+    reason, both on the `./constants` entry point. The additions are backwards compatible — nothing
+    was removed or renamed.
+-   `@dappfence/core`: the warning page explains the specific failure instead of always reporting
+    modified content. Each status and reason maps to its own title and field labels — a hash
+    mismatch shows expected against actual, a signature mismatch shows pinned against recovered
+    signer, and a reason with neither omits the rows instead of printing `N/A`. A manifest-level
+    failure also gets a distinct page summary, since "content has been modified" is misleading when
+    the trust anchor is what failed.
+-   `@dappfence/core`: `settingsStore.getSessionId()`, a per-install UUID generated once and
+    intended for tagging outgoing telemetry.
+-   `@dappfence/manifest-tools`: `generateManifest` accepts a `scriptHash` option for the DappFence
+    script's own pre-computed hash, kept separate from `extraHashes` so the two are reported
+    independently.
 
 ### Fixed
 
@@ -50,6 +108,11 @@ Covers `@dappfence/core`, `@dappfence/astro` and `@dappfence/vite`.
 -   `@dappfence/astro`: the signer identity is now derived inside the build path rather than when
     the integration object is constructed, so a malformed key no longer fails `astro dev` and
     `astro check` — commands that never use the key.
+-   `@dappfence/manifest-tools`: the DappFence script is no longer counted as a pre-computed SSR
+    route hash. It is copied into the output directory and excluded from the walk, so its hash
+    arrives pre-computed like an SSR route's — folding it into the same tally made every static
+    build report one SSR route hash it never had. It is now passed as `scriptHash` and logged on its
+    own line.
 
 ### Security
 
@@ -80,6 +143,10 @@ Covers `@dappfence/core`, `@dappfence/astro` and `@dappfence/vite`.
     `DAPPFENCE_SECRET_KEY` if set" — the opposite of the documented and implemented precedence.
 -   `@dappfence/manifest-tools`: noted that its CLI, unlike the bundler plugins, does not read
     `.env` on its own and needs `node --env-file` or an exported variable.
+-   [docs/redirect-handling.md](docs/redirect-handling.md) covers the redirect model: what the
+    service worker can and cannot observe about a redirect, why an undeclared one is treated as a
+    violation, and how to author `manifest.redirects`.
+-   The `@dappfence/core` README's module map reflects the split storage layout.
 
 ## [0.1.3] — 2026-10-26
 
