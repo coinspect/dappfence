@@ -32,7 +32,7 @@ export function createSecurityFetchHandler({
     securityProcessor,
     handleApiEndpoint,
 }) {
-    const { activeBlocksStore } = appStore;
+    const { securityStore } = appStore;
     const locationHref = swContext.getLocationHref();
 
     /**
@@ -135,7 +135,7 @@ export function createSecurityFetchHandler({
         // Site-wide block gate only fires in protected mode. In other modes we
         // still let the request flow so the child SW's response is returned
         // untouched.
-        if (ctx.mode === MODE.PROTECTED && (await activeBlocksStore.isBlocked())) {
+        if (ctx.mode === MODE.PROTECTED && (await securityStore.isBlocked())) {
             return createBlockResponse(request, locationHref);
         }
 

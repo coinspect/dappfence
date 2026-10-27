@@ -1,38 +1,74 @@
 import { describe, it, expect } from 'vitest';
 import { createDatabase } from '../storage/indexeddb.js';
 
-function makeMockIDB() {
-    const store = new Map();
+const STORE_NAMES = ['manifests', 'activeBlocks', 'settings', 'verificationResults'];
+const TEST_CONFIG = {
+    name: 'TestDB',
+    version: 1,
+    schema: Object.fromEntries(STORE_NAMES.map((n) => [n, {}])),
+};
 
-    const makeTransaction = () => {
+function makeMockIDB(opts = {}) {
+    const stores = Object.fromEntries(STORE_NAMES.map((n) => [n, new Map()]));
+    const trace = { opens: 0, transactions: [], createdStores: [] };
+    const hooks = opts.hooks || {};
+
+    const makeReq = (producer) => {
+        const req = {};
+        Promise.resolve().then(() => {
+            try {
+                req.result = producer();
+                req.onsuccess?.();
+            } catch (e) {
+                req.error = e;
+                req.onerror?.();
+            }
+        });
+        return req;
+    };
+
+    const makeObjectStore = (name) => {
+        const data = stores[name];
+        return {
+            get indexNames() {
+                return { contains: () => false };
+            },
+            createIndex: () => {},
+            get(key) {
+                return makeReq(() => {
+                    hooks.onGet?.(name, key);
+                    return data.get(key);
+                });
+            },
+            put(value, key) {
+                return makeReq(() => {
+                    hooks.onPut?.(name, value, key);
+                    data.set(key, value);
+                });
+            },
+            delete(key) {
+                return makeReq(() => {
+                    data.delete(key);
+                });
+            },
+            getAll(_range, count) {
+                return makeReq(() => {
+                    const all = Array.from(data.values());
+                    return count !== undefined ? all.slice(0, count) : all;
+                });
+            },
+            count() {
+                return makeReq(() => data.size);
+            },
+        };
+    };
+
+    const makeTransaction = (storeNames, mode, options = {}) => {
+        trace.transactions.push({ storeNames: [...storeNames], mode, options });
         const tx = {
-            objectStore: () => ({
-                get: (key) => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        req.result = store.get(key);
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-                put: (value, key) => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        store.set(key, value);
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-                delete: (key) => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        store.delete(key);
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            }),
+            objectStore: (name) => makeObjectStore(name),
             commit: () => {},
+            mode,
         };
         Object.defineProperty(tx, 'oncomplete', {
             set(fn) {
@@ -43,24 +79,32 @@ function makeMockIDB() {
         return tx;
     };
 
-    const makeDb = () => ({
-        objectStoreNames: { contains: () => true },
-        createObjectStore: () => {},
-        transaction: () => makeTransaction(),
-    });
+    const db = {
+        objectStoreNames: { contains: (name) => trace.createdStores.includes(name) },
+        createObjectStore: (name) => {
+            trace.createdStores.push(name);
+            return makeObjectStore(name);
+        },
+        transaction: (storeNames, mode, options) => {
+            const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+            return makeTransaction(names, mode, options);
+        },
+    };
 
     return {
         open: () => {
+            trace.opens++;
             const req = {};
             Promise.resolve().then(() => {
-                const db = makeDb();
                 req.result = db;
-                req.onupgradeneeded?.({ target: { result: db } });
+                const upgradeTx = { objectStore: (name) => makeObjectStore(name) };
+                req.onupgradeneeded?.({ target: { result: db, transaction: upgradeTx } });
                 req.onsuccess?.();
             });
             return req;
         },
-        _store: store,
+        _trace: trace,
+        _stores: stores,
     };
 }
 
@@ -77,460 +121,110 @@ function makeMockIDBWithOpenError() {
     };
 }
 
-function makeMockIDBWithGetError() {
-    const makeTransaction = () => {
-        const tx = {
-            objectStore: () => ({
-                get: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        req.error = new Error('get failed');
-                        req.onerror?.();
-                    });
-                    return req;
-                },
-                put: (value, key) => {
-                    const store = new Map();
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        store.set(key, value);
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            }),
-            commit: () => {},
-        };
-        Object.defineProperty(tx, 'oncomplete', {
-            set(fn) {
-                Promise.resolve().then(() => fn?.());
-            },
-            configurable: true,
-        });
-        return tx;
-    };
-
-    const makeDb = () => ({
-        objectStoreNames: { contains: () => true },
-        createObjectStore: () => {},
-        transaction: () => makeTransaction(),
-    });
-
-    return {
-        open: () => {
-            const req = {};
-            Promise.resolve().then(() => {
-                const db = makeDb();
-                req.result = db;
-                req.onupgradeneeded?.({ target: { result: db } });
-                req.onsuccess?.();
-            });
-            return req;
-        },
-    };
-}
-
 describe('createDatabase', () => {
-    describe('get', () => {
-        it('returns stored value for an existing key', async () => {
+    describe('schema application', () => {
+        it('creates every store declared in the schema on first open', async () => {
             const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            await db.set('myKey', 'myValue');
-            const result = await db.get('myKey');
-            expect(result).toBe('myValue');
-        });
-
-        it('returns undefined for a missing key', async () => {
-            const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            const result = await db.get('nonexistent');
-            expect(result).toBeUndefined();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async ({ manifests }) => manifests.get('x'));
+            for (const name of STORE_NAMES) {
+                expect(idb._trace.createdStores).toContain(name);
+            }
         });
     });
 
-    describe('set', () => {
-        it('stores a value and allows retrieval', async () => {
+    describe('persistent connection', () => {
+        it('opens the database only once across many transactions', async () => {
             const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            await db.set('k', { some: 'data' });
-            const result = await db.get('k');
-            expect(result).toEqual({ some: 'data' });
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async ({ manifests }) => manifests.get('a'));
+            await db(async ({ manifests }) => manifests.get('b'));
+            await db(async ({ settings }) => settings.get('t'), { mode: 'readwrite' });
+            expect(idb._trace.opens).toBe(1);
         });
     });
 
-    describe('delete', () => {
-        it('removes a key from the store', async () => {
+    describe('tx shape', () => {
+        it('defaults mode to readonly', async () => {
             const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            await db.set('toDelete', 'value');
-            await db.delete('toDelete');
-            const result = await db.get('toDelete');
-            expect(result).toBeUndefined();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async () => {});
+            expect(idb._trace.transactions.at(-1).mode).toBe('readonly');
         });
-    });
 
-    describe('withTx', () => {
-        it('can read and write in one transaction', async () => {
+        it('propagates mode when passed', async () => {
             const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            await db.set('initial', 42);
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async () => {}, { mode: 'readwrite' });
+            expect(idb._trace.transactions.at(-1).mode).toBe('readwrite');
+        });
 
-            await db.withTx(async (tx) => {
-                const val = await tx.get('initial');
-                await tx.set('derived', val * 2);
+        it('passes durability through to IndexedDB', async () => {
+            const idb = makeMockIDB();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async () => {}, { mode: 'readwrite', durability: 'relaxed' });
+            expect(idb._trace.transactions.at(-1).options.durability).toBe('relaxed');
+        });
+
+        it('scope includes every schema store', async () => {
+            const idb = makeMockIDB();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db(async (scope) => {
+                for (const name of STORE_NAMES) {
+                    expect(scope[name]).toBeDefined();
+                    expect(typeof scope[name].get).toBe('function');
+                }
             });
-
-            const result = await db.get('derived');
-            expect(result).toBe(84);
         });
 
-        it('returns the return value of the callback function', async () => {
-            const idb = makeMockIDB();
-            const db = createDatabase(idb);
-            const result = await db.withTx(async () => 'txResult');
-            expect(result).toBe('txResult');
+        it('returns the callback return value', async () => {
+            const db = createDatabase(makeMockIDB(), TEST_CONFIG);
+            const result = await db(async () => 'ok');
+            expect(result).toBe('ok');
         });
-    });
 
-    describe('createObjectStore', () => {
-        it('calls createObjectStore when data store does not exist', async () => {
-            const store = new Map();
-            let createObjectStoreCalled = false;
-
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        get: (key) => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.result = store.get(key);
-                                req.onsuccess?.();
-                            });
-                            return req;
-                        },
-                        put: (value, key) => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                store.set(key, value);
-                                req.onsuccess?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set(fn) {
-                        Promise.resolve().then(() => fn?.());
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-
-            const db = {
-                objectStoreNames: { contains: () => false },
-                createObjectStore: () => {
-                    createObjectStoreCalled = true;
-                },
-                transaction: () => makeTransaction(),
-            };
-
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-
-            const database = createDatabase(idb);
-            await database.set('key', 'value');
-            expect(createObjectStoreCalled).toBe(true);
+        it('round-trips a value through put + get on a single store', async () => {
+            const db = createDatabase(makeMockIDB(), TEST_CONFIG);
+            await db(async ({ manifests }) => manifests.put({ v: 1 }, 'k'), {
+                mode: 'readwrite',
+            });
+            const got = await db(({ manifests }) => manifests.get('k'));
+            expect(got).toEqual({ v: 1 });
         });
     });
 
     describe('error paths', () => {
         it('rejects when idb.open fires onerror', async () => {
-            const idb = makeMockIDBWithOpenError();
-            const db = createDatabase(idb);
-            await expect(db.get('any')).rejects.toThrow('IDB open failed');
+            const db = createDatabase(makeMockIDBWithOpenError(), TEST_CONFIG);
+            await expect(db(({ manifests }) => manifests.get('x'))).rejects.toThrow(
+                'IDB open failed'
+            );
         });
 
-        it('rejects withTx when store.get fires onerror', async () => {
-            const idb = makeMockIDBWithGetError();
-            const db = createDatabase(idb);
+        it('rejects when store.get throws', async () => {
+            const idb = makeMockIDB({
+                hooks: {
+                    onGet: () => {
+                        throw new Error('get failed');
+                    },
+                },
+            });
+            const db = createDatabase(idb, TEST_CONFIG);
+            await expect(db(({ manifests }) => manifests.get('x'))).rejects.toThrow('get failed');
+        });
+
+        it('rejects when store.put throws', async () => {
+            const idb = makeMockIDB({
+                hooks: {
+                    onPut: () => {
+                        throw new Error('put failed');
+                    },
+                },
+            });
+            const db = createDatabase(idb, TEST_CONFIG);
             await expect(
-                db.withTx(async (tx) => {
-                    await tx.get('someKey');
-                })
-            ).rejects.toThrow('get failed');
-        });
-
-        it('rejects get when store.get fires onerror', async () => {
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        get: () => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.error = new Error('get store error');
-                                req.onerror?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set(fn) {
-                        Promise.resolve().then(() => fn?.());
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-            const makeDb = () => ({
-                objectStoreNames: { contains: () => true },
-                createObjectStore: () => {},
-                transaction: () => makeTransaction(),
-            });
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        const db = makeDb();
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-            const db = createDatabase(idb);
-            await expect(db.get('key')).rejects.toThrow('get store error');
-        });
-
-        it('rejects set when store.put fires onerror', async () => {
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        put: () => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.error = new Error('put error');
-                                req.onerror?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set(fn) {
-                        Promise.resolve().then(() => fn?.());
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-            const makeDb = () => ({
-                objectStoreNames: { contains: () => true },
-                createObjectStore: () => {},
-                transaction: () => makeTransaction(),
-            });
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        const db = makeDb();
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-            const db = createDatabase(idb);
-            await expect(db.set('key', 'val')).rejects.toThrow('put error');
-        });
-
-        it('rejects delete when store.delete fires onerror', async () => {
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        delete: () => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.error = new Error('delete error');
-                                req.onerror?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set(fn) {
-                        Promise.resolve().then(() => fn?.());
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-            const makeDb = () => ({
-                objectStoreNames: { contains: () => true },
-                createObjectStore: () => {},
-                transaction: () => makeTransaction(),
-            });
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        const db = makeDb();
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-            const db = createDatabase(idb);
-            await expect(db.delete('key')).rejects.toThrow('delete error');
-        });
-
-        it('rejects withTx when store.put fires onerror', async () => {
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        get: (_key) => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.result = undefined;
-                                req.onsuccess?.();
-                            });
-                            return req;
-                        },
-                        put: () => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.error = new Error('tx put error');
-                                req.onerror?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set(fn) {
-                        Promise.resolve().then(() => fn?.());
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-            const makeDb = () => ({
-                objectStoreNames: { contains: () => true },
-                createObjectStore: () => {},
-                transaction: () => makeTransaction(),
-            });
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        const db = makeDb();
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-            const db = createDatabase(idb);
-            await expect(
-                db.withTx(async (tx) => {
-                    await tx.set('key', 'val');
-                })
-            ).rejects.toThrow('tx put error');
-        });
-
-        it('rejects withTx when transaction fires onerror', async () => {
-            let triggerTxError;
-            const makeTransaction = () => {
-                const tx = {
-                    objectStore: () => ({
-                        get: (_key) => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.result = undefined;
-                                req.onsuccess?.();
-                            });
-                            return req;
-                        },
-                        put: (_value, _key) => {
-                            const req = {};
-                            Promise.resolve().then(() => {
-                                req.onsuccess?.();
-                            });
-                            return req;
-                        },
-                    }),
-                    commit: () => {},
-                    get onerror() {
-                        return undefined;
-                    },
-                };
-                Object.defineProperty(tx, 'oncomplete', {
-                    set() {},
-                    configurable: true,
-                });
-                Object.defineProperty(tx, 'onerror', {
-                    set(fn) {
-                        triggerTxError = () => {
-                            tx._txErr = new Error('tx error');
-                            fn?.();
-                        };
-                    },
-                    get() {
-                        return undefined;
-                    },
-                    configurable: true,
-                });
-                Object.defineProperty(tx, 'error', {
-                    get() {
-                        return tx._txErr;
-                    },
-                    configurable: true,
-                });
-                return tx;
-            };
-            const makeDb = () => ({
-                objectStoreNames: { contains: () => true },
-                createObjectStore: () => {},
-                transaction: () => makeTransaction(),
-            });
-            const idb = {
-                open: () => {
-                    const req = {};
-                    Promise.resolve().then(() => {
-                        const db = makeDb();
-                        req.result = db;
-                        req.onupgradeneeded?.({ target: { result: db } });
-                        req.onsuccess?.();
-                    });
-                    return req;
-                },
-            };
-            const db = createDatabase(idb);
-            const promise = db.withTx(async () => 'done');
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            triggerTxError?.();
-            await expect(promise).rejects.toThrow('tx error');
+                db(({ manifests }) => manifests.put('v', 'k'), { mode: 'readwrite' })
+            ).rejects.toThrow('put failed');
         });
     });
 });

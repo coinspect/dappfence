@@ -14,11 +14,11 @@ const logger = createLogger();
  * @param {object} deps.appStore
  */
 export function createApiHandler({ onSecurityViolation, appStore }) {
-    const { apiTokenStore, activeBlocksStore, trustedManifestStore, verificationResultsStore } =
+    const { settingsStore, securityStore, trustedManifestStore, verificationResultsStore } =
         appStore;
 
     async function validateApiToken(request) {
-        const token = await apiTokenStore.getApiToken();
+        const token = await settingsStore.getApiToken();
         const providedToken =
             request.headers.get('X-DappFence-Token') ||
             new URL(request.url).searchParams.get('token');
@@ -33,7 +33,7 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
         const verificationResults = appVersion
             ? await verificationResultsStore.get(appVersion)
             : [];
-        const blockHistory = await activeBlocksStore.getAllBlocks();
+        const blockHistory = await securityStore.getAllBlocks();
         const status = {
             appVersion,
             timestamp: new Date().toISOString(),
@@ -62,15 +62,15 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
             logger.log('security-warning: non-navigation access, falling through');
             return;
         }
-        if (!(await activeBlocksStore.isBlocked())) {
+        if (!(await securityStore.isBlocked())) {
             logger.log('fetch api No active block - redirecting home');
             return createRedirectResponse('/');
         }
         logger.log(`fetch api Broadcasting active block condition`);
         await onSecurityViolation();
         const [apiToken, activeBlocks] = await Promise.all([
-            apiTokenStore.getApiToken(),
-            activeBlocksStore.getActiveBlocks(),
+            settingsStore.getApiToken(),
+            securityStore.getActiveBlocks(),
         ]);
         return createSecurityPageResponse(apiToken, activeBlocks);
     }
@@ -78,7 +78,7 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
     async function handleSiteUnblock(_request) {
         // Errors bubble to the outer catch and become a plain-text 500, matching
         // how the rest of this handler reports unexpected failures.
-        await activeBlocksStore.clearBlockCondition();
+        await securityStore.clearBlockCondition();
         logger.log('Site unblocked successfully');
         return new Response(
             JSON.stringify({

@@ -50,7 +50,7 @@ function makeActivateDeps({
         swContext: { claimClients },
         onSecurityViolation,
         appStore: {
-            activeBlocksStore: {
+            securityStore: {
                 isBlocked: vi.fn(() => Promise.resolve(isBlocked)),
             },
         },

@@ -1,24 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createActiveBlocksStore, generateBlockId } from '../storage/security-stores.js';
+import { createSecurityStore, generateBlockId } from '../storage/security-store.js';
+import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
-function createInMemoryDatabase() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        delete: async (key) => store.delete(key),
-        withTx: async (fn) => {
-            const result = await fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            });
-            return result;
-        },
-    };
-}
-
-const BLOCK_DATA = {
-    status: 'FILE_UNTRUSTED',
+const DETAILS = {
+    status: VERIFICATION_STATUS.FILE_UNTRUSTED,
     reason: 'HASH_MISMATCH',
     fileKey: '/app.js',
     expectedHashes: ['expected123'],
@@ -26,8 +12,8 @@ const BLOCK_DATA = {
     assetType: 'ASSET',
 };
 
-const BLOCK_DATA_2 = {
-    status: 'FILE_UNTRUSTED',
+const DETAILS_2 = {
+    status: VERIFICATION_STATUS.FILE_UNTRUSTED,
     reason: 'HASH_MISMATCH',
     fileKey: '/style.css',
     expectedHashes: ['expectedABC'],
@@ -35,28 +21,28 @@ const BLOCK_DATA_2 = {
     assetType: 'ASSET',
 };
 
-describe('createActiveBlocksStore', () => {
+describe('createSecurityStore', () => {
     let store;
 
     beforeEach(() => {
-        store = createActiveBlocksStore(createInMemoryDatabase());
+        store = createSecurityStore(createInMemoryDb());
     });
 
-    describe('recordSecurityBlock', () => {
+    describe('recordSecurityViolation', () => {
         it('returns mustBlock=true for a brand-new block', async () => {
-            const mustBlock = await store.recordSecurityBlock(BLOCK_DATA);
+            const mustBlock = await store.recordSecurityViolation(DETAILS);
             expect(mustBlock).toBe(true);
         });
 
         it('returns mustBlock=false on duplicate (already-recorded block)', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            const mustBlock = await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
+            const mustBlock = await store.recordSecurityViolation(DETAILS);
             expect(mustBlock).toBe(false);
         });
 
         it('increments occurrenceCount on recurrence', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS);
 
             const blocks = await store.getActiveBlocks();
             expect(blocks).toHaveLength(1);
@@ -64,38 +50,33 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('updates lastSeen on recurrence', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const [firstRecord] = await store.getActiveBlocks();
             await new Promise((r) => setTimeout(r, 5));
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const [secondRecord] = await store.getActiveBlocks();
             expect(secondRecord.lastSeen >= firstRecord.lastSeen).toBe(true);
         });
 
         it('assigns distinct IDs to distinct violations', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS_2);
             const blocks = await store.getActiveBlocks();
             expect(blocks.map((b) => b.fileKey).sort()).toEqual(['/app.js', '/style.css']);
         });
 
         it('fails safe: returns mustBlock=true on storage errors', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('storage unavailable');
-                },
-                set: async () => {},
-                withTx: async (fn) => {
-                    return fn({
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async () => {
                             throw new Error('storage unavailable');
                         },
-                        set: async () => {},
-                    });
-                },
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
-            const mustBlock = await brokenStore.recordSecurityBlock(BLOCK_DATA);
+                        put: async () => {},
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
+            const mustBlock = await brokenStore.recordSecurityViolation(DETAILS);
             expect(mustBlock).toBe(true);
         });
     });
@@ -106,12 +87,12 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('returns true when a block is active', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             expect(await store.isBlocked()).toBe(true);
         });
 
         it('returns false after clearBlockCondition', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             await store.clearBlockCondition();
             expect(await store.isBlocked()).toBe(false);
         });
@@ -123,10 +104,10 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('returns every block record annotated with active state', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS_2);
             await store.clearBlockCondition();
-            await store.recordSecurityBlock(BLOCK_DATA); // recurrence, still cleared
+            await store.recordSecurityViolation(DETAILS); // recurrence, still cleared
 
             const all = await store.getAllBlocks();
             expect(all).toHaveLength(2);
@@ -135,8 +116,8 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('marks currently-active blocks with active: true', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS_2);
 
             const all = await store.getAllBlocks();
             expect(all).toHaveLength(2);
@@ -144,9 +125,9 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('mixes active and cleared blocks when some have been cleared and new ones appeared', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             await store.clearBlockCondition();
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS_2);
 
             const all = await store.getAllBlocks();
             const byFileKey = Object.fromEntries(all.map((b) => [b.fileKey, b.active]));
@@ -161,8 +142,8 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('returns all active blocks with their data joined', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS_2);
 
             const blocks = await store.getActiveBlocks();
             expect(blocks).toHaveLength(2);
@@ -176,7 +157,7 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('returns empty array after clearBlockCondition', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             await store.clearBlockCondition();
             expect(await store.getActiveBlocks()).toEqual([]);
         });
@@ -189,7 +170,7 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('returns the block data by id', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const [{ id }] = await store.getActiveBlocks();
             const block = await store.getSecurityBlock(id);
             expect(block.id).toBe(id);
@@ -197,7 +178,7 @@ describe('createActiveBlocksStore', () => {
         });
 
         it('still returns data for previously-cleared blocks (history survives)', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const [{ id }] = await store.getActiveBlocks();
             await store.clearBlockCondition();
 
@@ -209,29 +190,29 @@ describe('createActiveBlocksStore', () => {
 
     describe('policy: recurrences of cleared blocks stay cleared', () => {
         it('does not re-activate a previously-cleared block on recurrence', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             await store.clearBlockCondition();
 
-            const mustBlock = await store.recordSecurityBlock(BLOCK_DATA);
+            const mustBlock = await store.recordSecurityViolation(DETAILS);
             expect(mustBlock).toBe(false);
             expect(await store.isBlocked()).toBe(false);
         });
 
         it('still bumps occurrenceCount on cleared-block recurrences', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const [{ id }] = await store.getActiveBlocks();
             await store.clearBlockCondition();
 
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             const block = await store.getSecurityBlock(id);
             expect(block.occurrenceCount).toBe(2);
         });
 
         it('new violations after clearing do re-activate blocking', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
+            await store.recordSecurityViolation(DETAILS);
             await store.clearBlockCondition();
 
-            const mustBlock = await store.recordSecurityBlock(BLOCK_DATA_2);
+            const mustBlock = await store.recordSecurityViolation(DETAILS_2);
             expect(mustBlock).toBe(true);
             expect(await store.isBlocked()).toBe(true);
         });
@@ -239,8 +220,8 @@ describe('createActiveBlocksStore', () => {
 
     describe('clearBlockCondition', () => {
         it('removes all active blocks in one call', async () => {
-            await store.recordSecurityBlock(BLOCK_DATA);
-            await store.recordSecurityBlock(BLOCK_DATA_2);
+            await store.recordSecurityViolation(DETAILS);
+            await store.recordSecurityViolation(DETAILS_2);
             await store.clearBlockCondition();
 
             expect(await store.getActiveBlocks()).toEqual([]);
@@ -252,88 +233,81 @@ describe('createActiveBlocksStore', () => {
             expect(await store.isBlocked()).toBe(false);
         });
 
-        it('does not throw when database.set rejects', async () => {
-            const brokenDb = {
-                get: async () => [],
-                set: async () => {
-                    throw new Error('set failed');
-                },
-                withTx: async (fn) =>
-                    fn({
+        it('does not throw when activeBlocks.put rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
+                        put: async () => {
+                            throw new Error('put failed');
+                        },
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
             await expect(brokenStore.clearBlockCondition()).resolves.not.toThrow();
         });
     });
 
     describe('getSecurityBlock error path', () => {
-        it('does not throw when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
+        it('does not throw when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
             const result = await brokenStore.getSecurityBlock('block_id');
             expect(result).toBeUndefined();
         });
     });
 
     describe('getActiveBlocks error path', () => {
-        it('returns empty array when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
+        it('returns empty array when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
             const result = await brokenStore.getActiveBlocks();
             expect(result).toEqual([]);
         });
 
         it('line 135: getActiveBlocks handles missing blocks key gracefully', async () => {
-            const store = new Map();
-            store.set('active-block-ids', ['block_fake_id_here']);
-            const db = {
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-                withTx: async (fn) =>
-                    fn({
-                        get: async (key) => store.get(key),
-                        set: async (key, value) => store.set(key, value),
-                    }),
-            };
-            const s = createActiveBlocksStore(db);
+            const map = new Map();
+            map.set('active-block-ids', ['block_fake_id_here']);
+            const withTx = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async (key) => map.get(key),
+                        put: async (value, key) => {
+                            map.set(key, value);
+                        },
+                    },
+                });
+            const s = createSecurityStore(withTx);
             const result = await s.getActiveBlocks();
             expect(result).toEqual([]);
         });
     });
 
-    describe('recordSecurityBlock occurrenceCount edge cases', () => {
+    describe('recordSecurityViolation occurrenceCount edge cases', () => {
         it('line 85: occurrenceCount || 0 branch handles existing block with occurrenceCount=0', async () => {
-            const blockData = {
-                status: 'FILE_UNTRUSTED',
+            const details = {
+                status: VERIFICATION_STATUS.FILE_UNTRUSTED,
                 reason: 'HASH_MISMATCH',
                 fileKey: '/app.js',
                 expectedHashes: ['expected123'],
                 actualHash: 'actual456',
                 assetType: 'ASSET',
             };
+            const blockData = { ...details, status: details.status.description };
             const blockId = await generateBlockId(blockData);
             const store = new Map();
             store.set('blocks', {
@@ -346,17 +320,17 @@ describe('createActiveBlocksStore', () => {
                 },
             });
             store.set('active-block-ids', [blockId]);
-            const db = {
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-                withTx: async (fn) =>
-                    fn({
+            const withTx = async (fn) =>
+                fn({
+                    activeBlocks: {
                         get: async (key) => store.get(key),
-                        set: async (key, value) => store.set(key, value),
-                    }),
-            };
-            const s = createActiveBlocksStore(db);
-            const mustBlock = await s.recordSecurityBlock(blockData);
+                        put: async (value, key) => {
+                            store.set(key, value);
+                        },
+                    },
+                });
+            const s = createSecurityStore(withTx);
+            const mustBlock = await s.recordSecurityViolation(details);
             expect(mustBlock).toBe(false);
             const blocks = await s.getActiveBlocks();
             expect(blocks[0].occurrenceCount).toBe(1);
@@ -364,38 +338,32 @@ describe('createActiveBlocksStore', () => {
     });
 
     describe('isBlocked error path', () => {
-        it('returns false when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
+        it('returns false when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
             const result = await brokenStore.isBlocked();
             expect(result).toBe(false);
         });
     });
 
     describe('getAllBlocks error path', () => {
-        it('returns empty array when database.get rejects', async () => {
-            const brokenDb = {
-                get: async () => {
-                    throw new Error('get failed');
-                },
-                set: async () => {},
-                withTx: async (fn) =>
-                    fn({
-                        get: async () => undefined,
-                        set: async () => {},
-                    }),
-            };
-            const brokenStore = createActiveBlocksStore(brokenDb);
+        it('returns empty array when activeBlocks.get rejects', async () => {
+            const brokenDb = async (fn) =>
+                fn({
+                    activeBlocks: {
+                        get: async () => {
+                            throw new Error('get failed');
+                        },
+                    },
+                });
+            const brokenStore = createSecurityStore(brokenDb);
             const result = await brokenStore.getAllBlocks();
             expect(result).toEqual([]);
         });

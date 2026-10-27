@@ -1,23 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createAppStore } from '../storage/index.js';
+import { createAppStoreFromDb } from '../storage/index.js';
 import { createSecurityProcessor } from '../security-processor.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
-
-function createInMemoryDatabase() {
-    const store = new Map();
-    return {
-        get: async (key) => store.get(key),
-        set: async (key, value) => store.set(key, value),
-        delete: async (key) => store.delete(key),
-        withTx: async (fn) => {
-            const result = await fn({
-                get: async (key) => store.get(key),
-                set: async (key, value) => store.set(key, value),
-            });
-            return result;
-        },
-    };
-}
+import { createInMemoryDb } from './helpers/in-memory-db.js';
 
 function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com' } = {}) {
     return {
@@ -26,8 +11,8 @@ function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com'
     };
 }
 
-function createProcessor({ db = createInMemoryDatabase(), swContext = createSwContext() } = {}) {
-    const appStore = createAppStore(db);
+function createProcessor({ db = createInMemoryDb(), swContext = createSwContext() } = {}) {
+    const appStore = createAppStoreFromDb(db);
     const securityProcessor = createSecurityProcessor({ swContext, appStore });
     return { appStore, securityProcessor };
 }
@@ -112,34 +97,11 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(false);
     });
 
-    it('stores the security event (after drain)', async () => {
-        const { securityProcessor, appStore } = createProcessor({
-            swContext: createSwContext({ userAgent: 'test-ua', origin: 'https://example.com' }),
-        });
-        await processAndDrain(securityProcessor, mismatchDetails);
-
-        const events = await appStore.securityEventsStore.getSecurityEvents();
-        expect(events.length).toBe(1);
-        expect(events[0].status).toBe('FILE_UNTRUSTED');
-        expect(events[0].reason).toBe('HASH_MISMATCH');
-        expect(events[0].userAgent).toBe('test-ua');
-        expect(events[0].origin).toBe('https://example.com');
-    });
-
-    it('logs every violation event (including recurrences) after drain', async () => {
-        const { securityProcessor, appStore } = createProcessor();
-        await processAndDrain(securityProcessor, mismatchDetails);
-        await processAndDrain(securityProcessor, mismatchDetails);
-
-        const events = await appStore.securityEventsStore.getSecurityEvents();
-        expect(events.length).toBe(2);
-    });
-
     it('stores an active block', async () => {
         const { securityProcessor, appStore } = createProcessor();
         await securityProcessor.processSecurityEvent(mismatchDetails);
 
-        const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+        const blocks = await appStore.securityStore.getActiveBlocks();
         expect(blocks.length).toBe(1);
         expect(blocks[0].fileKey).toBe('/app.js');
     });
@@ -153,15 +115,35 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(false);
     });
 
+    it('persists non-SKIPPED non-MATCH events (FILE_UNTRUSTED) via verificationResultsStore', async () => {
+        const { securityProcessor, appStore } = createProcessor();
+        await processAndDrain(securityProcessor, {
+            ...mismatchDetails,
+            manifestInfo: { appVersion: 'v1' },
+        });
+        const results = await appStore.verificationResultsStore.get('v1');
+        expect(results).toHaveLength(1);
+        expect(results[0]).toMatchObject({
+            status: 'FILE_UNTRUSTED',
+            reason: 'HASH_MISMATCH',
+            fileKey: '/app.js',
+        });
+        expect(results[0].url).toBeUndefined();
+        expect(results[0].assetType).toBeUndefined();
+    });
+
     it('does not persist SKIPPED to any store', async () => {
         const { securityProcessor, appStore } = createProcessor();
         await processAndDrain(securityProcessor, {
             ...mismatchDetails,
             status: VERIFICATION_STATUS.SKIPPED,
+            manifestInfo: { appVersion: 'v1' },
         });
 
-        const events = await appStore.securityEventsStore.getSecurityEvents();
-        expect(events).toHaveLength(0);
+        const matches = await appStore.verificationResultsStore.get('v1');
+        expect(matches).toEqual([]);
+        const blocks = await appStore.securityStore.getAllBlocks();
+        expect(blocks).toHaveLength(0);
     });
 
     it('handles FILE_UNTRUSTED+NOT_IN_MANIFEST violation', async () => {
@@ -192,30 +174,9 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(true);
     });
 
-    it('does not crash if event logging fails during drain', async () => {
-        const db = createInMemoryDatabase();
-        const originalSet = db.set;
-        db.set = async (key, value) => {
-            if (key === 'security-events') {
-                throw new Error('storage full');
-            }
-            return originalSet(key, value);
-        };
-        const { securityProcessor } = createProcessor({ db });
-        const event = createFetchEvent();
-        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
-        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
-        expect(mustBlock).toBe(true);
-    });
-
-    it('fail-safes to mustBlock=true when outer recordSecurityBlock call throws', async () => {
-        const db = {
-            get: async () => undefined,
-            set: async () => {},
-            delete: async () => {},
-            withTx: async () => {
-                throw new Error('simulated DB failure');
-            },
+    it('fail-safes to mustBlock=true when outer recordSecurityViolation call throws', async () => {
+        const db = async () => {
+            throw new Error('simulated DB failure');
         };
         const { securityProcessor } = createProcessor({ db });
         const details = {
@@ -229,29 +190,11 @@ describe('processSecurityEvent', () => {
         expect(mustBlock).toBe(true);
     });
 
-    it('handles securityEventsStore.logSecurityEvent throwing directly during drain', async () => {
-        const { securityProcessor, appStore } = createProcessor();
-        appStore.securityEventsStore.logSecurityEvent = async () => {
-            throw new Error('direct logSecurityEvent failure');
-        };
-        const event = createFetchEvent();
-        const mustBlock = await securityProcessor.processSecurityEvent(mismatchDetails);
-        await expect(securityProcessor.reportAfterFetch(event)).resolves.toBeUndefined();
-        expect(mustBlock).toBe(true);
-    });
-
     describe('expectedHashes array contract (shape from verifier)', () => {
-        it('persists expectedHashes in the security event', async () => {
-            const { securityProcessor, appStore } = createProcessor();
-            await processAndDrain(securityProcessor, mismatchDetails);
-            const events = await appStore.securityEventsStore.getSecurityEvents();
-            expect(events[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
-        });
-
         it('persists expectedHashes in the active block record', async () => {
             const { securityProcessor, appStore } = createProcessor();
             await securityProcessor.processSecurityEvent(mismatchDetails);
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks[0].expectedHashes).toEqual(['aaaa1111bbbb2222']);
         });
 
@@ -265,7 +208,7 @@ describe('processSecurityEvent', () => {
             const second = await securityProcessor.processSecurityEvent(multiHash);
             expect(first).toBe(true);
             expect(second).toBe(false);
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks).toHaveLength(1);
         });
 
@@ -279,7 +222,7 @@ describe('processSecurityEvent', () => {
                 ...mismatchDetails,
                 expectedHashes: ['hash-b'],
             });
-            const blocks = await appStore.activeBlocksStore.getActiveBlocks();
+            const blocks = await appStore.securityStore.getActiveBlocks();
             expect(blocks).toHaveLength(2);
         });
     });

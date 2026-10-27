@@ -62,7 +62,9 @@ src/
 │   │   ├── indexeddb.js       # Low-level IndexedDB wrapper
 │   │   ├── index.js           # App store facade (recordSecurityViolation)
 │   │   ├── manifest-store.js  # App version, trusted manifests, verification results
-│   │   └── security-stores.js # Active blocks, security events, API tokens
+│   │   ├── security-store.js  # Active blocks (deterministic IDs, dedup)
+│   │   ├── settings-store.js  # Per-install singletons: API token, session id
+│   │   └── verification-results-store.js # Per-version verification result log
 │   └── __tests__/       # Unit tests (vitest)
 └── templates/           # Security warning HTML/CSS
 ```
@@ -79,7 +81,9 @@ main.js
         │     ├── indexeddb.js
         │     ├── index.js (appStore facade)
         │     ├── manifest-store.js
-        │     └── security-stores.js
+        │     ├── security-store.js
+        │     ├── settings-store.js
+        │     └── verification-results-store.js
         ├── manifest/
         │     ├── manifest-service.js (composition: loader + verifier)
         │     ├── manifest-loader.js (fetch, verify signature, normalize, hand to store)
@@ -166,8 +170,10 @@ non-GET, `destination=""`, opaque REWRITE branch). Returns verdicts with a `stat
     `recordSecurityViolation(details)`.
 -   **`storage/manifest-store.js`** — trusted manifests (newest-first priority queue, 24h age
     pruning, MAX 20 safety cap) and verification results (per-version, capped at 100).
--   **`storage/security-stores.js`** — active blocks (deterministic IDs), security events, API
-    tokens.
+-   **`storage/security-store.js`** — active blocks (deterministic IDs, dedup across SW restarts).
+-   **`storage/settings-store.js`** — per-install singletons: API token for `/sw-api/*`, session id
+    tagged onto outgoing telemetry.
+-   **`storage/verification-results-store.js`** — per-version verification result log.
 
 ## Integrity Manifest
 

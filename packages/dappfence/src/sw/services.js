@@ -13,7 +13,6 @@ import { createHookService } from './appsw-hooks.js';
 import { verifyImportedScript } from './manifest/verification.js';
 import { createManifestService } from './manifest/manifest-service.js';
 import { createMessageBroker, createMessageHandler } from './message-broker.js';
-import { createDatabase } from './storage/indexeddb.js';
 import { createAppStore } from './storage/index.js';
 import { createSwContext } from './context.js';
 import { createLogger } from '../core/logger.js';
@@ -41,8 +40,8 @@ export function createServices(swGlobal) {
     const config = parseConfig(swContext);
     logger.log('Configuration:', config);
 
-    const appStore = createAppStore(createDatabase(swGlobal.indexedDB));
-    const securityProcessor = createSecurityProcessor({ swContext, appStore });
+    const appStore = createAppStore(swGlobal.indexedDB);
+    const securityProcessor = createSecurityProcessor({ appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext);
