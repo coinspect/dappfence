@@ -1,6 +1,6 @@
 {
     "name": "@dappfence/manifest-tools",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "Hashing, signing, and manifest generation tools for DappFence integrations",
     "license": "MIT",
     "type": "module",
