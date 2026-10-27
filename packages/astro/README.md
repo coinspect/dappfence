@@ -60,24 +60,43 @@ automatically — you only need to supply the secret key.
 3. `DAPPFENCE_SECRET_KEY` in the project's `.env` file
 4. None provided → **build error**
 
-Prefer the environment variable in production, so the key is never committed to source control. The
-explicit option is useful for local development fallbacks:
+In almost all cases you should pass **no** `secretKey` option at all and let the integration resolve
+it, so the key is never committed to source control:
 
 ```js
 // astro.config.mjs
-const DEV_KEY = 'f0570667f495…'; // local dev only, not secret
+export default defineConfig({
+    integrations: [dappfence()],
+});
+```
+
+> **⚠️ A hardcoded key beats the environment, not the other way round.** An explicit `secretKey`
+> option **outranks `DAPPFENCE_SECRET_KEY`** — it does not defer to it. A development key hardcoded
+> in `astro.config.mjs` therefore wins in CI too, and the production manifest gets signed with a key
+> that is committed to your repository. Anyone who can read the repo can then sign a manifest your
+> deployed site will trust, which defeats the protection entirely. The integration warns at build
+> time when both are set and differ, but the safe habit is not to hardcode the key.
+
+If you do want a local fallback so the build works in a checkout with no key configured, write it so
+the environment still takes priority:
+
+```js
+// astro.config.mjs
+const DEV_KEY = 'f0570667f495…'; // local dev only — never a key you deploy with
 
 export default defineConfig({
     integrations: [
         dappfence({
-            // An explicit option wins over DAPPFENCE_SECRET_KEY — drop it in CI,
-            // or gate it so the environment can take over:
-            //   secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY
-            secretKey: DEV_KEY,
+            // `??` matters: a bare `secretKey: DEV_KEY` would override CI's real key.
+            secretKey: process.env.DAPPFENCE_SECRET_KEY ?? DEV_KEY,
         }),
     ],
 });
 ```
+
+Note that `process.env` does not see keys that live only in `.env` (see below), so this pattern
+covers the environment-variable case; a contributor keeping their dev key in `.env` should drop the
+option and let the integration resolve it.
 
 #### A note on `.env` and `astro.config.mjs`
 

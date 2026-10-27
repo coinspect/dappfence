@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -216,6 +216,83 @@ describe('secretKey resolution from `.env`', () => {
         } finally {
             delete process.env.DAPPFENCE_SECRET_KEY;
         }
+    });
+});
+
+// A dev key hardcoded in astro.config.mjs silently outranks CI's real key, so
+// the production manifest gets signed with a key committed to the repository.
+// The precedence is intended; the silence is what makes it dangerous.
+describe('conflicting secretKey sources', () => {
+    const OTHER_KEY = 'a'.repeat(64);
+
+    let emptyRoot;
+    beforeEach(async () => {
+        emptyRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dappfence-astro-conflict-'));
+        tmpDirs.push(emptyRoot);
+    });
+
+    // A dedicated empty root, so a stray `.env` in the shared temp directory
+    // cannot inject a key and make these assertions flap.
+    const setup = (command, options, env, root) => {
+        const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+        const prev = process.env.DAPPFENCE_SECRET_KEY;
+        if (env === undefined) {
+            delete process.env.DAPPFENCE_SECRET_KEY;
+        } else {
+            process.env.DAPPFENCE_SECRET_KEY = env;
+        }
+        try {
+            dappfence(options).hooks['astro:config:setup']({
+                command,
+                logger,
+                config: { base: '/', build: {}, root: pathToFileURL(root + path.sep) },
+                updateConfig: vi.fn(),
+                addMiddleware: vi.fn(),
+            });
+        } finally {
+            if (prev === undefined) {
+                delete process.env.DAPPFENCE_SECRET_KEY;
+            } else {
+                process.env.DAPPFENCE_SECRET_KEY = prev;
+            }
+        }
+        return logger;
+    };
+
+    it('warns when an explicit option and the env var are both set and differ', () => {
+        const logger = setup('build', { secretKey: SECRET_KEY }, OTHER_KEY, emptyRoot);
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.stringMatching(/both set, and they differ/)
+        );
+    });
+
+    it('does not warn when only the explicit option is set', () => {
+        const logger = setup('build', { secretKey: SECRET_KEY }, undefined, emptyRoot);
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('does not warn when the two sources agree', () => {
+        const logger = setup('build', { secretKey: SECRET_KEY }, SECRET_KEY, emptyRoot);
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    // signManifest strips `0x` and decodes case-insensitively, so these are the
+    // same key and must not be reported as a conflict.
+    it('treats `0x`-prefixed and upper-case spellings as the same key', () => {
+        const logger = setup(
+            'build',
+            { secretKey: `0x${SECRET_KEY.toUpperCase()}` },
+            SECRET_KEY,
+            emptyRoot
+        );
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    // Nothing is signed outside a build, so the conflict has no consequence there
+    // and the warning would just be noise.
+    it('stays quiet outside `astro build`', () => {
+        const logger = setup('dev', { secretKey: SECRET_KEY }, OTHER_KEY, emptyRoot);
+        expect(logger.warn).not.toHaveBeenCalled();
     });
 });
 
