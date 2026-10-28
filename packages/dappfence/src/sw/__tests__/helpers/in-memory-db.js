@@ -5,6 +5,9 @@ const SCHEMA_DEFAULT = {
     verificationResults: {
         keyPath: 'id',
     },
+    telemetryBatches: {
+        keyPath: 'id',
+    },
 };
 
 function compareKeys(a, b) {

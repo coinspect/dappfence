@@ -104,6 +104,7 @@ export function createVerificationResultsStore(db) {
                 destination: details.destination,
                 httpStatus: details.httpStatus,
                 clientId: details.clientId,
+                batchId: '',
             };
             await db.write(['verificationResults'], async ({ verificationResults }) => {
                 await verificationResults.add(row);
