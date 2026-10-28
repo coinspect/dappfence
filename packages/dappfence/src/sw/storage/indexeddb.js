@@ -1,14 +1,13 @@
 /**
  * IndexedDB Storage Module
- * Simple wrapper for IndexedDB operations.
  *
- * createDatabase(idb, {name, version, schema}) returns a db(fn, options) function,
- * making it injectable and testable with in-memory backends.
+ * createDatabase(idb, {name, version, schema}) returns a DbHandle with
+ * read / write / tx methods for scoped transactions.
  */
 
 /**
  * @typedef {{ name: string, keyPath: string, unique?: boolean, multiEntry?: boolean }} IndexSchema
- * @typedef {{ keyPath?: string, autoIncrement?: boolean, indexes?: IndexSchema[] }} StoreSchema
+ * @typedef {{ objectStore?: string, primaryKeyPath?: string, autoIncrement?: boolean, indexes?: IndexSchema[] }} StoreSchema
  * @typedef {Record<string, StoreSchema>} Schema
  */
 
@@ -30,17 +29,58 @@
  * }} StoreHandle
  *
  * @typedef {Record<string, StoreHandle>} DbScope
- * @typedef {{ mode?: IDBTransactionMode, durability?: IDBTransactionDurability }} DbOptions
  */
 
 /**
- * @typedef {<T>(fn: (scope: DbScope) => Promise<T>, options?: DbOptions) => Promise<T>} Database
+ * @typedef {{
+ *   read: <K extends keyof DbScope, T>(
+ *       stores: readonly K[],
+ *       fn: (scope: Pick<DbScope, K>) => Promise<T>
+ *   ) => Promise<T>,
+ *   write: <K extends keyof DbScope, T>(
+ *       stores: readonly K[],
+ *       fn: (scope: Pick<DbScope, K>) => Promise<T>
+ *   ) => Promise<T>,
+ * }} DbHandle
  */
+
+/**
+ * @param {IDBOpenDBRequest} request
+ * @param {Schema} schema
+ */
+export function applyMigration(request, schema) {
+    const connection = request.result;
+    const upgradeTransaction = request.transaction;
+    for (const [logicalName, config] of Object.entries(schema)) {
+        const objectStoreName = config.objectStore ?? logicalName;
+        let store;
+        if (connection.objectStoreNames.contains(objectStoreName)) {
+            store = upgradeTransaction.objectStore(objectStoreName);
+        } else {
+            const createOpts = {};
+            if (config.primaryKeyPath !== undefined) {
+                createOpts.keyPath = config.primaryKeyPath;
+            }
+            if (config.autoIncrement) {
+                createOpts.autoIncrement = true;
+            }
+            store = connection.createObjectStore(objectStoreName, createOpts);
+        }
+        for (const idx of config.indexes || []) {
+            if (!store.indexNames.contains(idx.name)) {
+                store.createIndex(idx.name, idx.keyPath, {
+                    unique: !!idx.unique,
+                    multiEntry: !!idx.multiEntry,
+                });
+            }
+        }
+    }
+}
 
 /**
  * @param {IDBFactory} idb
  * @param {{ name: string, version: number, schema: Schema }} config
- * @returns {Database}
+ * @returns {DbHandle}
  */
 export function createDatabase(idb, { name, version, schema }) {
     let connectionPromise = null;
@@ -63,56 +103,24 @@ export function createDatabase(idb, { name, version, schema }) {
                 reject(request.error);
             };
             request.onsuccess = () => resolve(request.result);
-            request.onupgradeneeded = (e) => {
-                const target = /** @type {IDBOpenDBRequest} */ (e.target);
-                const connection = target.result;
-                const upgradeTransaction = target.transaction;
-                for (const [storeName, config] of Object.entries(schema)) {
-                    let store;
-                    if (connection.objectStoreNames.contains(storeName)) {
-                        store = upgradeTransaction.objectStore(storeName);
-                    } else {
-                        const createOpts = {};
-                        if (config.keyPath !== undefined) {
-                            createOpts.keyPath = config.keyPath;
-                        }
-                        if (config.autoIncrement) {
-                            createOpts.autoIncrement = true;
-                        }
-                        store = connection.createObjectStore(storeName, createOpts);
-                    }
-                    for (const idx of config.indexes || []) {
-                        if (!store.indexNames.contains(idx.name)) {
-                            store.createIndex(idx.name, idx.keyPath, {
-                                unique: !!idx.unique,
-                                multiEntry: !!idx.multiEntry,
-                            });
-                        }
-                    }
-                }
-            };
+            request.onupgradeneeded = () => applyMigration(request, schema);
         });
         return connectionPromise;
     }
 
     /**
-     * @param {(scope: DbScope) => Promise<any>} fn
-     * @param {DbOptions} [options]
+     * @param {readonly string[]} stores
+     * @param {(scope: any) => Promise<any>} fn
+     * @param {IDBTransactionMode} mode
      */
-    async function db(fn, { mode = 'readonly', durability } = {}) {
+    async function tx(stores, fn, mode) {
         const connection = await openConnection();
-        /** @type {IDBTransactionOptions} */
-        const nativeOpts = {};
-        if (durability) {
-            nativeOpts.durability = durability;
-        }
-        const storeNames = Object.keys(schema);
-        const transaction = connection.transaction(storeNames, mode, nativeOpts);
-        /** @type {DbScope} */
-        const stores = {};
-        for (const storeName of storeNames) {
-            const objectStore = transaction.objectStore(storeName);
-            stores[storeName] = {
+        const objectStoreNames = stores.map((name) => schema[name].objectStore ?? name);
+        const transaction = connection.transaction(objectStoreNames, mode);
+        const scope = {};
+        for (const logical of stores) {
+            const objectStore = transaction.objectStore(schema[logical].objectStore ?? logical);
+            scope[logical] = {
                 get: (key) => requestToPromise(objectStore.get(key)),
                 put: (value, key) =>
                     requestToPromise(
@@ -135,7 +143,7 @@ export function createDatabase(idb, { name, version, schema }) {
                 },
             };
         }
-        const ret = await fn(stores);
+        const ret = await fn(scope);
         transaction.commit();
         await new Promise((resolve, reject) => {
             transaction.onerror = () => reject(transaction.error);
@@ -144,5 +152,8 @@ export function createDatabase(idb, { name, version, schema }) {
         return ret;
     }
 
-    return db;
+    return {
+        read: (stores, fn) => tx(stores, fn, 'readonly'),
+        write: (stores, fn) => tx(stores, fn, 'readwrite'),
+    };
 }

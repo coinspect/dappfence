@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createAppStoreFromDb } from '../storage/index.js';
+import { createManifestStore } from '../storage/manifest-store.js';
+import { createSecurityStore } from '../storage/security-store.js';
+import { createSettingsStore } from '../storage/settings-store.js';
+import { createVerificationResultsStore } from '../storage/verification-results-store.js';
 import { createSecurityProcessor } from '../security-processor.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
@@ -12,7 +15,12 @@ function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com'
 }
 
 function createProcessor({ db = createInMemoryDb(), swContext = createSwContext() } = {}) {
-    const appStore = createAppStoreFromDb(db);
+    const appStore = {
+        trustedManifestStore: createManifestStore(db),
+        securityStore: createSecurityStore(db),
+        settingsStore: createSettingsStore(db),
+        verificationResultsStore: createVerificationResultsStore(db),
+    };
     const securityProcessor = createSecurityProcessor({ swContext, appStore });
     return { appStore, securityProcessor };
 }
