@@ -66,7 +66,7 @@ describe('createSecurityStore', () => {
         });
 
         it('fails safe: returns mustBlock=true on storage errors', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => {
@@ -75,7 +75,7 @@ describe('createSecurityStore', () => {
                         put: async () => {},
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             const mustBlock = await brokenStore.recordSecurityViolation(DETAILS);
             expect(mustBlock).toBe(true);
         });
@@ -234,7 +234,7 @@ describe('createSecurityStore', () => {
         });
 
         it('does not throw when activeBlocks.put rejects', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => undefined,
@@ -243,14 +243,14 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             await expect(brokenStore.clearBlockCondition()).resolves.not.toThrow();
         });
     });
 
     describe('getSecurityBlock error path', () => {
         it('does not throw when activeBlocks.get rejects', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => {
@@ -258,7 +258,7 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             const result = await brokenStore.getSecurityBlock('block_id');
             expect(result).toBeUndefined();
         });
@@ -266,7 +266,7 @@ describe('createSecurityStore', () => {
 
     describe('getActiveBlocks error path', () => {
         it('returns empty array when activeBlocks.get rejects', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => {
@@ -274,7 +274,7 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             const result = await brokenStore.getActiveBlocks();
             expect(result).toEqual([]);
         });
@@ -320,7 +320,7 @@ describe('createSecurityStore', () => {
                 },
             });
             store.set('active-block-ids', [blockId]);
-            const withTx = async (fn) =>
+            const runScoped = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async (key) => store.get(key),
@@ -329,7 +329,7 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const s = createSecurityStore(withTx);
+            const s = createSecurityStore({ read: runScoped, write: runScoped });
             const mustBlock = await s.recordSecurityViolation(details);
             expect(mustBlock).toBe(false);
             const blocks = await s.getActiveBlocks();
@@ -339,7 +339,7 @@ describe('createSecurityStore', () => {
 
     describe('isBlocked error path', () => {
         it('returns false when activeBlocks.get rejects', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => {
@@ -347,7 +347,7 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             const result = await brokenStore.isBlocked();
             expect(result).toBe(false);
         });
@@ -355,7 +355,7 @@ describe('createSecurityStore', () => {
 
     describe('getAllBlocks error path', () => {
         it('returns empty array when activeBlocks.get rejects', async () => {
-            const brokenDb = async (fn) =>
+            const brokenRun = async (_stores, fn) =>
                 fn({
                     activeBlocks: {
                         get: async () => {
@@ -363,7 +363,7 @@ describe('createSecurityStore', () => {
                         },
                     },
                 });
-            const brokenStore = createSecurityStore(brokenDb);
+            const brokenStore = createSecurityStore({ read: brokenRun, write: brokenRun });
             const result = await brokenStore.getAllBlocks();
             expect(result).toEqual([]);
         });
