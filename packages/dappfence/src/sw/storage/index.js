@@ -11,6 +11,7 @@ import { createDatabase } from './indexeddb.js';
 import { createManifestStore } from './manifest-store.js';
 import { createSecurityStore } from './security-store.js';
 import { createSettingsStore } from './settings-store.js';
+import { createTelemetryBatchesStore } from './telemetry-batches-store.js';
 import { createVerificationResultsStore } from './verification-results-store.js';
 
 export const NAME = 'AppSecurity';
@@ -25,6 +26,9 @@ export const SCHEMA = {
     settings: {},
     verificationResults: {
         objectStore: 'verificationResults2',
+        primaryKeyPath: 'id',
+    },
+    telemetryBatches: {
         primaryKeyPath: 'id',
     },
 };
@@ -52,6 +56,9 @@ export const HISTORICAL_SCHEMAS = {
             objectStore: 'verificationResults2',
             primaryKeyPath: 'id',
         },
+        telemetryBatches: {
+            primaryKeyPath: 'id',
+        },
     },
 };
 
@@ -64,6 +71,7 @@ export function createAppStoreFromDb(db) {
         securityStore: createSecurityStore(db),
         settingsStore: createSettingsStore(db),
         verificationResultsStore: createVerificationResultsStore(db),
+        telemetryBatchesStore: createTelemetryBatchesStore(db),
     };
 }
 
