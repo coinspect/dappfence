@@ -32,8 +32,8 @@ describe('createAppStore', () => {
         const appStore = createAppStoreFromDb(createInMemoryDb());
         const token = await appStore.settingsStore.getApiToken();
         expect(token).toMatch(/^[0-9a-f]{64}$/);
-        const sessionId = await appStore.settingsStore.getSessionId();
-        expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+        const installationTime = await appStore.settingsStore.getInstallationTime();
+        expect(typeof installationTime).toBe('number');
     });
 
     describe('upgrading an existing database', () => {
@@ -64,7 +64,7 @@ describe('createAppStore', () => {
             expect(await appStore.trustedManifestStore.getLatest()).toBeDefined();
             expect(await appStore.securityStore.getActiveBlocks()).toEqual([]);
             expect(await appStore.verificationResultsStore.get('1.0.0')).toEqual([]);
-            expect(await appStore.settingsStore.getSessionId()).toMatch(/^[0-9a-f-]{36}$/);
+            expect(typeof (await appStore.settingsStore.getInstallationTime())).toBe('number');
         });
 
         it('a fresh install still gets every store', async () => {

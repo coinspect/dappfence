@@ -18,7 +18,7 @@ function createMockAppStore() {
     return {
         settingsStore: {
             getApiToken: vi.fn().mockResolvedValue(TOKEN),
-            getSessionId: vi.fn().mockResolvedValue('00000000-0000-4000-8000-000000000000'),
+            getInstallationTime: vi.fn().mockResolvedValue(1_700_000_000_000),
         },
         securityStore: {
             isBlocked: vi.fn().mockResolvedValue(false),
