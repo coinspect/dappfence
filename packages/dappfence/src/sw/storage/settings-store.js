@@ -5,8 +5,9 @@
  * generated once on first access and preserved for the SW's lifetime:
  *
  *   - API token: bearer used by secure /sw-api/* endpoints.
- *   - Session id: stable UUID tagged onto outgoing telemetry.
- *
+ *   - Installation time: millisecond timestamp of this install's first access,
+ *     tagged onto outgoing telemetry. Identifies the install cohort (same
+ *     client across sessions and reloads) without identifying the user.
  */
 
 import { createLogger } from '../../core/logger.js';
@@ -14,14 +15,14 @@ import { createLogger } from '../../core/logger.js';
 const logger = createLogger();
 
 const API_TOKEN_KEY = 'API_TOKEN_KEY';
-const SESSION_ID_KEY = 'SESSION_ID_KEY';
+const INSTALLATION_TIME_KEY = 'INSTALLATION_TIME_KEY';
 
 /**
  * @param {import('./indexeddb.js').Database} db
  */
 export function createSettingsStore(db) {
     let cachedApiToken = null;
-    let cachedSessionId = null;
+    let cachedInstallationTime = null;
 
     async function getApiToken() {
         if (!cachedApiToken) {
@@ -47,25 +48,25 @@ export function createSettingsStore(db) {
         return cachedApiToken;
     }
 
-    async function getSessionId() {
-        if (!cachedSessionId) {
-            cachedSessionId = db(
+    async function getInstallationTime() {
+        if (!cachedInstallationTime) {
+            cachedInstallationTime = db(
                 async ({ settings }) => {
-                    const existing = await settings.get(SESSION_ID_KEY);
+                    const existing = await settings.get(INSTALLATION_TIME_KEY);
                     if (existing) {
-                        logger.log('Reusing session id', existing);
+                        logger.log('Reusing installation time', existing);
                         return existing;
                     }
-                    const sessionId = crypto.randomUUID();
-                    logger.log('Generated new session id', sessionId);
-                    await settings.put(sessionId, SESSION_ID_KEY);
-                    return sessionId;
+                    const installationTime = Date.now();
+                    logger.log('Recorded installation time', installationTime);
+                    await settings.put(installationTime, INSTALLATION_TIME_KEY);
+                    return installationTime;
                 },
                 { mode: 'readwrite' }
             );
         }
-        return cachedSessionId;
+        return cachedInstallationTime;
     }
 
-    return { getApiToken, getSessionId };
+    return { getApiToken, getInstallationTime };
 }

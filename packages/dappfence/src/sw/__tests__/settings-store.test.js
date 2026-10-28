@@ -37,35 +37,37 @@ describe('createSettingsStore', () => {
         });
     });
 
-    describe('getSessionId', () => {
-        it('generates a UUID v4 on first call', async () => {
-            const id = await store.getSessionId();
-            expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    describe('getInstallationTime', () => {
+        it('returns a ms timestamp on first call', async () => {
+            const t = await store.getInstallationTime();
+            expect(typeof t).toBe('number');
+            expect(t).toBeGreaterThan(0);
         });
 
-        it('returns the same session id on subsequent calls', async () => {
-            const id1 = await store.getSessionId();
-            const id2 = await store.getSessionId();
-            expect(id1).toBe(id2);
+        it('returns the same timestamp on subsequent calls', async () => {
+            const t1 = await store.getInstallationTime();
+            const t2 = await store.getInstallationTime();
+            expect(t1).toBe(t2);
         });
 
-        it('generates different session ids for different databases', async () => {
+        it('records a different installation time for each database', async () => {
+            const t1 = await store.getInstallationTime();
+            await new Promise((r) => setTimeout(r, 2));
             const store2 = createSettingsStore(createInMemoryDb());
-            const id1 = await store.getSessionId();
-            const id2 = await store2.getSessionId();
-            expect(id1).not.toBe(id2);
+            const t2 = await store2.getInstallationTime();
+            expect(t1).not.toBe(t2);
         });
 
-        it('rehydrates the same session id from the same database across store instances', async () => {
-            const persisted = await store.getSessionId();
-            const rehydrated = await createSettingsStore(db).getSessionId();
+        it('rehydrates the same installation time from the same database across store instances', async () => {
+            const persisted = await store.getInstallationTime();
+            const rehydrated = await createSettingsStore(db).getInstallationTime();
             expect(rehydrated).toBe(persisted);
         });
     });
 
-    it('api token and session id are independent values', async () => {
+    it('api token and installation time are independent values', async () => {
         const token = await store.getApiToken();
-        const sessionId = await store.getSessionId();
-        expect(token).not.toBe(sessionId);
+        const installationTime = await store.getInstallationTime();
+        expect(token).not.toBe(installationTime);
     });
 });
