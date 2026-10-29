@@ -84,6 +84,7 @@ export type ServerTestResponse = {
     requestPath: string;
     filePath: string;
     result: string;
+    body?: string | null;
 };
 export type SWHelper = {
     shortTestId: string;

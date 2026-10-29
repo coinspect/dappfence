@@ -28,6 +28,8 @@ function parseConfig(swContext) {
         manifestUrl: url.searchParams.get('manifestUrl') || '/integrity-manifest.json',
         manifestSignatureType: url.searchParams.get('manifestSignatureType'),
         manifestSignatureIdentity: url.searchParams.get('manifestSignatureIdentity'),
+        eventsEndpoint: url.searchParams.get('eventsEndpoint'),
+        logsEndpoint: url.searchParams.get('logsEndpoint'),
     };
 }
 
