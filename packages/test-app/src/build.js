@@ -37,6 +37,7 @@ function render(inputPath, outFile, signatureData, args) {
             '<script>self.__next_f.push([0,"<!--<script>"])</script>/\n' +
             '        window.__bypass_executed = true;\n' +
             '        </script>',
+        EVENTS_ENDPOINT_ATTR: '',
         ...(args.templateFlags || {}),
     };
     let data = fs.readFileSync(inputPath, 'utf8');
@@ -60,6 +61,10 @@ function renderPages(target, outDir, signatureData, version) {
         render(path.join(target.templateDir, page.template), output, signatureData, {
             ...target,
             manifestFile: page.manifest,
+            templateFlags: {
+                ...(target.templateFlags || {}),
+                ...(page.templateFlags || {}),
+            },
             outDir,
             version,
         });
@@ -204,6 +209,7 @@ async function buildManifestsData(target, sharedFiles, { targetName, version, ou
             redirects: manifest.redirects || [],
             ...(csp ? { csp } : {}),
             ...(manifest.messages ? { messages: assertValidMessages(manifest.messages) } : {}),
+            ...(manifest.telemetry ? { telemetry: manifest.telemetry } : {}),
             metadata: { buildTime: new Date().toISOString(), version, target: targetName },
         };
 
