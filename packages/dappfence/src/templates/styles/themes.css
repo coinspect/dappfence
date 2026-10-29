@@ -1,0 +1,10 @@
+/* Dark theme, used by the emergency panel. Apply with class="df-theme-dark"
+   on <body>. */
+
+.df-theme-dark {
+    --df-bg: #0b0f19;
+    --df-surface: #111827;
+    --df-text: #f3f4f6;
+    --df-text-strong: #ffffff;
+    --df-text-muted: #9ca3af;
+}

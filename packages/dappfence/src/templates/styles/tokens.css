@@ -1,0 +1,35 @@
+/* Design tokens shared by every DappFence page. Components read only these
+   variables, so a theme (see themes.css) is just a set of overrides. */
+
+:root {
+    /* Brand / severity */
+    --df-red-900: #7f1d1d;
+    --df-red-700: #b91c1c;
+    --df-red-600: #dc2626;
+    --df-red-500: #ef4444;
+    --df-red-300: #fca5a5;
+    --df-red-soft: #fee2e2;
+    --df-amber-600: #d97706;
+    --df-amber-soft: #fef3c7;
+    --df-amber-border: #fcd34d;
+    --df-amber-text: #92400e;
+
+    /* Surfaces and text */
+    --df-bg: #f8fafc;
+    --df-surface: #ffffff;
+    --df-surface-soft: #f8fafc;
+    --df-border: #e2e8f0;
+    --df-divider: rgba(0, 0, 0, 0.06);
+    --df-text: #0f172a;
+    --df-text-strong: #0f172a;
+    --df-text-muted: #475569;
+    --df-text-subtle: #64748b;
+
+    /* Shape and type */
+    --df-radius: 14px;
+    --df-radius-sm: 8px;
+    --df-radius-xs: 6px;
+    --df-radius-pill: 999px;
+    --df-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --df-font-mono: ui-monospace, 'SF Mono', Monaco, Menlo, Consolas, monospace;
+}

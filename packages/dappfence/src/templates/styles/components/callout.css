@@ -1,0 +1,42 @@
+/* Callout: a highlighted box with a coloured left edge.
+   .df-callout--warning  amber, used for the "Remove Site Lock" zone
+   .df-callout--danger   translucent red, used on the dark emergency panel */
+
+.df-callout {
+    padding: 14px 16px;
+    text-align: left;
+    border-radius: var(--df-radius-sm);
+}
+
+.df-callout__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
+.df-callout__text {
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.df-callout--warning {
+    color: var(--df-amber-text);
+    background: var(--df-amber-soft);
+    border: 1px solid var(--df-amber-border);
+    border-left: 4px solid var(--df-amber-600);
+}
+
+.df-callout--danger {
+    padding: 15px;
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 4px solid var(--df-red-500);
+    border-radius: 4px;
+}
+.df-callout--danger .df-callout__title {
+    margin-bottom: 5px;
+    font-size: inherit;
+    color: var(--df-red-300);
+}
