@@ -137,37 +137,37 @@ export const createVerifier = (
         logger.log(
             `shouldSkipVerification ${req.url} ${req.method} destination=${destination} response.ok=${response?.ok} response.type=${response?.type} response.status=${response?.status}`
         );
+        /**
+         * @param {import('../../core/constants.js').SkippedReason} reason
+         */
         const skip = (reason) => {
             logger.log(`⏭️ Skipping: ${reason} ${req.url}`);
-            return VERIFICATION_STATUS.SKIPPED;
+            return { status: VERIFICATION_STATUS.SKIPPED, reason };
         };
 
         const isPostNavigation = req.method === 'POST' && req.mode === 'navigate';
         if (req.method !== 'GET' && !isPostNavigation) {
-            return skip('non-GET/non-POST-navigate request');
+            return skip('UNSUPPORTED_METHOD');
         }
         if (!destination) {
-            return skip('programmatic fetch (destination="")');
+            return skip('NO_DESTINATION');
         }
         if (response.type === 'error') {
-            return skip(`empty body, response type ${response.type}`);
+            return skip('NETWORK_ERROR');
         }
         if (response.type === 'opaqueredirect' || isRedirectStatus(response.status)) {
             logger.log(`Redirect opaque or materialized: status ${response.status} for ${req.url}`);
-            return VERIFICATION_STATUS.REDIRECT;
+            return { status: VERIFICATION_STATUS.REDIRECT };
         }
         if (response.type === 'opaque') {
             if (!isExecutableDestination(destination)) {
-                return skip('non-executable opaque');
+                return skip('NON_EXECUTABLE_OPAQUE');
             }
-            // prepareRequest upgrades no-cors executable requests to cors+omit; if we
-            // still get an opaque response, the body is unreadable — stub it.
-            // (allow rules are checked before this point so allowed embeds never reach here.)
             logger.log(`↩️  Rewriting opaque executable ${req.url}`);
-            return VERIFICATION_STATUS.REWRITE;
+            return { status: VERIFICATION_STATUS.REWRITE };
         }
         if (!response.ok && !isExecutableDestination(destination)) {
-            return skip('non-ok sub-resource');
+            return skip('NON_EXECUTABLE_BAD_STATUS');
         }
         return null;
     };
@@ -291,16 +291,16 @@ export const createVerifier = (
 
         if (isAllowed(req, locationHref, latestManifest?.manifest)) {
             logger.log(`⏭️  Skipping (allow rule): ${req.url}`);
-            return result({ status: VERIFICATION_STATUS.SKIPPED });
+            return result({ status: VERIFICATION_STATUS.SKIPPED, reason: 'ALLOW_RULE' });
         }
         const wrappedResponse = makeResponseWrapper(response);
-        const status = shouldSkipVerification(req, wrappedResponse);
-        if (status === VERIFICATION_STATUS.REDIRECT) {
+        const skipResult = shouldSkipVerification(req, wrappedResponse);
+        if (skipResult?.status === VERIFICATION_STATUS.REDIRECT) {
             return result(dispatchRedirect(latestManifest?.manifest, fileKey));
         }
-        if (status) {
-            logger.log(`⏭️  ${status.description}: ${fileKey}`);
-            return result({ status: status });
+        if (skipResult) {
+            logger.log(`⏭️  ${skipResult.status.description}: ${fileKey}`);
+            return result(skipResult);
         }
 
         logger.log(
