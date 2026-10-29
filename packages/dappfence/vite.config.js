@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
+import htmlIncludes from './build/html-includes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -79,8 +80,10 @@ export default defineConfig(({ mode }) => ({
     // Unit tests (vitest)
     test: {
         root: __dirname,
-        include: ['src/**/*.test.js'],
+        include: ['src/**/*.test.js', 'build/**/*.test.js'],
         onConsoleLog: () => false, // Silence production logger output during tests
+        // Process template stylesheets so `?inline` imports return real CSS in tests
+        css: { include: [/src\/templates\//] },
         coverage: {
             provider: 'v8',
             all: true,
@@ -89,8 +92,9 @@ export default defineConfig(({ mode }) => ({
         },
     },
 
-    // Plugins (none needed - using built-in ?raw imports)
     plugins: [
+        // `*.html?template` imports: expands <!-- @include --> partials at build time
+        htmlIncludes({ root: resolve(__dirname, 'src/templates') }),
         {
             name: 'watch-feature-flags',
             buildStart() {

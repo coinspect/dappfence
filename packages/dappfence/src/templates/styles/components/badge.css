@@ -1,0 +1,74 @@
+/* Small inline labels.
+   .df-badge          red counter pill ("3×", block count)
+   .df-severity-chip  translucent pill on the red card header
+   .df-chip           asset-type tag, coloured by its --<asset-type> modifier */
+
+.df-badge {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--df-red-700);
+    background: var(--df-red-soft);
+    border-radius: var(--df-radius-pill);
+}
+
+.df-badge--strong {
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.df-severity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: white;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: var(--df-radius-pill);
+}
+.df-severity-chip::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+
+.df-chip {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--df-text-subtle);
+    background: var(--df-surface-soft);
+    border: 1px solid var(--df-divider);
+    border-radius: 3px;
+}
+
+.df-chip--service-worker {
+    color: #a35200;
+    background: #fff4e5;
+    border-color: #ffd9a8;
+}
+
+.df-chip--manifest {
+    color: #a4193d;
+    background: #fde8ec;
+    border-color: #fbc5cf;
+}

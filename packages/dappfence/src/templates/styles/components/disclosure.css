@@ -1,0 +1,32 @@
+/* Disclosure: a <summary> with a rotating ▸ marker instead of the native
+   triangle. Put .df-disclosure on the <summary> of any <details>. Size the
+   marker with --df-disclosure-size. */
+
+.df-disclosure {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+.df-disclosure::-webkit-details-marker {
+    display: none;
+}
+.df-disclosure::before {
+    content: '▸';
+    flex-shrink: 0;
+    font-size: var(--df-disclosure-size, 12px);
+    line-height: 1;
+    color: var(--df-text-subtle);
+    transition: transform 0.15s ease;
+}
+details[open] > .df-disclosure::before {
+    transform: rotate(90deg);
+}
+.df-disclosure:hover {
+    background: var(--df-surface-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .df-disclosure::before {
+        transition: none;
+    }
+}

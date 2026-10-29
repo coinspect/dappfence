@@ -1,0 +1,76 @@
+/* Security warning page: served by the service worker when content is
+   blocked. */
+
+@import '../tokens.css';
+@import '../base.css';
+@import '../components/card.css';
+@import '../components/badge.css';
+@import '../components/button.css';
+@import '../components/callout.css';
+@import '../components/disclosure.css';
+@import '../components/info-row.css';
+@import '../components/block.css';
+
+/* Full-viewport red backdrop; scrolls if the card grows past it */
+.df-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: grid;
+    place-items: safe center;
+    padding: 24px;
+    overflow-y: auto;
+    background: radial-gradient(ellipse at top left, rgba(255, 255, 255, 0.08), transparent 55%),
+        radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0.25), transparent 60%),
+        linear-gradient(135deg, var(--df-red-700) 0%, var(--df-red-900) 100%);
+}
+
+.df-subtitle {
+    margin-bottom: 8px;
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    color: var(--df-text);
+}
+
+.df-message {
+    margin-bottom: 18px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    text-align: center;
+    color: var(--df-text-muted);
+}
+
+/* "Active blocks" section */
+.df-blocks {
+    margin-bottom: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--df-border);
+}
+
+.df-blocks__heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--df-text-subtle);
+}
+
+@media (max-width: 576px) {
+    .df-overlay {
+        padding: 12px;
+    }
+    .df-subtitle {
+        font-size: 16px;
+    }
+}
+
+@media (prefers-contrast: high) {
+    .df-overlay {
+        background: #000000;
+    }
+}

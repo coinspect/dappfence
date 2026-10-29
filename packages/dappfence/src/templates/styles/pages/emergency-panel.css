@@ -1,0 +1,41 @@
+/* Emergency panel: replaces the whole document when the watchdog database is
+   force-closed. Dark theme; see themes.css. */
+
+@import '../tokens.css';
+@import '../themes.css';
+@import '../base.css';
+@import '../components/card.css';
+@import '../components/callout.css';
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.df-emergency__icon {
+    margin-bottom: 20px;
+    font-size: 48px;
+    color: var(--df-red-500);
+}
+
+.df-emergency__title {
+    margin-bottom: 16px;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--df-text-strong);
+}
+
+.df-emergency__text {
+    margin-bottom: 24px;
+    font-size: 15px;
+    line-height: 1.6;
+    text-align: left;
+    color: var(--df-text-muted);
+}
+
+.df-emergency .df-callout {
+    margin-bottom: 30px;
+}

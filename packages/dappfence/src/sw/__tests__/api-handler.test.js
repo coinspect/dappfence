@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createApiHandler } from '../api-handler.js';
 
-vi.mock('../../templates/security-warning.html?raw', () => ({
+vi.mock('../../templates/pages/security-warning.html?template', () => ({
     default:
-        '<html><style>/* CSS will be injected here during build */</style><script id="dappfence-config">const DAPPFENCE_CONFIG = {};</script></html>',
+        '<html><style>/* @styles */</style><script id="dappfence-config">const DAPPFENCE_CONFIG = {};</script></html>',
 }));
-vi.mock('../../templates/security-warning.css?raw', () => ({
+vi.mock('../../templates/styles/pages/security-warning.css?inline', () => ({
     default: 'body { color: red; }',
 }));
 vi.mock('../../core/utils.js', () => ({

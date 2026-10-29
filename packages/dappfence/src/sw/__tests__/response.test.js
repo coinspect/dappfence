@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import securityWarningHtml from '../../templates/security-warning.html?raw';
+import securityWarningHtml from '../../templates/pages/security-warning.html?template';
 import {
     createBlockResponse,
     createRedirectResponse,
