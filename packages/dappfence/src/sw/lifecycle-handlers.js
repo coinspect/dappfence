@@ -1,3 +1,4 @@
+import { SYNC_TAG_REPORT_EVENTS } from '../core/constants.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger();
@@ -118,7 +119,7 @@ export function createActivateHandler({ swContext, onSecurityViolation, appStore
 export function createSyncHandler({ securityProcessor }) {
     return async (event) => {
         logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
-        if (event.tag === 'dappfence-report-events') {
+        if (event.tag === SYNC_TAG_REPORT_EVENTS) {
             await securityProcessor.reportOnSync(event);
         }
     };

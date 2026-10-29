@@ -35,6 +35,8 @@ export function getConfig(clientScriptUrl) {
         manifestSignatureType: null,
         manifestSignatureIdentity: null,
         appSW: null,
+        eventsEndpoint: null,
+        logsEndpoint: null,
         blockingEnabled: true,
         securityMessage: 'Security verification failed. This content has been modified.',
         contactInfo: null,
@@ -55,6 +57,8 @@ export function getConfig(clientScriptUrl) {
             config.manifestSignatureIdentity = script.getAttribute(
                 'data-manifest-signature-identity'
             );
+            config.eventsEndpoint = script.getAttribute('data-events-endpoint');
+            config.logsEndpoint = script.getAttribute('data-logs-endpoint');
             config.blockingEnabled = script.getAttribute('data-blocking-enabled') !== 'false';
             config.securityMessage = script.getAttribute('data-security-message');
             config.contactInfo = script.getAttribute('data-contact-info');
@@ -92,6 +96,12 @@ function buildSwUrl(cfg, appSW = null) {
         url.searchParams.set('manifestUrl', cfg.manifestUrl);
         url.searchParams.set('manifestSignatureType', cfg.manifestSignatureType);
         url.searchParams.set('manifestSignatureIdentity', cfg.manifestSignatureIdentity);
+    }
+    if (cfg.eventsEndpoint) {
+        url.searchParams.set('eventsEndpoint', cfg.eventsEndpoint);
+    }
+    if (cfg.logsEndpoint) {
+        url.searchParams.set('logsEndpoint', cfg.logsEndpoint);
     }
     // Optional config hash to prevent redundant SW reloads
     url.searchParams.set('cfgHash', hashConfig(cfg));
