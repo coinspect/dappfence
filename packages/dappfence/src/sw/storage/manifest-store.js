@@ -32,7 +32,7 @@ const createSyntheticAppVersion = async (manifestData) => {
 
 /**
  * Create all manifest database operations with an injected database backend.
- * @param {import('./indexeddb.js').Database} db
+ * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createManifestStore(db) {
     /**
@@ -51,7 +51,10 @@ export function createManifestStore(db) {
 
     const readList = async () => {
         if (cachedList === null) {
-            cachedList = (await db(({ manifests }) => manifests.get(TRUSTED_MANIFEST_KEY))) || [];
+            cachedList =
+                (await db.read(['manifests'], ({ manifests }) =>
+                    manifests.get(TRUSTED_MANIFEST_KEY)
+                )) || [];
         }
         return cachedList;
     };
@@ -62,18 +65,15 @@ export function createManifestStore(db) {
             // Read-modify-write under a single transaction so concurrent
             // addLatest calls can't clobber each other's updates.
             let newList;
-            await db(
-                async ({ manifests }) => {
-                    const list = (await manifests.get(TRUSTED_MANIFEST_KEY)) || [];
-                    const now = Date.now();
-                    const deduped = list.filter((m) => m.appVersion !== appVersion);
-                    deduped.unshift({ appVersion, manifest, storedAt: now });
-                    const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
-                    newList = pruned.slice(0, MAX_MANIFESTS);
-                    await manifests.put(newList, TRUSTED_MANIFEST_KEY);
-                },
-                { mode: 'readwrite' }
-            );
+            await db.write(['manifests'], async ({ manifests }) => {
+                const list = (await manifests.get(TRUSTED_MANIFEST_KEY)) || [];
+                const now = Date.now();
+                const deduped = list.filter((m) => m.appVersion !== appVersion);
+                deduped.unshift({ appVersion, manifest, storedAt: now });
+                const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
+                newList = pruned.slice(0, MAX_MANIFESTS);
+                await manifests.put(newList, TRUSTED_MANIFEST_KEY);
+            });
             cachedList = newList;
             return { appVersion, manifest };
         },

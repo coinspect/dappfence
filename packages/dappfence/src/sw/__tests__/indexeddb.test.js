@@ -14,7 +14,7 @@ describe('createDatabase', () => {
         it('creates every store declared in the schema on first open', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async ({ manifests }) => manifests.get('x'));
+            await db.read(['manifests'], ({ manifests }) => manifests.get('x'));
             for (const name of STORE_NAMES) {
                 expect(idb._trace.createdStores).toContain(name);
             }
@@ -24,7 +24,7 @@ describe('createDatabase', () => {
             // The 0.1.x layout: same database name, one catch-all 'data' store.
             const idb = makeMockIDB({ existing: { version: 1, stores: ['data'] } });
             const db = createDatabase(idb, { ...TEST_CONFIG, version: 2 });
-            await db(async ({ manifests }) => manifests.get('x'));
+            await db.read(['manifests'], ({ manifests }) => manifests.get('x'));
             for (const name of STORE_NAMES) {
                 expect(idb._trace.createdStores).toContain(name);
             }
@@ -36,9 +36,9 @@ describe('createDatabase', () => {
             // first transaction naming it fails.
             const idb = makeMockIDB({ existing: { version: 1, stores: ['data'] } });
             const db = createDatabase(idb, { ...TEST_CONFIG, version: 1 });
-            await expect(db(async ({ manifests }) => manifests.get('x'))).rejects.toThrow(
-                /NotFoundError/
-            );
+            await expect(
+                db.read(['manifests'], ({ manifests }) => manifests.get('x'))
+            ).rejects.toThrow(/NotFoundError/);
             expect(idb._trace.upgrades).toEqual([]);
         });
     });
@@ -47,58 +47,55 @@ describe('createDatabase', () => {
         it('opens the database only once across many transactions', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async ({ manifests }) => manifests.get('a'));
-            await db(async ({ manifests }) => manifests.get('b'));
-            await db(async ({ settings }) => settings.get('t'), { mode: 'readwrite' });
+            await db.read(['manifests'], ({ manifests }) => manifests.get('a'));
+            await db.read(['manifests'], ({ manifests }) => manifests.get('b'));
+            await db.write(['settings'], ({ settings }) => settings.put('v', 't'));
             expect(idb._trace.opens).toBe(1);
         });
     });
 
     describe('tx shape', () => {
-        it('defaults mode to readonly', async () => {
+        it('opens a readonly transaction via read()', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async () => {});
+            await db.read(['manifests'], async () => {});
             expect(idb._trace.transactions.at(-1).mode).toBe('readonly');
         });
 
-        it('propagates mode when passed', async () => {
+        it('opens a readwrite transaction via write()', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async () => {}, { mode: 'readwrite' });
+            await db.write(['manifests'], async () => {});
             expect(idb._trace.transactions.at(-1).mode).toBe('readwrite');
         });
 
-        it('passes durability through to IndexedDB', async () => {
+        it('scopes the transaction to the listed stores only', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async () => {}, { mode: 'readwrite', durability: 'relaxed' });
-            expect(idb._trace.transactions.at(-1).options.durability).toBe('relaxed');
+            await db.read(['manifests', 'settings'], async () => {});
+            expect(idb._trace.transactions.at(-1).storeNames).toEqual(['manifests', 'settings']);
         });
 
-        it('scope includes every schema store', async () => {
+        it('exposes only the listed stores on the scope', async () => {
             const idb = makeMockIDB();
             const db = createDatabase(idb, TEST_CONFIG);
-            await db(async (scope) => {
-                for (const name of STORE_NAMES) {
-                    expect(scope[name]).toBeDefined();
-                    expect(typeof scope[name].get).toBe('function');
-                }
+            await db.read(['manifests'], async (scope) => {
+                expect(scope.manifests).toBeDefined();
+                expect(scope.settings).toBeUndefined();
+                expect(scope.activeBlocks).toBeUndefined();
             });
         });
 
         it('returns the callback return value', async () => {
             const db = createDatabase(makeMockIDB(), TEST_CONFIG);
-            const result = await db(async () => 'ok');
+            const result = await db.read(['manifests'], async () => 'ok');
             expect(result).toBe('ok');
         });
 
         it('round-trips a value through put + get on a single store', async () => {
             const db = createDatabase(makeMockIDB(), TEST_CONFIG);
-            await db(async ({ manifests }) => manifests.put({ v: 1 }, 'k'), {
-                mode: 'readwrite',
-            });
-            const got = await db(({ manifests }) => manifests.get('k'));
+            await db.write(['manifests'], ({ manifests }) => manifests.put({ v: 1 }, 'k'));
+            const got = await db.read(['manifests'], ({ manifests }) => manifests.get('k'));
             expect(got).toEqual({ v: 1 });
         });
     });
@@ -106,9 +103,9 @@ describe('createDatabase', () => {
     describe('error paths', () => {
         it('rejects when idb.open fires onerror', async () => {
             const db = createDatabase(makeMockIDBWithOpenError(), TEST_CONFIG);
-            await expect(db(({ manifests }) => manifests.get('x'))).rejects.toThrow(
-                'IDB open failed'
-            );
+            await expect(
+                db.read(['manifests'], ({ manifests }) => manifests.get('x'))
+            ).rejects.toThrow('IDB open failed');
         });
 
         it('rejects when store.get throws', async () => {
@@ -120,7 +117,9 @@ describe('createDatabase', () => {
                 },
             });
             const db = createDatabase(idb, TEST_CONFIG);
-            await expect(db(({ manifests }) => manifests.get('x'))).rejects.toThrow('get failed');
+            await expect(
+                db.read(['manifests'], ({ manifests }) => manifests.get('x'))
+            ).rejects.toThrow('get failed');
         });
 
         it('rejects when store.put throws', async () => {
@@ -133,7 +132,7 @@ describe('createDatabase', () => {
             });
             const db = createDatabase(idb, TEST_CONFIG);
             await expect(
-                db(({ manifests }) => manifests.put('v', 'k'), { mode: 'readwrite' })
+                db.write(['manifests'], ({ manifests }) => manifests.put('v', 'k'))
             ).rejects.toThrow('put failed');
         });
     });

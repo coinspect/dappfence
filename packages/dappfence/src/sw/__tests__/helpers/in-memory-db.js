@@ -32,11 +32,17 @@ export function createInMemoryDb(hooks = {}) {
             },
         };
     };
-    return async (fn) =>
-        fn({
-            manifests: makeHandle('manifests'),
-            activeBlocks: makeHandle('activeBlocks'),
-            settings: makeHandle('settings'),
-            verificationResults: makeHandle('verificationResults'),
-        });
+
+    async function runScoped(storeNames, fn) {
+        const scope = {};
+        for (const name of storeNames) {
+            scope[name] = makeHandle(name);
+        }
+        return fn(scope);
+    }
+
+    return {
+        read: (storeNames, fn) => runScoped(storeNames, fn),
+        write: (storeNames, fn) => runScoped(storeNames, fn),
+    };
 }

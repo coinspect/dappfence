@@ -91,7 +91,7 @@ export async function generateBlockId({
 }
 
 /**
- * @param {import('./indexeddb.js').Database} db
+ * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createSecurityStore(db) {
     // In-memory cache: null = unhydrated, boolean = known state.
@@ -114,48 +114,45 @@ export function createSecurityStore(db) {
     async function recordSecurityViolation(details) {
         const blockData = toBlockData(details);
         const blockId = await generateBlockId(blockData);
-        const mustBlock = await db(
-            async ({ activeBlocks }) => {
-                try {
-                    const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
-                    const activeIds = (await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || [];
-                    const now = new Date().toISOString();
-                    const existing = blocks[blockId];
-                    let mustBlock = false;
+        const mustBlock = await db.write(['activeBlocks'], async ({ activeBlocks }) => {
+            try {
+                const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
+                const activeIds = (await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || [];
+                const now = new Date().toISOString();
+                const existing = blocks[blockId];
+                let mustBlock = false;
 
-                    if (existing) {
-                        blocks[blockId] = {
-                            ...existing,
-                            ...blockData,
-                            id: blockId,
-                            lastSeen: now,
-                            occurrenceCount: (existing.occurrenceCount || 0) + 1,
-                        };
-                    } else {
-                        blocks[blockId] = {
-                            ...blockData,
-                            id: blockId,
-                            timestamp: now,
-                            lastSeen: now,
-                            occurrenceCount: 1,
-                        };
-                        activeIds.push(blockId);
-                        mustBlock = true;
-                    }
-
-                    await activeBlocks.put(blocks, BLOCKS_KEY);
-                    if (mustBlock) {
-                        await activeBlocks.put(activeIds, ACTIVE_BLOCK_IDS_KEY);
-                    }
-                    return mustBlock;
-                } catch (error) {
-                    logger.error(`Failed to record block ${blockId}`, error);
-                    // Fail-safe: on storage error, tell the caller to block.
-                    return true;
+                if (existing) {
+                    blocks[blockId] = {
+                        ...existing,
+                        ...blockData,
+                        id: blockId,
+                        lastSeen: now,
+                        occurrenceCount: (existing.occurrenceCount || 0) + 1,
+                    };
+                } else {
+                    blocks[blockId] = {
+                        ...blockData,
+                        id: blockId,
+                        timestamp: now,
+                        lastSeen: now,
+                        occurrenceCount: 1,
+                    };
+                    activeIds.push(blockId);
+                    mustBlock = true;
                 }
-            },
-            { mode: 'readwrite' }
-        );
+
+                await activeBlocks.put(blocks, BLOCKS_KEY);
+                if (mustBlock) {
+                    await activeBlocks.put(activeIds, ACTIVE_BLOCK_IDS_KEY);
+                }
+                return mustBlock;
+            } catch (error) {
+                logger.error(`Failed to record block ${blockId}`, error);
+                // Fail-safe: on storage error, tell the caller to block.
+                return true;
+            }
+        });
         if (mustBlock) {
             blocked = true;
         }
@@ -166,7 +163,9 @@ export function createSecurityStore(db) {
         try {
             if (blocked === null) {
                 const activeIds =
-                    (await db(({ activeBlocks }) => activeBlocks.get(ACTIVE_BLOCK_IDS_KEY))) || [];
+                    (await db.read(['activeBlocks'], ({ activeBlocks }) =>
+                        activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)
+                    )) || [];
                 blocked = activeIds.length > 0;
             }
             return blocked;
@@ -178,7 +177,7 @@ export function createSecurityStore(db) {
 
     async function getActiveBlocks() {
         try {
-            return await db(async ({ activeBlocks }) => {
+            return await db.read(['activeBlocks'], async ({ activeBlocks }) => {
                 const activeIds = (await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || [];
                 if (activeIds.length === 0) {
                     return [];
@@ -198,7 +197,7 @@ export function createSecurityStore(db) {
      */
     async function getAllBlocks() {
         try {
-            return await db(async ({ activeBlocks }) => {
+            return await db.read(['activeBlocks'], async ({ activeBlocks }) => {
                 const blocks = (await activeBlocks.get(BLOCKS_KEY)) || {};
                 const activeIds = new Set((await activeBlocks.get(ACTIVE_BLOCK_IDS_KEY)) || []);
                 return Object.values(blocks).map((block) => ({
@@ -214,7 +213,10 @@ export function createSecurityStore(db) {
 
     async function getSecurityBlock(blockId) {
         try {
-            const blocks = (await db(({ activeBlocks }) => activeBlocks.get(BLOCKS_KEY))) || {};
+            const blocks =
+                (await db.read(['activeBlocks'], ({ activeBlocks }) =>
+                    activeBlocks.get(BLOCKS_KEY)
+                )) || {};
             return blocks[blockId];
         } catch (error) {
             logger.error(`Failed to get block ${blockId}:`, error);
@@ -223,9 +225,9 @@ export function createSecurityStore(db) {
 
     async function clearBlockCondition() {
         try {
-            await db(({ activeBlocks }) => activeBlocks.put([], ACTIVE_BLOCK_IDS_KEY), {
-                mode: 'readwrite',
-            });
+            await db.write(['activeBlocks'], ({ activeBlocks }) =>
+                activeBlocks.put([], ACTIVE_BLOCK_IDS_KEY)
+            );
             blocked = false;
             logger.log('Block condition cleared');
         } catch (error) {
