@@ -1,0 +1,20 @@
+/* Reset and page-level defaults. */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    min-height: 100%;
+    font-family: var(--df-font-sans);
+    color: var(--df-text);
+}
+
+/* Only <body> paints, so a theme class on <body> also colours the canvas
+   (the background propagates up when <html> has none). */
+body {
+    background: var(--df-bg);
+}

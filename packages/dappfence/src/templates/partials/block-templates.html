@@ -1,0 +1,38 @@
+<!--
+    Inert markup cloned by renderBlocks(). Elements marked data-slot are
+    filled (or removed) by the page script; everything else is static.
+-->
+<template id="df-tpl-block">
+    <details class="df-block">
+        <summary class="df-block__summary df-disclosure">
+            <div class="df-block__heading">
+                <span class="df-block__title" data-slot="title"></span>
+                <span class="df-block__name" data-slot="name"></span>
+            </div>
+            <span class="df-badge" data-slot="count"></span>
+        </summary>
+        <div class="df-block__body" data-slot="body"></div>
+    </details>
+</template>
+
+<template id="df-tpl-file">
+    <details class="df-file">
+        <summary class="df-file__row df-disclosure">
+            <span class="df-file__key" data-slot="name"></span>
+            <span class="df-file__hash" data-slot="hash"></span>
+            <span class="df-badge" data-slot="count"></span>
+        </summary>
+        <div class="df-file__body" data-slot="body"></div>
+    </details>
+</template>
+
+<template id="df-tpl-info-row">
+    <div class="df-info-row">
+        <span class="df-info-row__label" data-slot="label"></span>
+        <span class="df-info-row__value" data-slot="value"></span>
+    </div>
+</template>
+
+<template id="df-tpl-chip">
+    <span class="df-chip"></span>
+</template>

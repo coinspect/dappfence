@@ -1,17 +1,16 @@
-// Import security warning templates using Vite's raw imports
-import securityWarningHtml from '../templates/security-warning.html?raw';
-import securityWarningCss from '../templates/security-warning.css?raw';
+// Page template with partials expanded (build/html-includes.js) and its
+// stylesheet with @imports inlined (Vite ?inline)
+import securityWarningHtml from '../templates/pages/security-warning.html?template';
+import securityWarningCss from '../templates/styles/pages/security-warning.css?inline';
 import { isFeatureEnabled } from '../core/utils.js';
+import { renderTemplate } from '../core/template.js';
 import { API, ASSET_TYPE, MSG } from '../core/constants.js';
 
 // CSS and the build-time feature flag are static across all renders — fold
 // them into the template once at a module load instead of repeating the work
 // on every block. `isFeatureEnabled` reads a Vite-defined compile-time
 // constant, so it can never change at runtime.
-const BASE_HTML = securityWarningHtml.replace(
-    '/* CSS will be injected here during build */',
-    securityWarningCss
-);
+const BASE_HTML = renderTemplate(securityWarningHtml, securityWarningCss);
 const AUTO_CONFIRM_SITE_LOCK = isFeatureEnabled('auto_confirm_site_lock');
 
 // Locate the template's placeholder config <script> once at a module load and

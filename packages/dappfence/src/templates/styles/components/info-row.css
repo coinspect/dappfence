@@ -1,0 +1,34 @@
+/* Label / value pair, stacked. .df-info-row__value--hash renders the value
+   as a monospace code box. */
+
+.df-info-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--df-info-row-gap, 3px);
+}
+
+.df-info-row__label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--df-text-subtle);
+}
+
+.df-info-row__value {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--df-text);
+    word-break: break-word;
+}
+
+.df-info-row__value--hash {
+    padding: 5px 8px;
+    font-family: var(--df-font-mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    word-break: break-all;
+    background: var(--df-surface);
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius-xs);
+}

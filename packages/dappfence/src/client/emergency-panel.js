@@ -1,10 +1,8 @@
-import emergencyPanelHtml from '../templates/emergency-panel.html?raw';
-import emergencyPanelCss from '../templates/emergency-panel.css?raw';
+import emergencyPanelHtml from '../templates/pages/emergency-panel.html?template';
+import emergencyPanelCss from '../templates/styles/pages/emergency-panel.css?inline';
+import { renderTemplate } from '../core/template.js';
 
-const BASE_HTML = emergencyPanelHtml.replace(
-    '/* CSS will be injected here during build */',
-    emergencyPanelCss
-);
+const BASE_HTML = renderTemplate(emergencyPanelHtml, emergencyPanelCss);
 
 const SCRIPT_PATTERN = /<script id="dappfence-emergency-script">/;
 
