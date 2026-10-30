@@ -54,6 +54,35 @@ test.describe('Clear-Site-Data: client-side detection via AppSecurityWatchdog', 
         });
 
         // AppSecurityWatchdog.onclose fires and replaces the page DOM with the emergency panel.
-        await expect(page.locator('h1')).toHaveText('Security Action Required', { timeout: 5000 });
+        const heading = page.locator('h1');
+        await expect(heading).toHaveText('Security Action Required', { timeout: 5000 });
+
+        // The panel's guards must be live, not just its markup (a <script> inside
+        // the panel would never run, because it is inserted through innerHTML).
+        // Chrome only shows the beforeunload prompt after a user gesture.
+        await heading.click();
+
+        // Links are blocked: clicking one neither navigates nor prompts.
+        const urlBefore = page.url();
+        await page.evaluate(() => {
+            const link = document.createElement('a');
+            link.id = 'escape-link';
+            link.href = '/elsewhere';
+            link.textContent = 'escape';
+            document.body.append(link);
+        });
+        await page.locator('#escape-link').click();
+        await expect(heading).toHaveText('Security Action Required');
+        expect(page.url()).toBe(urlBefore);
+
+        // Reloading asks for confirmation; dismissing it keeps the panel.
+        // The evaluate call doesn't settle until the prompt is answered.
+        const dialogPromise = page.waitForEvent('dialog');
+        const reload = page.evaluate(() => location.reload());
+        const dialog = await dialogPromise;
+        expect(dialog.type()).toBe('beforeunload');
+        await dialog.dismiss();
+        await reload;
+        await expect(heading).toHaveText('Security Action Required');
     });
 });

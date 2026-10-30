@@ -33,13 +33,13 @@ src/templates/
 
 Supporting code:
 
-| File                                               | Role                                                                          |
-| -------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `packages/dappfence/build/html-includes.js`        | Vite plugin that expands `<!-- @include -->` (`?template`)                    |
-| `packages/dappfence/src/core/template.js`          | `renderTemplate(html, css)`: puts the CSS into the page                       |
-| `packages/dappfence/src/sw/response.js`            | Renders the security warning page, adds `DAPPFENCE_CONFIG`                    |
-| `packages/dappfence/src/client/emergency-panel.js` | Renders the emergency panel, optionally adds a nonce                          |
-| `packages/dappfence/preview/`                      | Template preview app (`npm run dev:templates`), see [Previewing](#previewing) |
+| File                                               | Role                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `packages/dappfence/build/html-includes.js`        | Vite plugin that expands `<!-- @include -->` (`?template`)                      |
+| `packages/dappfence/src/core/template.js`          | `renderTemplate(html, css)`: puts the CSS into the page                         |
+| `packages/dappfence/src/sw/response.js`            | Renders the security warning page, adds `DAPPFENCE_CONFIG`                      |
+| `packages/dappfence/src/client/emergency-panel.js` | Renders the emergency panel and shows it with its guards (`showEmergencyPanel`) |
+| `packages/dappfence/preview/`                      | Template preview app (`npm run dev:templates`), see [Previewing](#previewing)   |
 
 ## How a page is built
 
@@ -215,9 +215,11 @@ by ID.
     replaces `document.documentElement.innerHTML` of an already-loaded page.
 -   `<body class="df-theme-dark">` switches it to the dark tokens.
 -   An end-to-end test depends on the `<h1>` text `Security Action Required`.
--   **Known issue:** scripts inserted through `innerHTML` never run, so the panel's `onbeforeunload`
-    guard and link blocking currently don't work. Fixing this means creating the `<script>` element
-    with `document.createElement` instead.
+-   **No `<script>` in the markup.** Scripts inserted through `innerHTML` never run, so
+    `showEmergencyPanel()` in `src/client/emergency-panel.js` attaches the behaviour after inserting
+    the panel: a `beforeunload` confirmation and a capture-phase click handler that blocks links. A
+    unit test fails if the panel gains a `<script>`, and `sw-clear-site-data.spec.ts` checks both
+    guards in a real browser.
 
 ## Common tasks
 
@@ -286,8 +288,7 @@ back on the same view, because every setting lives in the URL.
 
 The catalog renders each thumbnail inside a sandboxed `<iframe srcdoc>`. The templates reset `*` and
 set `:root` variables, so they must not share a document with the catalog's own interface, and the
-sandbox (scripts allowed, dialogs not) stops the emergency panel's `beforeunload` prompt from firing
-whenever the catalog navigates.
+sandbox (scripts allowed, dialogs not) stops any page from prompting while the catalog navigates.
 
 "Remove Site Lock" works: the Vite server answers `POST /sw-api/site-unblock` with a stub (see the
 `template-preview-unblock-stub` plugin in `vite.config.js`). Behaviour that depends on a real

@@ -58,8 +58,8 @@ async function renderCatalog(width) {
         for (const scenario of Object.keys(page.scenarios)) {
             const fullPage = 'frame.html?' + new URLSearchParams({ page: pageName, scenario });
             // Sandboxed without allow-modals: the pages' scripts still run, but
-            // they can't open dialogs (the emergency panel's beforeunload
-            // prompt would otherwise fire whenever this page navigates).
+            // they can't open dialogs (a beforeunload prompt in a thumbnail
+            // would otherwise fire whenever this page navigates).
             const frame = el('iframe', { title: `${pageName} / ${scenario}`, tabIndex: -1 });
             frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
             frame.style.width = `${viewport}px`;
