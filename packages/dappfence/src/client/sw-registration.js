@@ -12,7 +12,7 @@ import {
 } from './security-handler.js';
 import { hasConfigManifest } from '../core/utils.js';
 import { MSG } from '../core/constants.js';
-import { createEmergencyPanel } from './emergency-panel.js';
+import { showEmergencyPanel } from './emergency-panel.js';
 
 const logger = createLogger();
 
@@ -309,7 +309,7 @@ export async function initializeClient(config) {
             originalRegister(standaloneUrl, { updateViaCache: 'all' }).catch((err) =>
                 logger.error('Error trying to register dappfence during an EMERGENCY', err)
             );
-            document.documentElement.innerHTML = createEmergencyPanel();
+            showEmergencyPanel();
         };
     };
     // PHASE 2: Wait until SW claims control (or is already controlled)
