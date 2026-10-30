@@ -33,12 +33,13 @@ src/templates/
 
 Supporting code:
 
-| File                                               | Role                                                       |
-| -------------------------------------------------- | ---------------------------------------------------------- |
-| `packages/dappfence/build/html-includes.js`        | Vite plugin that expands `<!-- @include -->` (`?template`) |
-| `packages/dappfence/src/core/template.js`          | `renderTemplate(html, css)`: puts the CSS into the page    |
-| `packages/dappfence/src/sw/response.js`            | Renders the security warning page, adds `DAPPFENCE_CONFIG` |
-| `packages/dappfence/src/client/emergency-panel.js` | Renders the emergency panel, optionally adds a nonce       |
+| File                                               | Role                                                                          |
+| -------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `packages/dappfence/build/html-includes.js`        | Vite plugin that expands `<!-- @include -->` (`?template`)                    |
+| `packages/dappfence/src/core/template.js`          | `renderTemplate(html, css)`: puts the CSS into the page                       |
+| `packages/dappfence/src/sw/response.js`            | Renders the security warning page, adds `DAPPFENCE_CONFIG`                    |
+| `packages/dappfence/src/client/emergency-panel.js` | Renders the emergency panel, optionally adds a nonce                          |
+| `packages/dappfence/preview/`                      | Template preview app (`npm run dev:templates`), see [Previewing](#previewing) |
 
 ## How a page is built
 
@@ -256,6 +257,68 @@ the page entry, and put the class on `<body>`.
     ```
 
 4. Add the page to the `PAGES` map in `src/core/__tests__/template.test.js`.
+5. Add it to the preview's page registry in `preview/pages.js` (see [Previewing](#previewing)).
+
+## Previewing
+
+`npm run dev:templates` (from the repo root) starts a Vite dev server for the templates at
+<http://localhost:5555>. It uses the same pipeline as the build (the include plugin, `?inline` CSS,
+`renderTemplate`) and the **real renderers**: the security warning page goes through
+`createSecurityPageResponse`, so the titles, labels, summary and grouping come from
+`src/sw/response.js`, not from sample data.
+
+Editing any token, component, partial or page reloads the open views automatically, and they come
+back on the same view, because every setting lives in the URL.
+
+| URL                                                             | View                                                                                |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `/?width=phone`                                                 | **Catalog**: every page × scenario as a live thumbnail. Click one to open it.       |
+| `/frame.html?page=security-warning&scenario=signer`             | **Full page**: the page as a top-level document, exactly as a visitor sees it       |
+| `/frame.html?page=security-warning&scenario=signer&view=source` | **HTML**: the rendered HTML string as text, exactly as the service worker serves it |
+
+-   **Width:** the catalog renders thumbnails at `desktop` (1280), `tablet` (768) or `phone` (390)
+    width. For the full page, resize the window or use DevTools' device toolbar.
+-   **HTML:** the "HTML" link under each thumbnail shows the rendered HTML (partials expanded, CSS
+    inlined) as text, with a Copy button. The browser's view-source can't show it, because the
+    full-page view injects the page with `document.write`. The security warning page builds its
+    content in the browser from encoded block data, so to read its final DOM use DevTools → Elements
+    on the full page.
+
+The catalog renders each thumbnail inside a sandboxed `<iframe srcdoc>`. The templates reset `*` and
+set `:root` variables, so they must not share a document with the catalog's own interface, and the
+sandbox (scripts allowed, dialogs not) stops the emergency panel's `beforeunload` prompt from firing
+whenever the catalog navigates.
+
+"Remove Site Lock" works: the Vite server answers `POST /sw-api/site-unblock` with a stub (see the
+`template-preview-unblock-stub` plugin in `vite.config.js`). Behaviour that depends on a real
+service worker or site (the actual unlock, the emergency panel replacing a live app) still needs
+`npm run dev` and the end-to-end tests.
+
+### Files
+
+| File                   | Role                                                                   |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `preview/pages.js`     | Page registry: each page's scenarios and a `render(scenario)` function |
+| `preview/scenarios.js` | Raw block records and the security warning scenarios                   |
+| `preview/preview.js`   | Catalog: thumbnails, width toggle, links to the full page and HTML     |
+| `preview/frame.js`     | Full-page view                                                         |
+
+`preview/` is not published (the package's `files` lists only `dist`), and nothing in it reaches a
+build. `vite.config.js` defines `__FEATURES__` from `feature_flag.json` for `vite serve` only,
+because builds fill it in at the end of the build, which a dev server never reaches.
+
+### Add a scenario
+
+Add an entry to `warningScenarios` in `preview/scenarios.js`: a name mapped to an array of raw block
+records, as the service worker stores them (`status`, `reason`, `assetType`, `fileKey`, hashes,
+`occurrenceCount`, `timestamp`). Don't add `view` or `formattedTimestamp`: the renderer derives
+them. Use `ts(minutesAgo)` for timestamps, so renders stay the same between runs.
+
+### Add a page to the preview
+
+Add an entry to `PAGES` in `preview/pages.js` with a `title`, its `scenarios` (use
+`{ default: null }` for a page without data) and a `render(scenario)` function that returns the
+complete HTML document. It appears in the catalog automatically.
 
 ## Testing
 
@@ -270,5 +333,5 @@ Vitest only processes CSS files matching `test.css.include` in `vite.config.js` 
 `src/templates/`). Without that, `?inline` imports return an empty string in tests.
 
 Run `npm run test:unit` for the unit tests, and `npm run test:e2e` after changing anything the
-end-to-end tests depend on (see the page constraints above). For visual changes, open the page by
-triggering a block in the test app (`npm run dev`) and check it at desktop and phone widths.
+end-to-end tests depend on (see the page constraints above). For visual changes, check every
+scenario in the preview catalog (`npm run dev:templates`) at desktop and phone widths.

@@ -1,0 +1,152 @@
+/* Styles for the preview UI only. The previewed pages render in iframes and
+   never see these rules. */
+
+:root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --border: #d5dbe3;
+    --text: #1e293b;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --bar-height: 52px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font:
+        14px/1.4 system-ui,
+        -apple-system,
+        'Segoe UI',
+        Roboto,
+        sans-serif;
+    color: var(--text);
+    background: var(--bg);
+}
+
+a {
+    color: var(--accent);
+}
+
+.bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    min-height: var(--bar-height);
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.bar__brand {
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.bar__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+select,
+button,
+.button {
+    height: 30px;
+    padding: 0 10px;
+    font: inherit;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.segmented {
+    display: inline-flex;
+}
+.segmented button {
+    border-radius: 0;
+    margin-left: -1px;
+}
+.segmented button:first-child {
+    border-radius: 6px 0 0 6px;
+    margin-left: 0;
+}
+.segmented button:last-child {
+    border-radius: 0 6px 6px 0;
+}
+.segmented button[aria-pressed='true'] {
+    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Catalog */
+
+.catalog {
+    padding: 16px;
+}
+
+.catalog h2 {
+    margin: 8px 0 12px;
+    font-size: 16px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.card {
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.card:has(.thumb:hover) {
+    border-color: var(--accent);
+}
+
+.card__label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.thumb {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+}
+.thumb iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: 0;
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 12px;
+}

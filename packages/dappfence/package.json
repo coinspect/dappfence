@@ -37,6 +37,7 @@
         "build": "vite build --mode development && vite build --mode production",
         "build:prod": "COMMIT_HASH=$(git rev-parse --short=7 HEAD 2>/dev/null) vite build --mode production",
         "build:watch": "vite build --mode development --watch & vite build --mode production --watch",
+        "dev:templates": "vite serve preview --config vite.config.js",
         "clean": "rm -rf dist coverage",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",

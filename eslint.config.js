@@ -5,19 +5,14 @@ import prettier from 'eslint-config-prettier';
 
 export default [
     {
-        ignores: [
-            '**/dist/',
-            '**/coverage/',
-            '**/test-results/',
-            'packages/test-app/assets/',
-        ],
+        ignores: ['**/dist/', '**/coverage/', '**/test-results/', 'packages/test-app/assets/'],
     },
     js.configs.recommended,
     prettier,
     // All Node.js packages and repo scripts (everything except dappfence core source)
     {
         files: ['packages/**/*.js', 'scripts/**/*.js'],
-        ignores: ['packages/dappfence/src/**/*.js'],
+        ignores: ['packages/dappfence/src/**/*.js', 'packages/dappfence/preview/**/*.js'],
         languageOptions: {
             globals: globals.node,
         },
@@ -51,9 +46,9 @@ export default [
             'no-console': 'off',
         },
     },
-    // Main source (browser + service worker)
+    // Main source (browser + service worker) and the template preview app
     {
-        files: ['packages/dappfence/src/**/*.js'],
+        files: ['packages/dappfence/src/**/*.js', 'packages/dappfence/preview/**/*.js'],
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'module',
