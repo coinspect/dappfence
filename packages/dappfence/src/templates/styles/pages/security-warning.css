@@ -17,6 +17,9 @@
     inset: 0;
     z-index: 999999;
     display: grid;
+    /* One column, never wider than the viewport: an auto column would grow
+       to the card's widest unbreakable content and push it off-screen. */
+    grid-template-columns: minmax(0, 1fr);
     place-items: safe center;
     padding: 24px;
     overflow-y: auto;
