@@ -20,18 +20,4 @@
             secure connection network.
         </p>
     </div>
-    <script id="dappfence-emergency-script">
-        window.onbeforeunload = function () {
-            return 'Security event occurred. Are you sure you want to reload?';
-        };
-        window.addEventListener(
-            'click',
-            function (e) {
-                if (e.target.tagName === 'A') {
-                    e.preventDefault();
-                }
-            },
-            true
-        );
-    </script>
 </body>
