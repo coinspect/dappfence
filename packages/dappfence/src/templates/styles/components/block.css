@@ -113,6 +113,17 @@
     padding: 6px 0 10px 24px;
 }
 
+/* Phones: the title can't shrink on one line next to the name, so a long
+   title ("Manifest signer changed since pinning") would set the card's
+   minimum width. Stack them instead, so the title can wrap. */
+@media (max-width: 576px) {
+    .df-block__heading {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+    }
+}
+
 @media (prefers-contrast: high) {
     .df-block {
         border-left-width: 4px;
