@@ -135,8 +135,8 @@ function logRequestToConsole(req, testParams, result) {
     console.log('\t', result);
 }
 
-function launchBrowserWithProxy(port) {
-    const url = `http://localhost:${port}`;
+function launchBrowserWithProxy(port, openPath = '') {
+    const url = `http://localhost:${port}${openPath}`;
     const proxyArg = `--proxy-server=http://localhost:${port}`;
 
     try {
@@ -208,6 +208,7 @@ export function startServer({
     noCache = false,
     dev = false,
     withBrowser = false,
+    openPath = '',
     virtualFilesGroup = undefined,
 } = {}) {
     const PROJECT_ROOT = root
@@ -303,16 +304,23 @@ export function startServer({
     function saveTestResponse(
         testParams,
         result,
-        filePath = '',
-        extraHeaders = {},
-        intercept = null
+        statusCode,
+        { filePath = '', extraHeaders = {}, intercept = null } = {}
     ) {
         const params = testParameters[testParams.testKey];
         if (params && params.saveResponses) {
             if (!params.testResponse) {
                 params.testResponse = [];
             }
-            params.testResponse.push({ ...testParams, filePath, result, extraHeaders, intercept });
+            params.testResponse.push({
+                ...testParams,
+                filePath,
+                result,
+                extraHeaders,
+                intercept,
+                statusCode,
+                receivedAt: Date.now(),
+            });
         }
     }
 
@@ -392,7 +400,7 @@ export function startServer({
     function serveFile(filePath, res, req, testParams) {
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                saveTestResponse(testParams, 'error reading file', filePath);
+                saveTestResponse(testParams, 'error reading file', 404, { filePath });
                 logRequestToConsole(
                     req,
                     testParams,
@@ -429,7 +437,8 @@ export function startServer({
               )
             : data;
 
-        saveTestResponse(testParams, result, filePath, extraHeaders, intercept);
+        const statusCode = intercept?.statusCode ?? 200;
+        saveTestResponse(testParams, result, statusCode, { filePath, extraHeaders, intercept });
         logRequestToConsole(
             req,
             testParams,
@@ -440,7 +449,7 @@ export function startServer({
             res,
             resData,
             intercept?.args?.steps ? intercept.args : null,
-            intercept?.statusCode ?? 200,
+            statusCode,
             (intercept && intercept.contentType) || mimeType || 'application/octet-stream',
             extraHeaders
         );
@@ -628,7 +637,7 @@ export function startServer({
             }
         }
 
-        saveTestResponse(testParams, 'file not found');
+        saveTestResponse(testParams, 'file not found', 404);
         logRequestToConsole(
             req,
             testParams,
@@ -684,7 +693,7 @@ export function startServer({
             if (defaultApp) console.log(`📁 Serving default app: ${defaultApp}`);
             console.log('');
             if (withBrowser) {
-                launchBrowserWithProxy(port);
+                launchBrowserWithProxy(port, openPath);
             }
             resolve(server);
         });
@@ -695,6 +704,7 @@ export function startServer({
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const rootArg = process.argv.find((a) => a.startsWith('--root='));
+    const openPathArg = process.argv.find((a) => a.startsWith('--open-path='));
     const pIndex = process.argv.indexOf('-p');
     const dIndex = process.argv.indexOf('-d');
 
@@ -706,6 +716,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         noCache: process.argv.includes('--no-cache'),
         dev: process.argv.includes('--dev'),
         withBrowser: process.argv.includes('--with-browser'),
+        openPath: openPathArg ? openPathArg.slice('--open-path='.length) : '',
     }).then((server) => {
         console.log('Press Ctrl+C to stop');
         process.on('SIGINT', () => {
