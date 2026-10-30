@@ -1,5 +1,6 @@
 import { VERIFICATION_STATUS } from '../core/constants.js';
 import { createLogger } from '../core/logger.js';
+import { safely } from '../core/utils.js';
 
 const logger = createLogger();
 
@@ -64,40 +65,44 @@ const STATUS_LOG = {
 /**
  * Security Processor
  *
- * Owns the orchestration of what happens with a verification verdict:
- *   - persists MATCH records (verificationResultsStore)
- *   - registers the active block when the verdict is a violation (securityStore)
- *   - returns mustBlock for the caller
+ * Facade over verdict ingestion + telemetry executor. Outside modules
+ * (main, lifecycle, message-broker) talk only to this surface:
+ *   - processSecurityEvent: logs, records violation, returns mustBlock
+ *   - reportAfter* / reportOn*: flush pending + hop keepalive + trigger send cycle
  *
- * Call sites pass every verdict unconditionally; this service decides what to
- * do with it. MATCH/SKIPPED short-circuit as no-ops; non-violation telemetry
- * statuses (REWRITE / CSP_PROTECTED) are logged to the events store but never
- * activate a block; violations go all the way through.
- *
- * Status/assetType invariant held by the callers: MANIFEST and SERVICE_WORKER
- * asset types only reach the processor with MATCH / SKIPPED / isViolation
- * statuses — never REWRITE / CSP_PROTECTED / REDIRECT. The telemetry branch
- * below is therefore only ever hit for ASSET-type verdicts in practice.
- *
- * Static typing on `SecurityEventDetails` is enforced; callers that type-check
- * cannot pass malformed payloads, so no runtime devAsserts.
+ * The telemetry executor (batch send cycle, task-manager keepalive) is an
+ * implementation detail injected by services.js and never exposed externally.
  *
  * @param {object} deps
  * @param {object} deps.appStore
+ * @param {object} deps.telemetryExecutor
+ * @param {object} deps.taskManager
  */
-export function createSecurityProcessor({ appStore }) {
+export function createSecurityProcessor({ appStore, telemetryExecutor, taskManager }) {
     const { securityStore, verificationResultsStore } = appStore;
 
-    // Shared in-memory buffer drained by reportAfterFetch / reportAfterInstall.
-    // SW is single-threaded; multiple drains are idempotent (second finds empty).
-    const pending = { events: [] };
+    function createPendingBuffer() {
+        let events = [];
+        return {
+            append(details) {
+                events.push(details);
+            },
+            atomicSwap() {
+                const taken = events;
+                events = [];
+                return taken;
+            },
+        };
+    }
+
+    const pending = createPendingBuffer();
 
     /**
      * @param {SecurityEventDetails} details
      * @returns {Promise<boolean>} mustBlock
      */
     async function processSecurityEvent(details) {
-        pending.events.push(details);
+        pending.append(details);
         if (
             details.status === VERIFICATION_STATUS.MATCH ||
             details.status === VERIFICATION_STATUS.SKIPPED
@@ -138,8 +143,7 @@ export function createSecurityProcessor({ appStore }) {
     }
 
     async function flushPending() {
-        // Atomic snapshot, splice is synchronous.
-        for (const details of pending.events.splice(0)) {
+        for (const details of pending.atomicSwap()) {
             if (details.status === VERIFICATION_STATUS.SKIPPED) {
                 continue;
             }
@@ -151,36 +155,70 @@ export function createSecurityProcessor({ appStore }) {
         }
     }
 
-    /**
-     * Drains and persists queued security events asynchronously without blocking the fetch response.
-     * Executed inside `event.waitUntil` after the fetch response promise settles.
-     *
-     * @param {FetchEvent} event
-     */
-    async function reportAfterFetch(event) {
+    async function reportAfterFetch(/** @type {FetchEvent} */ event) {
         const clientId =
             event.request.mode === 'navigate' ? event.resultingClientId : event.clientId;
         logger.log(`reportAfterFetch clientId=${clientId}`);
-        await flushPending();
+        await safely(flushPending, (e) => logger.error('flushPending failed:', e));
+        await safely(
+            () => taskManager.attach(event),
+            (e) => logger.error('taskManager.attach failed:', e)
+        );
+        await safely(
+            () => telemetryExecutor.onEvent(),
+            (e) => logger.error('onEvent failed:', e)
+        );
     }
 
-    async function reportAfterInstall(/** @type {ExtendableEvent} */ _event) {
+    async function reportAfterInstall(/** @type {ExtendableEvent} */ event) {
         logger.log('reportAfterInstall');
-        await flushPending();
+        await safely(flushPending, (e) => logger.error('flushPending failed:', e));
+        await safely(
+            () => taskManager.attach(event),
+            (e) => logger.error('taskManager.attach failed:', e)
+        );
+        await safely(
+            () => telemetryExecutor.onEvent(),
+            (e) => logger.error('onEvent failed:', e)
+        );
     }
 
     async function reportOnClientRequest(/** @type {ExtendableMessageEvent} */ event) {
         logger.log(`reportOnClientRequest clientId=${event?.source?.id}`);
+        await safely(flushPending, (e) => logger.error('flushPending failed:', e));
+        await safely(
+            () => taskManager.attach(event),
+            (e) => logger.error('taskManager.attach failed:', e)
+        );
+        await safely(
+            () => telemetryExecutor.onEvent(),
+            (e) => logger.error('onEvent failed:', e)
+        );
     }
 
     async function reportOnPageLoad(/** @type {ExtendableMessageEvent} */ event) {
         logger.log(
             `reportOnPageLoad clientId=${event?.source?.id} pageUrl=${event?.data?.pageUrl}`
         );
+        await safely(flushPending, (e) => logger.error('flushPending failed:', e));
+        await safely(
+            () => taskManager.attach(event),
+            (e) => logger.error('taskManager.attach failed:', e)
+        );
     }
 
+    // Sync is the only report* that lets errors propagate — a thrown
+    // waitUntil tells Chromium to schedule backoff + eventually lastChance.
     async function reportOnSync(/** @type {SyncEvent} */ event) {
         logger.log(`reportOnSync lastChance=${event?.lastChance}`);
+        await safely(flushPending, (e) => logger.error('flushPending failed:', e));
+        const sent = await telemetryExecutor.onEvent();
+        taskManager.attach(event);
+        if (!sent) {
+            throw new Error(
+                'sync drain POST failed; rejecting waitUntil so Chromium schedules backoff + lastChance'
+            );
+        }
     }
 
     return {
