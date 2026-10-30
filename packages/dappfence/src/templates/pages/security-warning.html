@@ -1,55 +1,51 @@
 <!doctype html>
 <html lang="en">
     <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Security Warning - Content Blocked</title>
-        <style id="dappfence-security-styles">
-            /* CSS will be injected here during build */
-        </style>
+        <!-- @include ../partials/head.html title="Security Warning - Content Blocked" -->
     </head>
     <body>
-        <div class="security-overlay">
-            <div class="security-container">
-                <div class="security-header">
-                    <div class="security-icon">⚠️</div>
-                    <span class="severity-chip">Blocked</span>
-                    <h1 class="security-title">Security Warning</h1>
+        <div class="df-overlay">
+            <div class="df-card df-card--raised">
+                <div class="df-card__header">
+                    <div class="df-card__icon">⚠️</div>
+                    <span class="df-severity-chip">Blocked</span>
+                    <h1 class="df-card__title">Security Warning</h1>
                 </div>
 
-                <div class="security-content">
-                    <h2 class="security-subtitle" id="security-subtitle">
+                <div class="df-card__body">
+                    <h2 class="df-subtitle" id="security-subtitle">
                         Potentially Malicious Content Blocked
                     </h2>
-                    <p class="security-message" id="security-message">
+                    <p class="df-message" id="security-message">
                         DappFence has detected that content on this page has been modified and may
                         be unsafe. This protection prevents potentially malicious code from running
                         in your browser.
                     </p>
-                    <div
-                        class="security-advanced"
-                        id="security-advanced-success"
-                        style="display: none"
-                    >
-                        <h3>Active Blocks<span class="count-badge" id="block-count">0</span></h3>
-                        <div id="block-list"></div>
+                    <div class="df-blocks" id="security-advanced-success" style="display: none">
+                        <h3 class="df-blocks__heading">
+                            Active Blocks<span class="df-badge df-badge--strong" id="block-count"
+                                >0</span
+                            >
+                        </h3>
+                        <div class="df-block-list" id="block-list"></div>
                     </div>
-                    <div class="security-warning-box">
-                        <strong>🔓 Remove Site Lock</strong>
-                        <p>
+                    <div class="df-callout df-callout--warning">
+                        <strong class="df-callout__title">🔓 Remove Site Lock</strong>
+                        <p class="df-callout__text">
                             Clearing the lock removes <em>all</em> active blocks. Only proceed if
                             you understand the security implications and trust the site.
                         </p>
-                        <button class="btn-danger" id="site-unblock">🔓 Remove Site Lock</button>
+                        <button class="df-btn df-btn--danger" id="site-unblock">
+                            🔓 Remove Site Lock
+                        </button>
                     </div>
                 </div>
 
-                <div class="security-footer">
-                    <p class="security-branding">Protected by <strong>DappFence</strong></p>
-                    <p class="security-timestamp" id="security-timestamp"></p>
-                </div>
+                <!-- @include ../partials/footer.html -->
             </div>
         </div>
+
+        <!-- @include ../partials/block-templates.html -->
 
         <script id="dappfence-config">
             const DAPPFENCE_CONFIG = {};
@@ -227,158 +223,125 @@
                     });
                 }
 
-                function buildFlatCard(block) {
-                    const card = document.createElement('details');
-                    card.className = 'security-info';
+                // Card markup lives in partials/block-templates.html; these
+                // helpers only clone it and fill the data-slot elements.
+                function cloneTemplate(id) {
+                    return document.getElementById(id).content.firstElementChild.cloneNode(true);
+                }
 
-                    const view = block.view || {};
-                    const summaryEl = document.createElement('summary');
-                    summaryEl.className = 'block-summary';
+                function slot(el, name) {
+                    return el.querySelector('[data-slot="' + name + '"]');
+                }
 
-                    const heading = document.createElement('div');
-                    heading.className = 'block-heading';
-                    if (view.title) {
-                        const title = document.createElement('span');
-                        title.className = 'block-title';
-                        title.textContent = view.title;
-                        heading.appendChild(title);
-                    }
-                    const name = document.createElement('span');
-                    name.className = 'block-name';
-                    name.textContent = block.fileKey || 'Unknown';
-                    name.title = block.fileKey || 'Unknown';
-                    heading.appendChild(name);
-                    summaryEl.appendChild(heading);
-
-                    const chip = assetTypeChip(block.assetType);
-                    if (chip) {
-                        summaryEl.appendChild(chip);
-                    }
-
-                    const count = block.occurrenceCount || 1;
-                    const badge = document.createElement('span');
-                    badge.className = 'occurrence-badge';
+                function fillCount(badge, count, title) {
                     badge.textContent = `${count}×`;
-                    badge.title = `${count} occurrence${count > 1 ? 's' : ''}`;
-                    summaryEl.appendChild(badge);
+                    badge.title = title;
+                }
 
-                    card.appendChild(summaryEl);
+                function fillName(el, text) {
+                    el.textContent = text;
+                    el.title = text;
+                }
 
-                    const body = document.createElement('div');
-                    body.className = 'block-body';
+                function occurrenceTitle(count) {
+                    return `${count} occurrence${count > 1 ? 's' : ''}`;
+                }
+
+                // Insert the asset-type chip (if any) right before the count badge.
+                function addAssetChip(summaryEl, assetType) {
+                    const chip = assetTypeChip(assetType);
+                    if (chip) {
+                        summaryEl.insertBefore(chip, slot(summaryEl, 'count'));
+                    }
+                }
+
+                function appendHashRows(body, block) {
+                    const view = block.view || {};
                     if (view.expectedLabel) {
                         body.appendChild(
-                            infoRow(view.expectedLabel, formatList(block.expectedHashes), 'hash')
+                            infoRow(view.expectedLabel, formatList(block.expectedHashes), true)
                         );
                     }
                     if (view.actualLabel) {
                         body.appendChild(
-                            infoRow(view.actualLabel, block.actualHash || 'Not available', 'hash')
+                            infoRow(view.actualLabel, block.actualHash || 'Not available', true)
                         );
                     }
+                }
+
+                function buildCard(view) {
+                    const card = cloneTemplate('df-tpl-block');
+                    const title = slot(card, 'title');
+                    if (view.title) {
+                        title.textContent = view.title;
+                    } else {
+                        title.remove();
+                    }
+                    return card;
+                }
+
+                function buildFlatCard(block) {
+                    const card = buildCard(block.view || {});
+                    fillName(slot(card, 'name'), block.fileKey || 'Unknown');
+                    addAssetChip(card.querySelector('summary'), block.assetType);
+
+                    const count = block.occurrenceCount || 1;
+                    fillCount(slot(card, 'count'), count, occurrenceTitle(count));
+
+                    const body = slot(card, 'body');
+                    appendHashRows(body, block);
                     if (block.reason) {
                         body.appendChild(infoRow('Reason', block.reason));
                     }
                     body.appendChild(infoRow('First seen', block.formattedTimestamp || 'Unknown'));
-                    card.appendChild(body);
                     return card;
                 }
 
                 function buildGroupCard(members) {
-                    const card = document.createElement('details');
-                    card.className = 'security-info security-info-group';
-
-                    const view = members[0].view || {};
-                    const summaryEl = document.createElement('summary');
-                    summaryEl.className = 'block-summary';
-
-                    const heading = document.createElement('div');
-                    heading.className = 'block-heading';
-                    if (view.title) {
-                        const title = document.createElement('span');
-                        title.className = 'block-title';
-                        title.textContent = view.title;
-                        heading.appendChild(title);
-                    }
-                    const name = document.createElement('span');
-                    name.className = 'block-name';
-                    name.textContent = `${members.length} files`;
-                    heading.appendChild(name);
-                    summaryEl.appendChild(heading);
+                    const card = buildCard(members[0].view || {});
+                    card.classList.add('df-block--group');
+                    slot(card, 'name').textContent = `${members.length} files`;
 
                     const totalOccurrences = members.reduce(
                         (sum, m) => sum + (m.occurrenceCount || 1),
                         0
                     );
-                    const badge = document.createElement('span');
-                    badge.className = 'occurrence-badge';
-                    badge.textContent = `${totalOccurrences}×`;
-                    badge.title = `${totalOccurrences} occurrences across ${members.length} files`;
-                    summaryEl.appendChild(badge);
+                    fillCount(
+                        slot(card, 'count'),
+                        totalOccurrences,
+                        `${totalOccurrences} occurrences across ${members.length} files`
+                    );
 
-                    card.appendChild(summaryEl);
-
-                    const body = document.createElement('div');
-                    body.className = 'block-body';
-                    const table = document.createElement('div');
-                    table.className = 'group-file-list';
+                    const list = document.createElement('div');
+                    list.className = 'df-file-list';
                     members.forEach((m) => {
-                        table.appendChild(buildGroupFileRow(m));
+                        list.appendChild(buildGroupFileRow(m));
                     });
-                    body.appendChild(table);
-                    card.appendChild(body);
+                    slot(card, 'body').appendChild(list);
                     return card;
                 }
 
                 function buildGroupFileRow(block) {
-                    const view = block.view || {};
-                    const details = document.createElement('details');
-                    details.className = 'group-file-details';
-
-                    const summary = document.createElement('summary');
-                    summary.className = 'group-file-row';
-                    const fileEl = document.createElement('span');
-                    fileEl.className = 'group-file-key';
-                    fileEl.textContent = block.fileKey || 'Unknown';
-                    fileEl.title = block.fileKey || 'Unknown';
-                    summary.appendChild(fileEl);
+                    const row = cloneTemplate('df-tpl-file');
+                    fillName(slot(row, 'name'), block.fileKey || 'Unknown');
+                    const hash = slot(row, 'hash');
                     if (block.actualHash) {
-                        const hashEl = document.createElement('span');
-                        hashEl.className = 'group-file-hash';
-                        hashEl.textContent = block.actualHash;
-                        hashEl.title = block.actualHash;
-                        summary.appendChild(hashEl);
+                        fillName(hash, block.actualHash);
+                    } else {
+                        hash.remove();
                     }
-                    const chip = assetTypeChip(block.assetType);
-                    if (chip) {
-                        summary.appendChild(chip);
-                    }
-                    const count = block.occurrenceCount || 1;
-                    const badge = document.createElement('span');
-                    badge.className = 'occurrence-badge';
-                    badge.textContent = `${count}×`;
-                    badge.title = `${count} occurrence${count > 1 ? 's' : ''}`;
-                    summary.appendChild(badge);
-                    details.appendChild(summary);
+                    addAssetChip(row.querySelector('summary'), block.assetType);
 
-                    const body = document.createElement('div');
-                    body.className = 'group-file-detail-body';
-                    if (view.expectedLabel) {
-                        body.appendChild(
-                            infoRow(view.expectedLabel, formatList(block.expectedHashes), 'hash')
-                        );
-                    }
-                    if (view.actualLabel) {
-                        body.appendChild(
-                            infoRow(view.actualLabel, block.actualHash || 'Not available', 'hash')
-                        );
-                    }
+                    const count = block.occurrenceCount || 1;
+                    fillCount(slot(row, 'count'), count, occurrenceTitle(count));
+
+                    const body = slot(row, 'body');
+                    appendHashRows(body, block);
                     if (block.url && block.url !== block.fileKey) {
                         body.appendChild(infoRow('URL', block.url));
                     }
                     body.appendChild(infoRow('First seen', block.formattedTimestamp || 'Unknown'));
-                    details.appendChild(body);
-                    return details;
+                    return row;
                 }
 
                 function assetTypeChip(assetType) {
@@ -389,8 +352,8 @@
                     if (!(assetType in labels)) {
                         return null;
                     }
-                    const chip = document.createElement('span');
-                    chip.className = `asset-type-chip asset-type-${assetType}`;
+                    const chip = cloneTemplate('df-tpl-chip');
+                    chip.classList.add(`df-chip--${assetType}`);
                     chip.textContent = labels[assetType];
                     return chip;
                 }
@@ -402,18 +365,14 @@
                     return values.join(', ');
                 }
 
-                function infoRow(label, value, extraValueClass) {
-                    const row = document.createElement('div');
-                    row.className = 'info-row';
-                    const labelEl = document.createElement('span');
-                    labelEl.className = 'info-label';
-                    labelEl.textContent = label + ':';
-                    const valueEl = document.createElement('span');
-                    valueEl.className =
-                        'info-value' + (extraValueClass ? ' ' + extraValueClass : '');
+                function infoRow(label, value, isHash) {
+                    const row = cloneTemplate('df-tpl-info-row');
+                    slot(row, 'label').textContent = label + ':';
+                    const valueEl = slot(row, 'value');
                     valueEl.textContent = value;
-                    row.appendChild(labelEl);
-                    row.appendChild(valueEl);
+                    if (isHash) {
+                        valueEl.classList.add('df-info-row__value--hash');
+                    }
                     return row;
                 }
             })();
