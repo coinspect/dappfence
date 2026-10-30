@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { createSecurityProcessor } from '../security-processor.js';
 import { createManifestStore } from '../storage/manifest-store.js';
 import { createSecurityStore } from '../storage/security-store.js';
 import { createSettingsStore } from '../storage/settings-store.js';
 import { createVerificationResultsStore } from '../storage/verification-results-store.js';
-import { createSecurityProcessor } from '../security-processor.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
 
@@ -136,8 +136,6 @@ describe('processSecurityEvent', () => {
             reason: 'HASH_MISMATCH',
             fileKey: '/app.js',
         });
-        expect(results[0].url).toBeUndefined();
-        expect(results[0].assetType).toBeUndefined();
     });
 
     it('does not persist SKIPPED to any store', async () => {

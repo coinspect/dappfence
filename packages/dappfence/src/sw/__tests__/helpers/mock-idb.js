@@ -14,6 +14,20 @@
  * `{ version: 1, stores: ['data'] }`.
  */
 
+// Stub IDBKeyRange so the real indexeddb.js wrapper's `toIDBKeyRange` doesn't
+// ReferenceError under vitest. The mock treats ranges as opaque — index.getAll
+// returns all stored values and lets individual tests assert what matters.
+if (typeof globalThis.IDBKeyRange === 'undefined') {
+    // Must be a constructor function — the wrapper does `query instanceof IDBKeyRange`.
+    globalThis.IDBKeyRange = function MockIDBKeyRange() {};
+    globalThis.IDBKeyRange.bound = (lower, upper, lowerOpen, upperOpen) =>
+        Object.assign(new globalThis.IDBKeyRange(), { lower, upper, lowerOpen, upperOpen });
+    globalThis.IDBKeyRange.lowerBound = (lower, open) =>
+        Object.assign(new globalThis.IDBKeyRange(), { lower, lowerOpen: open });
+    globalThis.IDBKeyRange.upperBound = (upper, open) =>
+        Object.assign(new globalThis.IDBKeyRange(), { upper, upperOpen: open });
+}
+
 /**
  * @param {{ hooks?: object, existing?: { version: number, stores: string[] } | null }} [opts]
  */
@@ -79,6 +93,21 @@ export function makeMockIDB({ hooks = {}, existing = null } = {}) {
             count() {
                 return makeReq(() => data.size);
             },
+            index(_name) {
+                return {
+                    getAll(nativeOptions) {
+                        return makeReq(() => {
+                            const all = Array.from(data.values());
+                            return nativeOptions?.count !== undefined
+                                ? all.slice(0, nativeOptions.count)
+                                : all;
+                        });
+                    },
+                    count() {
+                        return makeReq(() => data.size);
+                    },
+                };
+            },
         };
     };
 
@@ -137,7 +166,9 @@ export function makeMockIDB({ hooks = {}, existing = null } = {}) {
                     trace.upgrades.push({ from: storedVersion, to: version });
                     storedVersion = version;
                     const upgradeTx = { objectStore: (name) => makeObjectStore(name) };
+                    req.transaction = upgradeTx;
                     req.onupgradeneeded?.({ target: { result: db, transaction: upgradeTx } });
+                    req.transaction = null;
                 }
                 req.onsuccess?.();
             });
