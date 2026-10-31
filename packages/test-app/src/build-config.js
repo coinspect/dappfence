@@ -90,6 +90,20 @@ const simpleAppPages = {
         template: 'simple-app.html',
         manifest: 'csp-report-only-manifest.json',
     },
+    'telemetry.html': {
+        template: 'simple-app.html',
+        manifest: 'telemetry-manifest.json',
+        templateFlags: {
+            EVENTS_ENDPOINT_ATTR: 'data-events-endpoint="/capture/events-config"',
+        },
+    },
+    'telemetry-reporting.html': {
+        template: 'simple-app.html',
+        manifest: 'telemetry-manifest-reporting.json',
+        templateFlags: {
+            EVENTS_ENDPOINT_ATTR: 'data-events-endpoint="/capture/events-config-reporting"',
+        },
+    },
 };
 
 const simpleAppBase = {
@@ -114,6 +128,23 @@ const simpleAppBase = {
                 reportUri: '/capture/csp',
                 reportOnly: true,
                 reportSample: true,
+            },
+        },
+        'telemetry-manifest.json': {
+            ...defaultManifest,
+            telemetry: {
+                eventsEndpoint: '/capture/events',
+                logsEndpoint: '/capture/logs',
+                logsFilter: 1,
+            },
+        },
+        'telemetry-manifest-reporting.json': {
+            ...defaultManifest,
+            mode: MODE.REPORTING,
+            telemetry: {
+                eventsEndpoint: '/capture/events-reporting',
+                logsEndpoint: '/capture/logs-reporting',
+                logsFilter: 1,
             },
         },
     },

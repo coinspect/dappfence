@@ -47,6 +47,22 @@ export function once(fn) {
     };
 }
 
+/**
+ * Run an async function and swallow any throw, routing it to `onError` instead.
+ * Used in SW event handlers that must not reject their waitUntil (which would
+ * otherwise bubble to the browser's unhandled-error path).
+ *
+ * @param {() => Promise<unknown>} fn
+ * @param {(error: unknown) => void} [onError]
+ */
+export async function safely(fn, onError) {
+    try {
+        await fn();
+    } catch (error) {
+        onError?.(error);
+    }
+}
+
 export function hasConfigManifest(config) {
     return !!(
         config.manifestUrl &&
