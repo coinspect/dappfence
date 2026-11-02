@@ -184,3 +184,48 @@ describe('createMessageHandler', () => {
         expect(callChildHandlers).not.toHaveBeenCalled();
     });
 });
+
+describe('createMessageBroker — message overrides', () => {
+    it('sends the trusted overrides to a client when it reports ready', async () => {
+        const swContext = createMockSwContext();
+        const client = swContext._addClient('c1');
+        const overrides = { en: { 'emergency.contact': 'Mail us' } };
+        const broker = createMessageBroker(swContext, {
+            getMessageOverrides: async () => overrides,
+        });
+
+        await broker.handleClientReady('c1');
+
+        expect(client.postMessage).toHaveBeenCalledWith({ type: 'DAPPFENCE_MESSAGES', overrides });
+    });
+
+    it.each([undefined, {}])('sends nothing when the overrides are %j', async (overrides) => {
+        const swContext = createMockSwContext();
+        const client = swContext._addClient('c1');
+        const broker = createMessageBroker(swContext, {
+            getMessageOverrides: async () => overrides,
+        });
+
+        await broker.handleClientReady('c1');
+
+        expect(client.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('still delivers pending messages when reading the overrides fails', async () => {
+        const swContext = createMockSwContext();
+        const client = swContext._addClient('c1');
+        const broker = createMessageBroker(swContext, {
+            getMessageOverrides: async () => {
+                throw new Error('idb gone');
+            },
+        });
+        await broker.broadcastSecurityViolation();
+        client.postMessage.mockClear();
+
+        await broker.handleClientReady('c1');
+
+        expect(client.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'DAPPFENCE_SECURITY_BLOCK' })
+        );
+    });
+});

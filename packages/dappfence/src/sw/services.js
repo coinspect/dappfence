@@ -44,7 +44,10 @@ export function createServices(swGlobal) {
     const securityProcessor = createSecurityProcessor({ appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
-    const messageBroker = createMessageBroker(swContext);
+    const messageBroker = createMessageBroker(swContext, {
+        getMessageOverrides: async () =>
+            (await appStore.trustedManifestStore.getLatest())?.manifest?.messages,
+    });
     const core = {
         swContext,
         appStore,
