@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { calculateFileHash, verifyManifest, deriveIdentity } from './build.js';
 import { generateManifest, buildScriptAttrs, buildScriptTag } from './manifest.js';
+import { loadMessages } from './messages.js';
 
 function usage() {
     console.log(`Usage:
@@ -31,7 +32,8 @@ Options for sign:
   --manifest-url <url>   Public manifest URL (default: /integrity-manifest.json)
   --mode <mode>          protected or reporting (default: protected)
   --no-inject            Skip script tag injection into HTML files
-  --exclude <paths>      Comma-separated web path prefixes to exclude`);
+  --exclude <paths>      Comma-separated web path prefixes to exclude
+  --messages <dir>       Directory of <locale>.json text overrides, signed into the manifest`);
 }
 
 function cmdHash(files) {
@@ -82,6 +84,7 @@ async function cmdSign(dir, args) {
     const mode = args['--mode'] || 'protected';
     const noInject = '--no-inject' in args;
     const exclude = args['--exclude'] ? args['--exclude'].split(',') : [];
+    const messagesDir = args['--messages'] || null;
 
     const outDir = path.resolve(dir);
     if (!fs.existsSync(outDir)) {
@@ -112,6 +115,8 @@ async function cmdSign(dir, args) {
         );
     }
 
+    const messages = messagesDir ? await loadMessages(process.cwd(), messagesDir) : undefined;
+
     await generateManifest({
         outDir,
         manifestPath,
@@ -120,6 +125,7 @@ async function cmdSign(dir, args) {
         mode,
         scriptAttrs,
         logger,
+        messages,
     });
 }
 
