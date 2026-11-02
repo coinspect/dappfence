@@ -40,6 +40,7 @@ import {
     resolveNetlifyCdpHashes,
     resolveContained,
 } from '@dappfence/manifest-tools/manifest';
+import { loadMessages } from '@dappfence/manifest-tools/messages';
 
 // Probe URL for the unmatched-route body. Anything not matching a real
 // route → Next serves the /404 body (from _not-found.tsx or pages/404.tsx),
@@ -199,6 +200,7 @@ async function runSSR(opts, projectRoot) {
         logger,
         ...(Object.keys(extraHashes).length > 0 && { extraHashes }),
         ...(Object.keys(completeCspPages).length > 0 && { csp: { pages: completeCspPages } }),
+        ...(opts.messages && { messages: await loadMessages(projectRoot, opts.messages) }),
     });
 
     logger.info(`DappFence: manifest written → public/${opts.manifestPath}`);
@@ -269,6 +271,7 @@ async function runStaticExport(opts, projectRoot) {
         },
         logger,
         ...(cdpHashes && { extraHashes: { '/.netlify/scripts/cdp': cdpHashes } }),
+        ...(opts.messages && { messages: await loadMessages(projectRoot, opts.messages) }),
     });
 }
 
