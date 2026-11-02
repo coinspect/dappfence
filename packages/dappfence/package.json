@@ -24,11 +24,14 @@
             "default": "./dist/dappfence.js"
         },
         "./dev": "./dist/dappfence.dev.js",
-        "./constants": "./src/core/constants.js"
+        "./constants": "./src/core/constants.js",
+        "./messages": "./src/messages/index.js"
     },
     "files": [
         "dist",
-        "src/core/constants.js"
+        "src/core/constants.js",
+        "src/messages/*.json",
+        "src/messages/index.js"
     ],
     "engines": {
         "node": ">=22.0.0"
