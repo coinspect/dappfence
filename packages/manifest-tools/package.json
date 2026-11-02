@@ -12,7 +12,8 @@
         ".": "./src/build.js",
         "./crypto": "./src/crypto.js",
         "./manifest": "./src/manifest.js",
-        "./inline-scripts": "./src/inline-scripts.js"
+        "./inline-scripts": "./src/inline-scripts.js",
+        "./messages": "./src/messages.js"
     },
     "bin": {
         "dappfence-manifest": "./src/cli.js"

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { calculateFileHash, signManifest } from './build.js';
 import { TRANSFORM } from '@dappfence/core/constants';
 import { extractInlineHashesFromHtml } from './inline-scripts.js';
+import { assertValidMessages } from './messages.js';
 
 function isEscaping(root, target) {
     const rel = path.relative(root, target);
@@ -277,6 +278,10 @@ export async function walk(base, dir, excludes, pathPrefix = '') {
  *                                               defer to the SW's `csp_report_sample` flag (dev=true, prod=false).
  *   @param {object}   [opts.csp.pages]               - Pre-built { pageKey: {scripts,attrs} } map for SSR routes.
  *                                                      Static HTML pages are extracted automatically during the walk.
+ * @param {object}   [opts.messages]        - Text overrides for the warning page and emergency panel,
+ *                                           `{ [locale]: { [key]: text } }` (see loadMessages in
+ *                                           messages.js). Validated, then signed with the payload;
+ *                                           an unknown key or non-string value fails the build.
  */
 export async function generateManifest({
     outDir,
@@ -293,6 +298,7 @@ export async function generateManifest({
     scriptHash,
     pathPrefix = '',
     csp,
+    messages,
 }) {
     const excludes = [...(exclude || []), pathPrefix + '/' + manifestPath];
     const isPage = pageFilter || ((_webPath, ext) => ext === '.html' || ext === '.htm');
@@ -383,6 +389,7 @@ export async function generateManifest({
             ...(typeof csp?.reportSample === 'boolean' ? { reportSample: csp.reportSample } : {}),
             pages: cspPages,
         },
+        ...(messages && { messages: assertValidMessages(messages) }),
         metadata: {
             buildTime: new Date().toISOString(),
             version: 'latest',
