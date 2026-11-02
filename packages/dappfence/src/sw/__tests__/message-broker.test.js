@@ -111,7 +111,7 @@ describe('createMessageBroker', () => {
 });
 
 describe('createMessageHandler', () => {
-    it('calls onClientReady on DAPPFENCE_CLIENT_READY message', async () => {
+    it('calls onClientReady on DAPPFENCE_CLIENT_READY and does not forward to child SW', async () => {
         const onClientReady = vi.fn();
         const swContext = createMockSwContext();
         const handler = createMessageHandler({ swContext, onClientReady });
@@ -123,7 +123,7 @@ describe('createMessageHandler', () => {
         );
 
         expect(onClientReady).toHaveBeenCalledWith('c1');
-        expect(callChildHandlers).toHaveBeenCalled();
+        expect(callChildHandlers).not.toHaveBeenCalled();
     });
 
     it('calls claimClients on CLAIM_CONTROL message', async () => {
@@ -136,7 +136,7 @@ describe('createMessageHandler', () => {
 
         expect(swContext.claimClients).toHaveBeenCalled();
         expect(onClientReady).not.toHaveBeenCalled();
-        expect(callChildHandlers).toHaveBeenCalled();
+        expect(callChildHandlers).not.toHaveBeenCalled();
     });
 
     it('passes unknown messages to child handlers', async () => {
@@ -163,7 +163,7 @@ describe('createMessageHandler', () => {
 
         expect(onReportEventsMessage).toHaveBeenCalledWith(event);
         expect(onClientReady).not.toHaveBeenCalled();
-        expect(callChildHandlers).toHaveBeenCalled();
+        expect(callChildHandlers).not.toHaveBeenCalled();
     });
 
     it('calls onPageLoadedMessage on DAPPFENCE_PAGE_LOADED with the event', async () => {
@@ -181,6 +181,6 @@ describe('createMessageHandler', () => {
 
         expect(onPageLoadedMessage).toHaveBeenCalledWith(event);
         expect(onClientReady).not.toHaveBeenCalled();
-        expect(callChildHandlers).toHaveBeenCalled();
+        expect(callChildHandlers).not.toHaveBeenCalled();
     });
 });
