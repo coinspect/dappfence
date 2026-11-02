@@ -3,8 +3,9 @@
 import securityWarningHtml from '../templates/pages/security-warning.html?template';
 import securityWarningCss from '../templates/styles/pages/security-warning.css?inline';
 import { isFeatureEnabled } from '../core/utils.js';
-import { renderTemplate } from '../core/template.js';
+import { renderMessages, renderTemplate } from '../core/template.js';
 import { API, ASSET_TYPE, MSG } from '../core/constants.js';
+import { formatMessage, resolveMessages } from '../messages/index.js';
 
 // CSS and the build-time feature flag are static across all renders — fold
 // them into the template once at a module load instead of repeating the work
@@ -17,7 +18,8 @@ const AUTO_CONFIRM_SITE_LOCK = isFeatureEnabled('auto_confirm_site_lock');
 // pre-slice the surrounding HTML. Matching by id (not by exact string) means
 // prettier / editors can reformat the tag freely without breaking the
 // renderer. The presence of the placeholder is pinned by a unit test against the
-// bundled template — no need for a runtime check here.
+// bundled template — no need for a runtime check here. The `{{t:key}}` text
+// markers depend on the viewer's locale, so they're filled per render.
 const CONFIG_SCRIPT_PATTERN = /<script id="dappfence-config">[\s\S]*?<\/script>/;
 const { index: configIndex, 0: configMatch } = CONFIG_SCRIPT_PATTERN.exec(BASE_HTML);
 const HTML_PREFIX = BASE_HTML.slice(0, configIndex);
@@ -26,53 +28,66 @@ const HTML_SUFFIX = BASE_HTML.slice(configIndex + configMatch.length);
 /**
  * Per-status / per-reason view copy for the warning page. Mirrors the
  * STATUS_LOG dispatch in sw/storage/index.js (view layer here, log layer
- * there). A view entry resolves to `{ title, expectedLabel?, actualLabel? }`.
- * When `expectedLabel` / `actualLabel` are omitted, the template omits the
+ * there). Entries hold message keys (src/messages/en.json); enrichActiveBlocks
+ * resolves them to `{ title, expectedLabel?, actualLabel? }` text. When
+ * `expectedLabel` / `actualLabel` are omitted, the template omits the
  * corresponding row — not every reason has hashes or identities to show
  * (e.g. CONFIG_ERROR, DENIED_BY_RULE).
  *
+ * @typedef {{ title: string, titleParams?: Record<string, string>, expectedLabel?: string, actualLabel?: string }} BlockViewKeys
  * @typedef {{ title: string, expectedLabel?: string, actualLabel?: string }} BlockView
  */
 
-const HASH_LABELS = { expectedLabel: 'Expected hash', actualLabel: 'Actual hash' };
-const SIGNER_LABELS = { expectedLabel: 'Pinned signer', actualLabel: 'Current signer' };
+const HASH_LABELS = {
+    expectedLabel: 'block.label.expectedHash',
+    actualLabel: 'block.label.actualHash',
+};
+const SIGNER_LABELS = {
+    expectedLabel: 'block.label.pinnedSigner',
+    actualLabel: 'block.label.currentSigner',
+};
 
-/** @type {Record<import('../core/constants.js').ManifestLoadReason, BlockView>} */
+const reasonView = (status, reason) => ({ title: `block.${status}.${reason}` });
+
+/** @type {Record<import('../core/constants.js').ManifestLoadReason, BlockViewKeys>} */
 const MANIFEST_UNTRUSTED_VIEWS = {
-    SIGNER_CHANGED: { title: 'Manifest signer changed since pinning', ...SIGNER_LABELS },
+    SIGNER_CHANGED: { ...reasonView('MANIFEST_UNTRUSTED', 'SIGNER_CHANGED'), ...SIGNER_LABELS },
     SIGNATURE_MISMATCH: {
-        title: 'Manifest signature identity does not match pinned signer',
-        expectedLabel: 'Pinned signer',
-        actualLabel: 'Recovered signer',
+        ...reasonView('MANIFEST_UNTRUSTED', 'SIGNATURE_MISMATCH'),
+        expectedLabel: 'block.label.pinnedSigner',
+        actualLabel: 'block.label.recoveredSigner',
     },
-    UNSUPPORTED_SIGNATURE: { title: 'Manifest signature uses an unsupported algorithm' },
-    SIGNATURE_ERROR: { title: 'Manifest signature verification threw an error' },
-    MANIFEST_PARSE_ERROR: { title: 'Manifest could not be parsed' },
-    MANIFEST_FETCH_BAD_STATUS: { title: 'Manifest fetch returned a non-OK status' },
-    MANIFEST_FETCH_EXCEPTION: { title: 'Manifest fetch threw an exception' },
-    CONFIG_ERROR: { title: 'DappFence manifest is misconfigured' },
+    UNSUPPORTED_SIGNATURE: reasonView('MANIFEST_UNTRUSTED', 'UNSUPPORTED_SIGNATURE'),
+    SIGNATURE_ERROR: reasonView('MANIFEST_UNTRUSTED', 'SIGNATURE_ERROR'),
+    MANIFEST_PARSE_ERROR: reasonView('MANIFEST_UNTRUSTED', 'MANIFEST_PARSE_ERROR'),
+    MANIFEST_FETCH_BAD_STATUS: reasonView('MANIFEST_UNTRUSTED', 'MANIFEST_FETCH_BAD_STATUS'),
+    MANIFEST_FETCH_EXCEPTION: reasonView('MANIFEST_UNTRUSTED', 'MANIFEST_FETCH_EXCEPTION'),
+    CONFIG_ERROR: reasonView('MANIFEST_UNTRUSTED', 'CONFIG_ERROR'),
 };
 
-/** @type {Record<import('../core/constants.js').AssetErrorReason, BlockView>} */
+/** @type {Record<import('../core/constants.js').AssetErrorReason, BlockViewKeys>} */
 const ERROR_VIEWS = {
-    NULL_RESPONSE: { title: 'Verification failed: no response received' },
-    BODY_UNREADABLE: { title: 'Verification failed: response body unreadable' },
-    FETCH_BAD_STATUS: { title: 'Verification failed: non-OK HTTP status' },
-    FETCH_EXCEPTION: { title: 'Verification failed: fetch threw' },
-    NO_MANIFEST_AVAILABLE: { title: 'Verification failed: no trusted manifest available' },
+    NULL_RESPONSE: reasonView('ERROR', 'NULL_RESPONSE'),
+    BODY_UNREADABLE: reasonView('ERROR', 'BODY_UNREADABLE'),
+    FETCH_BAD_STATUS: reasonView('ERROR', 'FETCH_BAD_STATUS'),
+    FETCH_EXCEPTION: reasonView('ERROR', 'FETCH_EXCEPTION'),
+    NO_MANIFEST_AVAILABLE: reasonView('ERROR', 'NO_MANIFEST_AVAILABLE'),
 };
 
-/** @type {Record<import('../core/constants.js').FileUntrustedReason, BlockView>} */
+/** @type {Record<import('../core/constants.js').FileUntrustedReason, BlockViewKeys>} */
 const FILE_UNTRUSTED_VIEWS = {
-    HASH_MISMATCH: { title: 'File content tampered', ...HASH_LABELS },
+    HASH_MISMATCH: { ...reasonView('FILE_UNTRUSTED', 'HASH_MISMATCH'), ...HASH_LABELS },
     NOT_IN_MANIFEST: {
-        title: 'File not listed in trusted manifest',
-        actualLabel: 'Actual hash',
+        ...reasonView('FILE_UNTRUSTED', 'NOT_IN_MANIFEST'),
+        actualLabel: 'block.label.actualHash',
     },
-    REDIRECT_NOT_DECLARED: {
-        title: 'Redirect source not declared in trusted manifest',
-    },
+    REDIRECT_NOT_DECLARED: reasonView('FILE_UNTRUSTED', 'REDIRECT_NOT_DECLARED'),
 };
+
+const fallbackView = (status, b) => ({
+    title: `block.${status}.fallback`,
+    titleParams: { reason: b.reason ?? 'unspecified' },
+});
 
 /**
  * Dispatch keyed by the status *description* on stored block records.
@@ -82,23 +97,33 @@ const FILE_UNTRUSTED_VIEWS = {
  * verdicts that produce blocks. Non-violation verdicts never reach the
  * warning page (`recordSecurityViolation` short-circuits before
  * `recordSecurityViolation`), so they're intentionally outside the key set.
- * @type {Record<import('../core/constants.js').ViolatingStatusName, (block: object) => BlockView>}
+ * @type {Record<import('../core/constants.js').ViolatingStatusName, (block: object) => BlockViewKeys>}
  */
 const BLOCK_VIEW = {
-    FILE_UNTRUSTED: (b) =>
-        FILE_UNTRUSTED_VIEWS[b.reason] ?? {
-            title: `File untrusted (${b.reason ?? 'unspecified'})`,
-        },
-    DENIED_BY_RULE: () => ({ title: 'File blocked by security rule' }),
-    ERROR: (b) =>
-        ERROR_VIEWS[b.reason] ?? { title: `Verification error (${b.reason ?? 'unspecified'})` },
+    FILE_UNTRUSTED: (b) => FILE_UNTRUSTED_VIEWS[b.reason] ?? fallbackView('FILE_UNTRUSTED', b),
+    DENIED_BY_RULE: () => ({ title: 'block.DENIED_BY_RULE' }),
+    ERROR: (b) => ERROR_VIEWS[b.reason] ?? fallbackView('ERROR', b),
     MANIFEST_UNTRUSTED: (b) =>
-        MANIFEST_UNTRUSTED_VIEWS[b.reason] ?? {
-            title: `Manifest cannot be trusted (${b.reason ?? 'unspecified'})`,
-        },
+        MANIFEST_UNTRUSTED_VIEWS[b.reason] ?? fallbackView('MANIFEST_UNTRUSTED', b),
 };
 
-const defaultView = (b) => ({ title: `Security violation (${b.status ?? 'unknown'})` });
+const defaultView = (b) => ({
+    title: 'block.default',
+    titleParams: { status: b.status ?? 'unknown' },
+});
+
+/**
+ * @param {BlockViewKeys} keys
+ * @param {Readonly<Record<string, string>>} messages
+ * @returns {BlockView}
+ */
+function resolveView({ title, titleParams, expectedLabel, actualLabel }, messages) {
+    return {
+        title: formatMessage(messages[title], titleParams),
+        ...(expectedLabel && { expectedLabel: messages[expectedLabel] }),
+        ...(actualLabel && { actualLabel: messages[actualLabel] }),
+    };
+}
 
 /**
  * Top-of-page summary. Manifest-level blocks get distinct copy because the
@@ -106,28 +131,23 @@ const defaultView = (b) => ({ title: `Security violation (${b.status ?? 'unknown
  * signer-rotation or a signature issue — nothing in the page itself has
  * necessarily been tampered with, the trust anchor failed.
  */
-function derivePageSummary(blocks) {
+function derivePageSummary(blocks, messages) {
     const hasManifestBlock = blocks.some((b) => b.assetType === ASSET_TYPE.MANIFEST);
     if (hasManifestBlock) {
         return {
-            subtitle: 'Manifest Trust Issue',
-            message:
-                "DappFence could not establish the authenticity of this site's manifest. " +
-                'This can indicate a signer change, a signature mismatch, or a manifest ' +
-                'configuration problem. Loading the site may expose you to untrusted content.',
+            subtitle: messages['warning.manifestSubtitle'],
+            message: messages['warning.manifestMessage'],
         };
     }
     return {
-        subtitle: 'Potentially Malicious Content Blocked',
-        message:
-            'DappFence has detected that content on this page has been modified and may be unsafe. ' +
-            'This protection prevents potentially malicious code from running in your browser.',
+        subtitle: messages['warning.subtitle'],
+        message: messages['warning.message'],
     };
 }
 
-function enrichActiveBlocks(blocks) {
+function enrichActiveBlocks(blocks, messages) {
     return blocks.map((block) => {
-        const view = (BLOCK_VIEW[block.status] ?? defaultView)(block);
+        const view = resolveView((BLOCK_VIEW[block.status] ?? defaultView)(block), messages);
         return {
             ...block,
             view,
@@ -275,25 +295,38 @@ export function createRedirectResponse(location, status = 302) {
 }
 
 /**
- * Build the security warning page response: block details, API token, and the
- * build-time feature flag are baked into an inline `DAPPFENCE_CONFIG`. No
- * runtime fetches are needed to populate the page — everything travels in the
- * HTML itself.
+ * Build the security warning page response: block details, API token, the
+ * build-time feature flag and the page text are baked into the HTML and an
+ * inline `DAPPFENCE_CONFIG`. No runtime fetches are needed to populate the
+ * page — everything travels in the HTML itself.
  *
  * @param {string|null} apiToken
  * @param {Array} activeBlocks
+ * @param {object} [text]
+ * @param {readonly string[]} [text.languages] - viewer's preferred locales (navigator.languages)
+ * @param {Record<string, Record<string, string>>} [text.overrides] - `messages` of the latest
+ *        *trusted* manifest; never anything the page supplied
  */
-export function createSecurityPageResponse(apiToken, activeBlocks) {
-    const enriched = enrichActiveBlocks(activeBlocks);
+export function createSecurityPageResponse(
+    apiToken,
+    activeBlocks,
+    { languages = [], overrides } = {}
+) {
+    const messages = resolveMessages(languages, overrides);
+    const enriched = enrichActiveBlocks(activeBlocks, messages);
     const configScript = renderConfigScript({
         apiToken,
         activeBlocks: enriched,
-        summary: derivePageSummary(enriched),
+        summary: derivePageSummary(enriched, messages),
         autoConfirmSiteLock: AUTO_CONFIRM_SITE_LOCK,
         reportEventsType: MSG.REPORT_EVENTS,
         reportEventsIntervalMs: __DEV__ ? 15_000 : 300_000,
+        messages,
     });
-    const html = HTML_PREFIX + configScript + HTML_SUFFIX;
+    const html =
+        renderMessages(HTML_PREFIX, messages) +
+        configScript +
+        renderMessages(HTML_SUFFIX, messages);
     return new Response(html, {
         status: 200,
         statusText: 'Security Warning',

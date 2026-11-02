@@ -1,0 +1,15 @@
+{
+    "emergency.pageTitle": "Aviso de seguridad crítico",
+    "emergency.title": "Se requiere una acción de seguridad",
+    "emergency.intro": "Se interceptó un evento del sistema en este equipo. Para proteger tu cuenta y tus datos, la sesión de la aplicación se cerró localmente.",
+    "emergency.instructionTitle": "INSTRUCCIÓN CRÍTICA:",
+    "emergency.instruction": "NO recargues esta ventana, NO vuelvas a iniciar sesión y NO uses este sitio hasta que nuestro equipo te lo indique.",
+    "emergency.contact": "Contactá a soporte en security@example.com desde otro dispositivo.",
+    "warning.title": "Advertencia de seguridad",
+    "warning.chip": "Bloqueado",
+    "warning.subtitle": "Se bloqueó contenido potencialmente malicioso",
+    "warning.activeBlocks": "Bloqueos activos",
+    "warning.unlockTitle": "Quitar el bloqueo del sitio",
+    "warning.unlockButton": "Quitar el bloqueo del sitio",
+    "block.FILE_UNTRUSTED.HASH_MISMATCH": "Contenido del archivo alterado"
+}

@@ -3,7 +3,14 @@ import securityWarningHtml from '../../templates/pages/security-warning.html?tem
 import securityWarningCss from '../../templates/styles/pages/security-warning.css?inline';
 import emergencyPanelHtml from '../../templates/pages/emergency-panel.html?template';
 import emergencyPanelCss from '../../templates/styles/pages/emergency-panel.css?inline';
-import { STYLES_MARKER, renderTemplate } from '../template.js';
+import {
+    MESSAGE_MARKER_PATTERN,
+    STYLES_MARKER,
+    escapeHtml,
+    renderMessages,
+    renderTemplate,
+} from '../template.js';
+import { MESSAGE_KEYS, resolveMessages } from '../../messages/index.js';
 
 const PAGES = {
     'security-warning': [securityWarningHtml, securityWarningCss],
@@ -13,7 +20,19 @@ const PAGES = {
 describe.each(Object.entries(PAGES))('%s template', (_name, [html, css]) => {
     it('has every include expanded', () => {
         expect(html).not.toMatch(/@include/);
-        expect(html).not.toMatch(/\{\{/);
+        // Only runtime text markers survive the build.
+        expect(html.replace(MESSAGE_MARKER_PATTERN, '')).not.toMatch(/\{\{/);
+    });
+
+    it('has text only in {{t:key}} markers that the catalog defines', () => {
+        const keys = [...html.matchAll(MESSAGE_MARKER_PATTERN)].map(([, key]) => key);
+        expect(keys.length).toBeGreaterThan(0);
+        expect(keys.filter((key) => !MESSAGE_KEYS.includes(key))).toEqual([]);
+    });
+
+    it('renders every marker with the built-in text', () => {
+        const rendered = renderMessages(html, resolveMessages([]));
+        expect(rendered).not.toMatch(MESSAGE_MARKER_PATTERN);
     });
 
     // renderTemplate silently does nothing without the marker, which would
@@ -39,6 +58,42 @@ describe('renderTemplate', () => {
         expect(renderTemplate(`<style>${STYLES_MARKER}</style>`, "a::after{content:'$&'}")).toBe(
             "<style>a::after{content:'$&'}</style>"
         );
+    });
+});
+
+describe('renderMessages', () => {
+    it('escapes message text so it can never add markup', () => {
+        const html = '<p title="{{t:a}}">{{t:a}}</p>';
+        const out = renderMessages(html, { a: `<script>x</script>"'&{{t:a}}` });
+        expect(out).toBe(
+            '<p title="&lt;script&gt;x&lt;/script&gt;&quot;&#39;&amp;{{t:a}}">' +
+                '&lt;script&gt;x&lt;/script&gt;&quot;&#39;&amp;{{t:a}}</p>'
+        );
+    });
+
+    it('throws on a marker with no message', () => {
+        expect(() => renderMessages('{{t:missing}}', {})).toThrow(/missing/);
+    });
+
+    it('ignores inherited properties', () => {
+        expect(() => renderMessages('{{t:constructor}}', {})).toThrow();
+    });
+});
+
+describe('escapeHtml', () => {
+    it('escapes the five HTML-special characters', () => {
+        expect(escapeHtml(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;');
+    });
+});
+
+describe('security-warning page script', () => {
+    // t('key') calls in the inline script must name real keys; a typo would
+    // show the raw key to the user.
+    it('only uses message keys the catalog defines', () => {
+        const keys = [...securityWarningHtml.matchAll(/\bt\(\s*'([\w.]+)'/g)].map(([, k]) => k);
+        const ternary = [...securityWarningHtml.matchAll(/'(warning\.[\w.]+)'/g)].map(([, k]) => k);
+        expect(keys.length).toBeGreaterThan(0);
+        expect([...keys, ...ternary].filter((key) => !MESSAGE_KEYS.includes(key))).toEqual([]);
     });
 });
 

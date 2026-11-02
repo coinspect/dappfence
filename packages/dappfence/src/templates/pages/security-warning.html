@@ -1,42 +1,35 @@
 <!doctype html>
 <html lang="en">
     <head>
-        <!-- @include ../partials/head.html title="Security Warning - Content Blocked" -->
+        <!-- @include ../partials/head.html title="{{t:warning.pageTitle}}" -->
     </head>
     <body>
         <div class="df-overlay">
             <div class="df-card df-card--raised">
                 <div class="df-card__header">
                     <div class="df-card__icon">⚠️</div>
-                    <span class="df-severity-chip">Blocked</span>
-                    <h1 class="df-card__title">Security Warning</h1>
+                    <span class="df-severity-chip">{{t:warning.chip}}</span>
+                    <h1 class="df-card__title">{{t:warning.title}}</h1>
                 </div>
 
                 <div class="df-card__body">
-                    <h2 class="df-subtitle" id="security-subtitle">
-                        Potentially Malicious Content Blocked
-                    </h2>
-                    <p class="df-message" id="security-message">
-                        DappFence has detected that content on this page has been modified and may
-                        be unsafe. This protection prevents potentially malicious code from running
-                        in your browser.
-                    </p>
+                    <h2 class="df-subtitle" id="security-subtitle">{{t:warning.subtitle}}</h2>
+                    <p class="df-message" id="security-message">{{t:warning.message}}</p>
                     <div class="df-blocks" id="security-advanced-success" style="display: none">
                         <h3 class="df-blocks__heading">
-                            Active Blocks<span class="df-badge df-badge--strong" id="block-count"
+                            {{t:warning.activeBlocks}}<span
+                                class="df-badge df-badge--strong"
+                                id="block-count"
                                 >0</span
                             >
                         </h3>
                         <div class="df-block-list" id="block-list"></div>
                     </div>
                     <div class="df-callout df-callout--warning">
-                        <strong class="df-callout__title">🔓 Remove Site Lock</strong>
-                        <p class="df-callout__text">
-                            Clearing the lock removes <em>all</em> active blocks. Only proceed if
-                            you understand the security implications and trust the site.
-                        </p>
+                        <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
+                        <p class="df-callout__text">{{t:warning.unlockText}}</p>
                         <button class="df-btn df-btn--danger" id="site-unblock">
-                            🔓 Remove Site Lock
+                            🔓 {{t:warning.unlockButton}}
                         </button>
                     </div>
                 </div>
@@ -58,13 +51,27 @@
                 autoConfirmSiteLock = false,
                 reportEventsType = null,
                 reportEventsIntervalMs = 0,
+                messages = {},
             } = DAPPFENCE_CONFIG;
+
+            // Text resolved by the SW from the built-in catalogs and the verified
+            // manifest (src/messages/index.js). Plain text: only ever assigned to
+            // textContent, title, confirm() or alert().
+            function t(key, params) {
+                const text = Object.prototype.hasOwnProperty.call(messages, key)
+                    ? messages[key]
+                    : key;
+                return text.replace(/\{(\w+)\}/g, function (match, name) {
+                    return params && name in params ? String(params[name]) : match;
+                });
+            }
 
             // Security warning page functionality
             (function () {
                 // Initialize timestamp
-                document.getElementById('security-timestamp').textContent =
-                    'Blocked at ' + new Date().toLocaleString();
+                document.getElementById('security-timestamp').textContent = t('footer.blockedAt', {
+                    time: new Date().toLocaleString(),
+                });
 
                 applySummary(summary);
                 renderBlocks(activeBlocks);
@@ -72,19 +79,14 @@
 
                 // Site unblock button — clears ALL active blocks at once
                 document.getElementById('site-unblock').addEventListener('click', function () {
-                    if (
-                        autoConfirmSiteLock ||
-                        confirm(
-                            'Are you sure you want to remove the site lock? This will clear all active blocks and allow the site to load normally. Only proceed if you trust this site.'
-                        )
-                    ) {
+                    if (autoConfirmSiteLock || confirm(t('warning.confirmUnlock'))) {
                         unlockSite();
                     }
                 });
 
                 function unlockSite() {
                     if (!apiToken) {
-                        alert('Cannot unblock - API token not available');
+                        alert(t('warning.noToken'));
                         return;
                     }
 
@@ -99,19 +101,17 @@
                             if (response.ok) {
                                 console.log('[DappFence] Site lock removed');
                                 if (!autoConfirmSiteLock) {
-                                    alert(
-                                        'Site lock has been removed. Redirecting to home page...'
-                                    );
+                                    alert(t('warning.unlocked'));
                                 }
                                 window.location.replace('/');
                             } else {
                                 console.error('[DappFence] Unblock failed:', response.status);
-                                alert('Failed to remove site lock. Check console for details.');
+                                alert(t('warning.unlockFailed'));
                             }
                         })
                         .catch((error) => {
                             console.error('[DappFence] Unblock error:', error);
-                            alert('Failed to remove site lock: ' + error.message);
+                            alert(t('warning.unlockError', { error: error.message }));
                         });
                 }
 
@@ -134,9 +134,7 @@
                     // 404 paths are never the right outcome. Our only choice is
                     // "stay on warning" or "unlock and go home".
                     event.preventDefault();
-                    const proceed = confirm(
-                        'Reloading past this warning will remove DappFence protection for this site. The underlying page may contain tampered or unsafe content — that is exactly why this warning is here.\n\nClick Cancel to stay on the warning. Click OK to remove the site lock and continue to the home page.'
-                    );
+                    const proceed = confirm(t('warning.confirmHardReload'));
                     if (proceed) {
                         unlockSite();
                     }
@@ -244,7 +242,7 @@
                 }
 
                 function occurrenceTitle(count) {
-                    return `${count} occurrence${count > 1 ? 's' : ''}`;
+                    return t(count > 1 ? 'warning.occurrences' : 'warning.occurrence', { count });
                 }
 
                 // Insert the asset-type chip (if any) right before the count badge.
@@ -264,7 +262,11 @@
                     }
                     if (view.actualLabel) {
                         body.appendChild(
-                            infoRow(view.actualLabel, block.actualHash || 'Not available', true)
+                            infoRow(
+                                view.actualLabel,
+                                block.actualHash || t('warning.value.notAvailable'),
+                                true
+                            )
                         );
                     }
                 }
@@ -282,7 +284,7 @@
 
                 function buildFlatCard(block) {
                     const card = buildCard(block.view || {});
-                    fillName(slot(card, 'name'), block.fileKey || 'Unknown');
+                    fillName(slot(card, 'name'), block.fileKey || t('warning.value.unknown'));
                     addAssetChip(card.querySelector('summary'), block.assetType);
 
                     const count = block.occurrenceCount || 1;
@@ -291,16 +293,21 @@
                     const body = slot(card, 'body');
                     appendHashRows(body, block);
                     if (block.reason) {
-                        body.appendChild(infoRow('Reason', block.reason));
+                        body.appendChild(infoRow(t('warning.label.reason'), block.reason));
                     }
-                    body.appendChild(infoRow('First seen', block.formattedTimestamp || 'Unknown'));
+                    body.appendChild(
+                        infoRow(
+                            t('warning.label.firstSeen'),
+                            block.formattedTimestamp || t('warning.value.unknown')
+                        )
+                    );
                     return card;
                 }
 
                 function buildGroupCard(members) {
                     const card = buildCard(members[0].view || {});
                     card.classList.add('df-block--group');
-                    slot(card, 'name').textContent = `${members.length} files`;
+                    slot(card, 'name').textContent = t('warning.files', { count: members.length });
 
                     const totalOccurrences = members.reduce(
                         (sum, m) => sum + (m.occurrenceCount || 1),
@@ -309,7 +316,10 @@
                     fillCount(
                         slot(card, 'count'),
                         totalOccurrences,
-                        `${totalOccurrences} occurrences across ${members.length} files`
+                        t('warning.occurrencesAcross', {
+                            total: totalOccurrences,
+                            count: members.length,
+                        })
                     );
 
                     const list = document.createElement('div');
@@ -323,7 +333,7 @@
 
                 function buildGroupFileRow(block) {
                     const row = cloneTemplate('df-tpl-file');
-                    fillName(slot(row, 'name'), block.fileKey || 'Unknown');
+                    fillName(slot(row, 'name'), block.fileKey || t('warning.value.unknown'));
                     const hash = slot(row, 'hash');
                     if (block.actualHash) {
                         fillName(hash, block.actualHash);
@@ -338,16 +348,21 @@
                     const body = slot(row, 'body');
                     appendHashRows(body, block);
                     if (block.url && block.url !== block.fileKey) {
-                        body.appendChild(infoRow('URL', block.url));
+                        body.appendChild(infoRow(t('warning.label.url'), block.url));
                     }
-                    body.appendChild(infoRow('First seen', block.formattedTimestamp || 'Unknown'));
+                    body.appendChild(
+                        infoRow(
+                            t('warning.label.firstSeen'),
+                            block.formattedTimestamp || t('warning.value.unknown')
+                        )
+                    );
                     return row;
                 }
 
                 function assetTypeChip(assetType) {
                     const labels = {
-                        'service-worker': 'service worker',
-                        manifest: 'manifest',
+                        'service-worker': t('warning.chip.serviceWorker'),
+                        manifest: t('warning.chip.manifest'),
                     };
                     if (!(assetType in labels)) {
                         return null;
@@ -360,7 +375,7 @@
 
                 function formatList(values) {
                     if (!Array.isArray(values) || values.length === 0) {
-                        return 'Not available';
+                        return t('warning.value.notAvailable');
                     }
                     return values.join(', ');
                 }

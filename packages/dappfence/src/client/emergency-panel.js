@@ -1,14 +1,19 @@
 import emergencyPanelHtml from '../templates/pages/emergency-panel.html?template';
 import emergencyPanelCss from '../templates/styles/pages/emergency-panel.css?inline';
-import { renderTemplate } from '../core/template.js';
+import { renderMessages, renderTemplate } from '../core/template.js';
+import { resolveMessages } from '../messages/index.js';
 
 const PANEL_HTML = renderTemplate(emergencyPanelHtml, emergencyPanelCss);
 
-const LEAVE_WARNING = 'Security event occurred. Are you sure you want to reload?';
+const panelMessages = (win) => resolveMessages(win?.navigator?.languages ?? []);
 
-/** The panel's markup: a `<head>…</head><body>…</body>` fragment. */
-export function createEmergencyPanel() {
-    return PANEL_HTML;
+/**
+ * The panel's markup: a `<head>…</head><body>…</body>` fragment.
+ *
+ * @param {Readonly<Record<string, string>>} [messages] - defaults to the viewer's locale
+ */
+export function createEmergencyPanel(messages = panelMessages(globalThis)) {
+    return renderMessages(PANEL_HTML, messages);
 }
 
 /**
@@ -21,11 +26,13 @@ export function createEmergencyPanel() {
  * @param {Window} [win]
  */
 export function showEmergencyPanel(win = window) {
-    win.document.documentElement.innerHTML = PANEL_HTML;
+    const messages = panelMessages(win);
+    const leaveWarning = messages['emergency.leaveWarning'];
+    win.document.documentElement.innerHTML = createEmergencyPanel(messages);
     win.addEventListener('beforeunload', (event) => {
         event.preventDefault();
-        event.returnValue = LEAVE_WARNING;
-        return LEAVE_WARNING;
+        event.returnValue = leaveWarning;
+        return leaveWarning;
     });
     win.addEventListener(
         'click',
