@@ -36,8 +36,6 @@ export function getConfig(clientScriptUrl) {
         manifestSignatureIdentity: null,
         appSW: null,
         blockingEnabled: true,
-        securityMessage: 'Security verification failed. This content has been modified.',
-        contactInfo: null,
         baseUrl: clientScriptUrl,
     };
 
@@ -56,8 +54,6 @@ export function getConfig(clientScriptUrl) {
                 'data-manifest-signature-identity'
             );
             config.blockingEnabled = script.getAttribute('data-blocking-enabled') !== 'false';
-            config.securityMessage = script.getAttribute('data-security-message');
-            config.contactInfo = script.getAttribute('data-contact-info');
             config.baseUrl = script.getAttribute('data-base-url') ?? config.baseUrl;
             console.log('[DappFence Config] Loaded from script data attributes:', config);
         }
