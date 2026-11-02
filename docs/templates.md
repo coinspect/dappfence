@@ -5,9 +5,10 @@ by the service worker when content is blocked) and the **emergency panel** (inje
 when the watchdog database is force-closed). Both pages are assembled at build time from shared HTML
 partials and shared CSS files, then inlined into the bundle as strings.
 
-Everything lives in `packages/dappfence/src/templates/`. There are no runtime fetches: a page is a
-single string with its CSS inside a `<style>` tag, because it must render even when the site itself
-can no longer be trusted.
+Everything lives in `packages/dappfence/src/templates/`, except the text, which lives in
+`packages/dappfence/src/messages/` (see [Text and translations](#text-and-translations)). There are
+no runtime fetches: a page is a single string with its CSS inside a `<style>` tag, because it must
+render even when the site itself can no longer be trusted.
 
 ## Layout
 
@@ -221,7 +222,82 @@ by ID.
     unit test fails if the panel gains a `<script>`, and `sw-clear-site-data.spec.ts` checks both
     guards in a real browser.
 
+## Text and translations
+
+No user-facing text is written in the templates. Every string lives in a message catalog, and pages
+refer to it by key:
+
+-   HTML: `{{t:warning.title}}`, filled at render time by `renderMessages(html, messages)`
+    (`src/core/template.js`). It **HTML-escapes** every value, so message text can never add markup.
+    `build/html-includes.js` leaves these markers alone (its `{{name}}` pattern doesn't match `t:`).
+-   The warning page's inline script: `t('warning.confirmUnlock')`, reading
+    `DAPPFENCE_CONFIG.messages`. Its output only goes to `textContent`, `title`, `confirm()` and
+    `alert()`.
+-   `src/sw/response.js`: the per-reason block views hold keys
+    (`block.FILE_UNTRUSTED.HASH_MISMATCH`, `block.label.expectedHash`), resolved to text before they
+    reach the page.
+
+Placeholders inside a message use `{name}` (`"Blocked at {time}"`) and are filled by
+`formatMessage`.
+
+### Where text may come from
+
+The emergency panel tells the user whom to contact. An attacker who could rewrite that line would
+turn DappFence's own warning into their phishing page, so text only comes from sources an attacker
+serving the site can't change:
+
+| Source                                                    | Trusted                                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Built-in catalogs, `src/messages/<locale>.json`           | Yes: compiled into `dappfence.js`, covered by the signed release hashes |
+| `messages` in the integrity manifest                      | Yes, once its signature verifies against the pinned signer              |
+| `window.DappFenceConfig`, `data-*` attributes, URL params | **No.** Never read text from these: the page controls them              |
+
+Integrators keep overrides in plain JSON files (one `<locale>.json` per language). manifest-tools
+validates them and merges them into the payload **before signing**. See the `messages` option in
+[`@dappfence/manifest-tools`](../packages/manifest-tools/README.md#customizing-the-warning-text).
+
+### Resolution
+
+`resolveMessages(languages, overrides)` (`src/messages/index.js`) picks one string per key. It tries
+each of the viewer's languages (`navigator.languages`) in order, then that language's base (`es-AR`
+→ `es`), then `en`. At each step a verified override wins over the built-in text. Built-in `en`
+defines every key, so resolution always succeeds. The viewer's language only chooses _among_ trusted
+catalogs, so it's fine that the page can influence it.
+
+-   **Warning page:** the SW resolves text per request, using the `messages` of the latest manifest
+    in `trustedManifestStore`. That store only ever holds manifests that passed signature
+    verification. If the page shows _because_ a new manifest was rejected (`SIGNER_CHANGED`, …), the
+    last trusted one still supplies the text. With none, built-in text is used.
+-   **Emergency panel:** it appears after the browser wiped storage, when the SW and manifest may be
+    gone. So the SW sends the trusted overrides to each page in reply to `CLIENT_READY`
+    (`MSG.MESSAGES`), and `client/emergency-panel.js` keeps them in memory. The client accepts that
+    message once, only from a browser-dispatched (`isTrusted`) event, and validates it again. If
+    nothing arrived (e.g. a first visit before any manifest loaded), the panel uses built-in text.
+
+Every boundary runs the same `validateMessages`: manifest-tools (fails the build), the SW's manifest
+normalization (drops and logs) and the client (drops and logs). It accepts only:
+
+-   locale tags matching `^[a-z]{2,3}(-[a-z0-9]{2,8})*$`;
+-   keys defined in `en.json`;
+-   string values of at most 500 characters.
+
 ## Common tasks
+
+### Change or add text
+
+1. Edit `src/messages/en.json`. A new key goes there first, since `en` is the reference catalog and
+   defines the set of allowed keys.
+2. Use it as `{{t:key}}` in a template, `t('key')` in the warning page script, or through a view in
+   `response.js`. `src/core/__tests__/template.test.js` fails on any key the catalog lacks.
+
+Changing English text is a core release, like any other bundle change.
+
+### Add a built-in language
+
+Add `src/messages/<locale>.json` (lowercase tag, e.g. `pt-br.json`) and register it in
+`BUILTIN_CATALOGS` in `src/messages/index.js`. A translation may omit keys, which then fall back to
+English, but must not contain keys English doesn't have. `src/messages/__tests__/messages.test.js`
+checks this.
 
 ### Change a colour or size everywhere
 
@@ -297,12 +373,13 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 
 ### Files
 
-| File                   | Role                                                                   |
-| ---------------------- | ---------------------------------------------------------------------- |
-| `preview/pages.js`     | Page registry: each page's scenarios and a `render(scenario)` function |
-| `preview/scenarios.js` | Raw block records and the security warning scenarios                   |
-| `preview/preview.js`   | Catalog: thumbnails, width toggle, links to the full page and HTML     |
-| `preview/frame.js`     | Full-page view                                                         |
+| File                       | Role                                                                   |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `preview/pages.js`         | Page registry: each page's scenarios and a `render(scenario)` function |
+| `preview/scenarios.js`     | Raw block records and the security warning scenarios                   |
+| `preview/sample-messages/` | Sample integrator overrides (Spanish) for the `overrides` scenarios    |
+| `preview/preview.js`       | Catalog: thumbnails, width toggle, links to the full page and HTML     |
+| `preview/frame.js`         | Full-page view                                                         |
 
 `preview/` is not published (the package's `files` lists only `dist`), and nothing in it reaches a
 build. `vite.config.js` defines `__FEATURES__` from `feature_flag.json` for `vite serve` only,
