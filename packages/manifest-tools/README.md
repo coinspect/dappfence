@@ -67,16 +67,58 @@ node --env-file=.env node_modules/.bin/dappfence-manifest sign …
 
 #### Options for `sign`
 
-| Option           | Default                    | Description                                     |
-| ---------------- | -------------------------- | ----------------------------------------------- |
-| `--secret-key`   | `DAPPFENCE_SECRET_KEY` env | Hex signing key (with or without `0x` prefix)   |
-| `--out`          | `integrity-manifest.json`  | Output manifest path, relative to `<dir>`       |
-| `--script-src`   | `/dappfence.js`            | Public URL where `dappfence.js` is served       |
-| `--manifest-url` | `/integrity-manifest.json` | Public URL where the manifest is served         |
-| `--mode`         | `protected`                | `protected` (blocks) or `reporting` (logs only) |
-| `--no-inject`    | —                          | Skip script tag injection into HTML files       |
-| `--ext`          | `.js,.mjs,.css,.html,...`  | Comma-separated file extensions to include      |
-| `--exclude`      | —                          | Comma-separated web path prefixes to exclude    |
+| Option           | Default                    | Description                                                                                                                                       |
+| ---------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--secret-key`   | `DAPPFENCE_SECRET_KEY` env | Hex signing key (with or without `0x` prefix)                                                                                                     |
+| `--out`          | `integrity-manifest.json`  | Output manifest path, relative to `<dir>`                                                                                                         |
+| `--script-src`   | `/dappfence.js`            | Public URL where `dappfence.js` is served                                                                                                         |
+| `--manifest-url` | `/integrity-manifest.json` | Public URL where the manifest is served                                                                                                           |
+| `--mode`         | `protected`                | `protected` (blocks) or `reporting` (logs only)                                                                                                   |
+| `--no-inject`    | —                          | Skip script tag injection into HTML files                                                                                                         |
+| `--ext`          | `.js,.mjs,.css,.html,...`  | Comma-separated file extensions to include                                                                                                        |
+| `--exclude`      | —                          | Comma-separated web path prefixes to exclude                                                                                                      |
+| `--messages`     | —                          | Directory of `<locale>.json` text overrides, relative to the current directory. See [Customizing the warning text](#customizing-the-warning-text) |
+
+## Customizing the warning text
+
+The security warning page and the emergency panel ship with English text. You can override any of
+it, in any language, by keeping one JSON file per locale in your repo:
+
+```
+dappfence-messages/
+  en.json      # overrides for English-speaking viewers (and the fallback for everyone)
+  es.json
+  pt-BR.json
+```
+
+Each file is a flat object of message key → plain text. The keys and their English defaults are in
+[`@dappfence/core/src/messages/en.json`](../dappfence/src/messages/en.json):
+
+```json
+{
+    "emergency.contact": "Contact us at security@example.com from another device.",
+    "emergency.title": "Security action required"
+}
+```
+
+Pass the directory as `messages` to the [Vite](../vite), [Astro](../astro) or [Next](../next)
+integration, or as `--messages` to `dappfence-manifest sign`. A viewer sees their language when you
+or DappFence provide it, then the base language (`es-AR` → `es`), then English. Keys you don't
+override keep the built-in text.
+
+**Why the text goes in the manifest.** The emergency panel tells users whom to contact, so whoever
+can change that line can send them to a phishing page. The overrides are merged into the manifest
+_before it is signed_, so the service worker only shows them once the signature verifies against
+your pinned signer, like the file hashes. DappFence never reads text from `window.DappFenceConfig`,
+`data-*` attributes or URL parameters, because anyone serving the page controls those.
+
+The build fails on:
+
+-   a key that isn't in `en.json` (so a typo can't silently fall back to English);
+-   a value that isn't a string, or is longer than 500 characters;
+-   a file name that isn't a locale tag (`es`, `pt-BR`, …).
+
+Values are plain text. HTML in them is shown literally, not rendered.
 
 ## Programmatic API
 
