@@ -6,7 +6,15 @@
  */
 import { createSecurityPageResponse } from '../src/sw/response.js';
 import { createEmergencyPanel } from '../src/client/emergency-panel.js';
+import { resolveMessages, validateMessages } from '../src/messages/index.js';
 import { warningScenarios } from './scenarios.js';
+import sampleEs from './sample-messages/es.json';
+
+// Integrator overrides as they'd arrive from a verified manifest, run through
+// the same validation the SW applies. Shown with a Spanish-speaking viewer;
+// keys the sample lacks fall back to built-in English.
+const SAMPLE_OVERRIDES = validateMessages({ es: sampleEs }).messages;
+const SAMPLE_TEXT = { languages: ['es-AR'], overrides: SAMPLE_OVERRIDES };
 
 /**
  * @typedef {object} PreviewPage
@@ -19,15 +27,28 @@ import { warningScenarios } from './scenarios.js';
 export const PAGES = {
     'security-warning': {
         title: 'Security warning',
-        scenarios: warningScenarios,
-        render: (blocks) => createSecurityPageResponse('preview-token', blocks).text(),
+        scenarios: {
+            ...warningScenarios,
+            overrides: { blocks: warningScenarios.mismatch, text: SAMPLE_TEXT },
+        },
+        render: (scenario) =>
+            Array.isArray(scenario)
+                ? createSecurityPageResponse('preview-token', scenario).text()
+                : createSecurityPageResponse(
+                      'preview-token',
+                      scenario.blocks,
+                      scenario.text
+                  ).text(),
     },
     'emergency-panel': {
         title: 'Emergency panel',
-        scenarios: { default: null },
+        scenarios: { default: null, overrides: SAMPLE_TEXT },
         // The panel is a <head>/<body> fragment that replaces a live page's
         // documentElement; wrap it so it renders standalone.
-        render: async () => `<!doctype html><html lang="en">${createEmergencyPanel()}</html>`,
+        render: async (text) => {
+            const messages = text ? resolveMessages(text.languages, text.overrides) : undefined;
+            return `<!doctype html><html lang="en">${createEmergencyPanel(messages)}</html>`;
+        },
     },
 };
 

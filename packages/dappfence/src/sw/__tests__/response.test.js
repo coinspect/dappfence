@@ -351,3 +351,45 @@ describe('injectResponseHeaders', () => {
         expect(result.statusText).toBe('Not Found');
     });
 });
+
+describe('createSecurityPageResponse — text', () => {
+    const CONFIG_PATTERN = /JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/;
+    const render = async (text) => {
+        const html = await createSecurityPageResponse(
+            'tok',
+            [
+                {
+                    status: 'FILE_UNTRUSTED',
+                    reason: 'HASH_MISMATCH',
+                    fileKey: '/app.js',
+                    timestamp: '2026-10-07T12:00:00.000Z',
+                },
+            ],
+            text
+        ).text();
+        return { html, config: JSON.parse(decodeURIComponent(CONFIG_PATTERN.exec(html)[1])) };
+    };
+
+    it('renders built-in English with no text options', async () => {
+        const { html, config } = await render();
+        expect(html).toContain('<h1 class="df-card__title">Security Warning</h1>');
+        expect(html).not.toMatch(/\{\{t:/);
+        expect(config.messages['warning.confirmUnlock']).toMatch(/remove the site lock/);
+    });
+
+    it('applies verified overrides for the viewer locale, escaped', async () => {
+        const { html, config } = await render({
+            languages: ['es-AR'],
+            overrides: {
+                es: {
+                    'warning.title': 'Advertencia <b>',
+                    'block.FILE_UNTRUSTED.HASH_MISMATCH': 'Archivo alterado',
+                },
+            },
+        });
+        expect(html).toContain('<h1 class="df-card__title">Advertencia &lt;b&gt;</h1>');
+        expect(config.activeBlocks[0].view.title).toBe('Archivo alterado');
+        // Keys without an override keep the English text.
+        expect(config.activeBlocks[0].view.expectedLabel).toBe('Expected hash');
+    });
+});

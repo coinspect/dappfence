@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEmergencyPanel, showEmergencyPanel } from '../emergency-panel.js';
 
-function fakeWindow() {
+function fakeWindow(languages = []) {
     const listeners = {};
     return {
+        navigator: { languages },
         document: { documentElement: { innerHTML: '<body>app</body>' } },
         addEventListener: vi.fn((type, fn, capture) => {
             listeners[type] = { fn, capture };
@@ -59,5 +60,14 @@ describe('showEmergencyPanel', () => {
         const outside = { target: { closest: () => null }, preventDefault: vi.fn() };
         fn(outside);
         expect(outside.preventDefault).not.toHaveBeenCalled();
+    });
+});
+
+describe('emergency panel text', () => {
+    it('renders the built-in English text with no overrides', () => {
+        const html = createEmergencyPanel();
+        expect(html).toContain('<title>Critical Security Notice</title>');
+        expect(html).toContain('verified support channel');
+        expect(html).not.toMatch(/\{\{t:/);
     });
 });
