@@ -29,6 +29,8 @@ export const MSG = {
     CLAIM_CONTROL: 'DAPPFENCE_CLAIM_CONTROL',
     REPORT_EVENTS: 'DAPPFENCE_REPORT_EVENTS',
     PAGE_LOADED: 'DAPPFENCE_PAGE_LOADED',
+    // SW → client: the latest trusted manifest's text overrides, for the emergency panel
+    MESSAGES: 'DAPPFENCE_MESSAGES',
 };
 
 export const MODE = {
