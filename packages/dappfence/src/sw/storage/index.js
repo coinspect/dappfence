@@ -1,9 +1,11 @@
 /**
- * App Store Facade — a thin bundle of the IndexedDB-backed stores.
+ * App Store Facade.
  *
- * Orchestration of security verdicts (updating securityStore + deciding
- * mustBlock) lives in sw/security-processor.js — this module just exposes the
- * raw stores.
+ * HISTORICAL_SCHEMAS is the single source of truth: the highest key is the
+ * current VERSION, its entry is the current SCHEMA. To bump VERSION, append
+ * one entry. If the change is structural on an existing store (primaryKeyPath
+ * or autoIncrement), rename its `objectStore`. The schema-evolution tests in
+ * __tests__/storage-index.test.js enforce the rest.
  */
 import { createDatabase } from './indexeddb.js';
 import { createManifestStore } from './manifest-store.js';
@@ -11,18 +13,13 @@ import { createSecurityStore } from './security-store.js';
 import { createSettingsStore } from './settings-store.js';
 import { createVerificationResultsStore } from './verification-results-store.js';
 
-const NAME = 'AppSecurity';
-// Bump whenever SCHEMA changes shape. Version 1 was a single 'data' object
-// store holding every key; version 2 is the per-store layout below. The
-// database name is unchanged, so without this bump a browser that already
-// holds version 1 opens it, skips onupgradeneeded, and every transaction
-// naming a store below fails with NotFoundError.
-const VERSION = 2;
+export const NAME = 'AppSecurity';
+export const VERSION = 2;
 
 /**
  * @satisfies {import('./indexeddb.js').Schema}
  */
-const SCHEMA = {
+export const SCHEMA = {
     manifests: {},
     activeBlocks: {},
     settings: {},
@@ -30,7 +27,24 @@ const SCHEMA = {
 };
 
 /**
- * @param {import('./indexeddb.js').Database} db
+ * Tree-shaken from the prod bundle; used by tests to enforce the versioning
+ * convention. Each entry is an explicit copy, not an alias, so edits to
+ * SCHEMA that aren't matched by a bump and new HISTORICAL entry fail the
+ * lockstep test.
+ */
+export const HISTORICAL_SCHEMAS = {
+    0: {},
+    1: { data: {} },
+    2: {
+        manifests: {},
+        activeBlocks: {},
+        settings: {},
+        verificationResults: {},
+    },
+};
+
+/**
+ * @param {ReturnType<typeof createDatabase>} db
  */
 export function createAppStoreFromDb(db) {
     return {
@@ -45,7 +59,6 @@ export function createAppStoreFromDb(db) {
  * @param {IDBFactory} idb
  */
 export function createAppStore(idb) {
-    return createAppStoreFromDb(
-        createDatabase(idb, { name: NAME, version: VERSION, schema: SCHEMA })
-    );
+    const db = createDatabase(idb, { name: NAME, version: VERSION, schema: SCHEMA });
+    return createAppStoreFromDb(db);
 }

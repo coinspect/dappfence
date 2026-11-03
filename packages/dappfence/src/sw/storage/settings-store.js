@@ -18,7 +18,7 @@ const API_TOKEN_KEY = 'API_TOKEN_KEY';
 const INSTALLATION_TIME_KEY = 'INSTALLATION_TIME_KEY';
 
 /**
- * @param {import('./indexeddb.js').Database} db
+ * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createSettingsStore(db) {
     let cachedApiToken = null;
@@ -26,44 +26,38 @@ export function createSettingsStore(db) {
 
     async function getApiToken() {
         if (!cachedApiToken) {
-            cachedApiToken = db(
-                async ({ settings }) => {
-                    const key = await settings.get(API_TOKEN_KEY);
-                    if (key) {
-                        logger.log('Reusing API token for secure endpoints', key);
-                        return key;
-                    }
-                    const array = new Uint8Array(32);
-                    crypto.getRandomValues(array);
-                    const tokenKey = Array.from(array, (byte) =>
-                        byte.toString(16).padStart(2, '0')
-                    ).join('');
-                    logger.log('API token for secure endpoints', tokenKey);
-                    await settings.put(tokenKey, API_TOKEN_KEY);
-                    return tokenKey;
-                },
-                { mode: 'readwrite' }
-            );
+            cachedApiToken = db.write(['settings'], async ({ settings }) => {
+                const key = await settings.get(API_TOKEN_KEY);
+                if (key) {
+                    logger.log('Reusing API token for secure endpoints', key);
+                    return key;
+                }
+                const array = new Uint8Array(32);
+                crypto.getRandomValues(array);
+                const tokenKey = Array.from(array, (byte) =>
+                    byte.toString(16).padStart(2, '0')
+                ).join('');
+                logger.log('API token for secure endpoints', tokenKey);
+                await settings.put(tokenKey, API_TOKEN_KEY);
+                return tokenKey;
+            });
         }
         return cachedApiToken;
     }
 
     async function getInstallationTime() {
         if (!cachedInstallationTime) {
-            cachedInstallationTime = db(
-                async ({ settings }) => {
-                    const existing = await settings.get(INSTALLATION_TIME_KEY);
-                    if (existing) {
-                        logger.log('Reusing installation time', existing);
-                        return existing;
-                    }
-                    const installationTime = Date.now();
-                    logger.log('Recorded installation time', installationTime);
-                    await settings.put(installationTime, INSTALLATION_TIME_KEY);
-                    return installationTime;
-                },
-                { mode: 'readwrite' }
-            );
+            cachedInstallationTime = db.write(['settings'], async ({ settings }) => {
+                const existing = await settings.get(INSTALLATION_TIME_KEY);
+                if (existing) {
+                    logger.log('Reusing installation time', existing);
+                    return existing;
+                }
+                const installationTime = Date.now();
+                logger.log('Recorded installation time', installationTime);
+                await settings.put(installationTime, INSTALLATION_TIME_KEY);
+                return installationTime;
+            });
         }
         return cachedInstallationTime;
     }

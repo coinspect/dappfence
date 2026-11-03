@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { createAppStore, createAppStoreFromDb } from '../storage/index.js';
+import {
+    createAppStore,
+    createAppStoreFromDb,
+    HISTORICAL_SCHEMAS,
+    SCHEMA,
+    VERSION,
+} from '../storage/index.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
 import { makeMockIDB } from './helpers/mock-idb.js';
+
+const HISTORICAL_VERSIONS = Object.keys(HISTORICAL_SCHEMAS).map(Number);
+
+const physicalStoresOf = (schema) =>
+    Object.entries(schema).map(([logical, config]) => config.objectStore ?? logical);
 
 describe('createAppStore', () => {
     it('returns all expected store properties', () => {
@@ -79,4 +90,94 @@ describe('createAppStore', () => {
             expect(idb._trace.upgrades[0].to).toBeGreaterThan(1);
         });
     });
+});
+
+describe('schema evolution', () => {
+    it('VERSION equals the highest HISTORICAL_SCHEMAS key', () => {
+        expect(Math.max(...HISTORICAL_VERSIONS)).toBe(VERSION);
+    });
+
+    it('SCHEMA deep-equals HISTORICAL_SCHEMAS[VERSION]', () => {
+        expect(SCHEMA).toEqual(HISTORICAL_SCHEMAS[VERSION]);
+    });
+
+    it('HISTORICAL_SCHEMAS is contiguous from 0 to VERSION', () => {
+        for (let v = 0; v <= VERSION; v++) {
+            expect(HISTORICAL_SCHEMAS[v], `missing HISTORICAL_SCHEMAS[${v}] fixture`).toBeDefined();
+        }
+    });
+
+    it('current SCHEMA does not clash with any historical shape at the same physical name', () => {
+        for (const [v, historical] of Object.entries(HISTORICAL_SCHEMAS)) {
+            if (Number(v) === VERSION) {
+                continue; // same as current — nothing to compare
+            }
+            for (const [logical, currentConfig] of Object.entries(SCHEMA)) {
+                const currentPhysical = currentConfig.objectStore ?? logical;
+                const historicalEntry = historical[logical];
+                if (!historicalEntry) {
+                    continue;
+                }
+                const historicalPhysical = historicalEntry.objectStore ?? logical;
+                if (currentPhysical !== historicalPhysical) {
+                    continue;
+                }
+                expect(
+                    currentConfig.primaryKeyPath,
+                    `v${v}.${logical}: primaryKeyPath changed but objectStore was not renamed`
+                ).toBe(historicalEntry.primaryKeyPath);
+                expect(
+                    !!currentConfig.autoIncrement,
+                    `v${v}.${logical}: autoIncrement changed but objectStore was not renamed`
+                ).toBe(!!historicalEntry.autoIncrement);
+            }
+        }
+    });
+});
+
+describe('createAppStore schema migrations', () => {
+    for (const v of HISTORICAL_VERSIONS.filter((n) => n < VERSION)) {
+        describe(`from v${v} to v${VERSION}`, () => {
+            const existing = { version: v, stores: physicalStoresOf(HISTORICAL_SCHEMAS[v]) };
+
+            it('creates every current SCHEMA object store', async () => {
+                const idb = makeMockIDB({ existing });
+                const appStore = createAppStore(idb);
+                await appStore.settingsStore.getApiToken();
+
+                for (const [logical, config] of Object.entries(SCHEMA)) {
+                    const physical = config.objectStore ?? logical;
+                    const stillHere =
+                        idb._trace.createdStores.includes(physical) ||
+                        existing.stores.includes(physical);
+                    expect(stillHere).toBe(true);
+                }
+            });
+
+            it('preserves orphan stores from the old schema', async () => {
+                const idb = makeMockIDB({ existing });
+                const appStore = createAppStore(idb);
+                await appStore.settingsStore.getApiToken();
+
+                const currentPhysicals = new Set(
+                    Object.entries(SCHEMA).map(([logical, config]) => config.objectStore ?? logical)
+                );
+                for (const orphan of existing.stores) {
+                    if (!currentPhysicals.has(orphan)) {
+                        expect(idb._trace.createdStores).not.toContain(orphan);
+                    }
+                }
+            });
+
+            it('every current store is usable after the upgrade', async () => {
+                const idb = makeMockIDB({ existing });
+                const appStore = createAppStore(idb);
+
+                await appStore.trustedManifestStore.addLatest({ files: { '/a.js': 'h' } });
+                expect(await appStore.trustedManifestStore.getLatest()).toBeDefined();
+                expect(await appStore.securityStore.getActiveBlocks()).toEqual([]);
+                expect(typeof (await appStore.settingsStore.getInstallationTime())).toBe('number');
+            });
+        });
+    }
 });

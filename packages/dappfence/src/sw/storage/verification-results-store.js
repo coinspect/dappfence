@@ -18,13 +18,13 @@ const logger = createLogger();
 const VERIFICATION_RESULTS_KEY = 'verification-results';
 
 /**
- * @param {import('./indexeddb.js').Database} db
+ * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createVerificationResultsStore(db) {
     return {
         async get(appVersion) {
             const allResults =
-                (await db(({ verificationResults }) =>
+                (await db.read(['verificationResults'], ({ verificationResults }) =>
                     verificationResults.get(VERIFICATION_RESULTS_KEY)
                 )) || {};
             return allResults[appVersion] || [];
@@ -41,30 +41,26 @@ export function createVerificationResultsStore(db) {
                 logger.log('verificationResultsStore.add: no appVersion on details; skipping');
                 return;
             }
-            return db(
-                async ({ verificationResults }) => {
-                    const allResults =
-                        (await verificationResults.get(VERIFICATION_RESULTS_KEY)) || {};
-                    if (!allResults[appVersion]) {
-                        allResults[appVersion] = [];
-                    }
-                    allResults[appVersion].push({
-                        status: details.status.description,
-                        timestamp: new Date().toISOString(),
-                        fileKey: details.fileKey,
-                        reason: details.reason,
-                        expectedHashes: details.expectedHashes,
-                        actualHash: details.actualHash,
-                    });
+            return db.write(['verificationResults'], async ({ verificationResults }) => {
+                const allResults = (await verificationResults.get(VERIFICATION_RESULTS_KEY)) || {};
+                if (!allResults[appVersion]) {
+                    allResults[appVersion] = [];
+                }
+                allResults[appVersion].push({
+                    status: details.status.description,
+                    timestamp: new Date().toISOString(),
+                    fileKey: details.fileKey,
+                    reason: details.reason,
+                    expectedHashes: details.expectedHashes,
+                    actualHash: details.actualHash,
+                });
 
-                    if (allResults[appVersion].length > 100) {
-                        allResults[appVersion] = allResults[appVersion].slice(-100);
-                    }
+                if (allResults[appVersion].length > 100) {
+                    allResults[appVersion] = allResults[appVersion].slice(-100);
+                }
 
-                    await verificationResults.put(allResults, VERIFICATION_RESULTS_KEY);
-                },
-                { mode: 'readwrite' }
-            );
+                await verificationResults.put(allResults, VERIFICATION_RESULTS_KEY);
+            });
         },
     };
 }
