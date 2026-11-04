@@ -1,8 +1,8 @@
 /**
- * Telemetry batches store — one row per batch, self-contained `events[]`
- * envelope. `sentAt` field encodes the two states: undefined = waiting,
- * number = sent. Both this store and verificationResults are index-less;
- * reads do getAll() + in-memory filter, matching the storage-wide decision
+ * Telemetry batches store — one row per batch, metadata only. Events live in
+ * verificationResults with `batchId === batch.id`; the caller joins at send
+ * time. `sentAt` encodes the two states: undefined = waiting, number = sent.
+ * Reads do getAll() + in-memory filter, matching the storage-wide decision
  * that one scan per rate-limited operation is cheaper than maintaining
  * indexes.
  */
@@ -10,20 +10,32 @@
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 import { createLogger } from '../../core/logger.js';
 
+/** @typedef {import('./verification-results-store.js').VerdictRow} VerdictRow */
+
 /**
+ * Batch row is pure metadata. The events are in `verificationResults` with
+ * `batchId === batch.id`; the caller joins at send time.
+ *
  * @typedef {{
  *   id: string,
  *   createdAt: number,
  *   sentAt?: number,
- *   events: object[],
  *   priority: boolean,
  * }} BatchRecord
+ *
+ * @typedef {(verdicts: VerdictRow[]) => VerdictRow[]} SelectVerdicts
+ *
+ * Runs inside the readwrite tx; must be synchronous — any await on non-IDB
+ * work (crypto, fetch, timers) auto-commits the tx. Returns the subset of
+ * input to batch; storage pre-filters to unclaimed rows so the caller never
+ * has to recheck batchId.
  */
 
 const logger = createLogger();
 
 const PURGE_RATE_LIMIT_MS = 60_000;
 
+/** @type {Set<string>} */
 const VIOLATION_STATUSES = new Set(
     Object.values(VERIFICATION_STATUS)
         .filter((v) => v.isViolation)
@@ -35,24 +47,6 @@ const VIOLATION_STATUSES = new Set(
  */
 export function createTelemetryBatchesStore(db) {
     let lastPurgeAt = 0;
-
-    /**
-     * JSON-encoded identity tuple used as the dedup key. Must stay sync:
-     * callers use it inside IDB transactions, where any non-IDB await
-     * (crypto.subtle.digest, fetch, timers) lets the tx auto-commit.
-     * JSON.stringify avoids delimiter injection via user-controlled fields.
-     * @param {{status: string, fileKey: string, assetType?: string, reason?: string, actualHash?: string, expectedHashes?: string[]}} row
-     */
-    function eventIdentity(row) {
-        return JSON.stringify([
-            row.assetType ?? null,
-            row.status,
-            row.reason ?? null,
-            row.fileKey,
-            row.expectedHashes ?? null,
-            row.actualHash ?? null,
-        ]);
-    }
 
     return {
         /** @param {BatchRecord} batch */
@@ -86,50 +80,34 @@ export function createTelemetryBatchesStore(db) {
         },
 
         /**
-         * Atomic cross-store: dedup unclaimed verificationResults rows into a
-         * new batch and stamp `batchId` back on them. Cap is on unique events
-         * post-dedup; natural dedup usually keeps us under it.
-         * @param {number} maxUniqueEvents
+         * Atomic claim: read unclaimed verdicts, hand them to `selectVerdicts`,
+         * write a batch row with the chosen subset, stamp batchId back on each.
+         * Dedup, sort, projection, and size caps are the caller's job.
+         * @param {SelectVerdicts} selectVerdicts
          * @returns {Promise<BatchRecord | null>}
          */
-        async claimUnclaimed(maxUniqueEvents) {
+        async createBatch(selectVerdicts) {
             return db.write(
                 ['verificationResults', 'telemetryBatches'],
                 async ({ verificationResults, telemetryBatches }) => {
                     const allVerdicts = await verificationResults.getAll();
-                    const unclaimedVerdicts = allVerdicts
-                        .filter((v) => !v.batchId)
-                        .sort((a, b) => {
-                            const aV = VIOLATION_STATUSES.has(a.status) ? 0 : 1;
-                            const bV = VIOLATION_STATUSES.has(b.status) ? 0 : 1;
-                            if (aV !== bV) {
-                                return aV - bV;
-                            }
-                            return a.timestamp - b.timestamp;
-                        });
+                    const unclaimedVerdicts = allVerdicts.filter((v) => !v.batchId);
                     if (unclaimedVerdicts.length === 0) {
-                        logger.log('telemetryBatchesStore.claimUnclaimed: no unclaimed verdicts');
+                        logger.log('telemetryBatchesStore.createBatch: no unclaimed verdicts');
                         return null;
                     }
 
-                    const uniqueEvents = new Map();
-                    const claimedVerdicts = [];
-                    for (const verdict of unclaimedVerdicts) {
-                        const identity = eventIdentity(verdict);
-                        const existing = uniqueEvents.get(identity);
-                        if (existing) {
-                            existing.occurrenceCount += 1;
-                            claimedVerdicts.push(verdict);
-                        } else if (uniqueEvents.size < maxUniqueEvents) {
-                            uniqueEvents.set(identity, { ...verdict, occurrenceCount: 1 });
-                            claimedVerdicts.push(verdict);
-                        }
+                    const claimedVerdicts = selectVerdicts(unclaimedVerdicts);
+                    if (claimedVerdicts.length === 0) {
+                        logger.log(
+                            'telemetryBatchesStore.createBatch: selectVerdicts claimed none'
+                        );
+                        return null;
                     }
 
                     const batch = {
                         id: crypto.randomUUID(),
                         createdAt: Date.now(),
-                        events: Array.from(uniqueEvents.values()),
                         priority: claimedVerdicts.some((v) => VIOLATION_STATUSES.has(v.status)),
                     };
                     await telemetryBatches.add(batch);
@@ -138,7 +116,7 @@ export function createTelemetryBatchesStore(db) {
                         await verificationResults.put(verdict);
                     }
                     logger.log(
-                        `telemetryBatchesStore.claimUnclaimed: assembled batch ${batch.id} from ${claimedVerdicts.length} verdicts into ${uniqueEvents.size} events (priority=${batch.priority})`
+                        `telemetryBatchesStore.createBatch: batch ${batch.id} from ${claimedVerdicts.length} verdicts (priority=${batch.priority})`
                     );
                     return batch;
                 }

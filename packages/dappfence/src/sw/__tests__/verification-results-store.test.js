@@ -213,3 +213,62 @@ describe('createVerificationResultsStore', () => {
         vi.useRealTimers();
     });
 });
+
+describe('getByBatchId', () => {
+    let db;
+    let store;
+
+    beforeEach(() => {
+        db = createInMemoryDb();
+        store = createVerificationResultsStore(db);
+    });
+
+    it('returns empty Map when store is empty', async () => {
+        expect((await store.getByBatchId()).size).toBe(0);
+    });
+
+    it('excludes unclaimed verdicts (batchId === "")', async () => {
+        await store.add(detailsFor('v1'));
+        await store.add(detailsFor('v1'));
+        expect((await store.getByBatchId()).size).toBe(0);
+    });
+
+    it('groups claimed verdicts by batchId, excludes unclaimed', async () => {
+        // Seed via low-level write: store.add() always stamps batchId=''.
+        await db.write(['verificationResults'], async ({ verificationResults }) => {
+            await verificationResults.add({
+                id: 'v1',
+                timestamp: 1,
+                status: 'MATCH',
+                fileKey: '/x',
+                batchId: 'b1',
+            });
+            await verificationResults.add({
+                id: 'v2',
+                timestamp: 2,
+                status: 'MATCH',
+                fileKey: '/y',
+                batchId: 'b1',
+            });
+            await verificationResults.add({
+                id: 'v3',
+                timestamp: 3,
+                status: 'MATCH',
+                fileKey: '/z',
+                batchId: 'b2',
+            });
+            await verificationResults.add({
+                id: 'v4',
+                timestamp: 4,
+                status: 'MATCH',
+                fileKey: '/w',
+                batchId: '',
+            });
+        });
+        const result = await store.getByBatchId();
+        expect(result.size).toBe(2);
+        expect(result.get('b1')).toHaveLength(2);
+        expect(result.get('b2')).toHaveLength(1);
+        expect(result.has('')).toBe(false);
+    });
+});
