@@ -37,12 +37,14 @@ export function createTelemetryBatchesStore(db) {
     let lastPurgeAt = 0;
 
     /**
-     * 16-hex SHA-256 prefix over the identity tuple. JSON.stringify avoids
-     * delimiter injection via user-controlled `fileKey` / `actualHash`.
+     * JSON-encoded identity tuple used as the dedup key. Must stay sync:
+     * callers use it inside IDB transactions, where any non-IDB await
+     * (crypto.subtle.digest, fetch, timers) lets the tx auto-commit.
+     * JSON.stringify avoids delimiter injection via user-controlled fields.
      * @param {{status: string, fileKey: string, assetType?: string, reason?: string, actualHash?: string, expectedHashes?: string[]}} row
      */
-    async function eventKey(row) {
-        const identity = JSON.stringify([
+    function eventIdentity(row) {
+        return JSON.stringify([
             row.assetType ?? null,
             row.status,
             row.reason ?? null,
@@ -50,10 +52,6 @@ export function createTelemetryBatchesStore(db) {
             row.expectedHashes ?? null,
             row.actualHash ?? null,
         ]);
-        const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
-        return Array.from(new Uint8Array(bytes).subarray(0, 8), (b) =>
-            b.toString(16).padStart(2, '0')
-        ).join('');
     }
 
     return {
@@ -117,13 +115,13 @@ export function createTelemetryBatchesStore(db) {
                     const uniqueEvents = new Map();
                     const claimedVerdicts = [];
                     for (const verdict of unclaimedVerdicts) {
-                        const key = await eventKey(verdict);
-                        const existing = uniqueEvents.get(key);
+                        const identity = eventIdentity(verdict);
+                        const existing = uniqueEvents.get(identity);
                         if (existing) {
                             existing.occurrenceCount += 1;
                             claimedVerdicts.push(verdict);
                         } else if (uniqueEvents.size < maxUniqueEvents) {
-                            uniqueEvents.set(key, { ...verdict, key, occurrenceCount: 1 });
+                            uniqueEvents.set(identity, { ...verdict, occurrenceCount: 1 });
                             claimedVerdicts.push(verdict);
                         }
                     }
