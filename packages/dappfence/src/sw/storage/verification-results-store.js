@@ -20,6 +20,27 @@
 /** @typedef {import('../security-processor.js').SecurityEventDetails} SecurityEventDetails */
 /** @typedef {import('./indexeddb.js').StoreHandle} StoreHandle */
 
+/**
+ * Persisted shape of a verifier outcome. `batchId` is the telemetry-batches
+ * sentinel: `''` = unclaimed, uuid string = claimed into that batch.
+ * @typedef {{
+ *   id: string,
+ *   appVersion?: string,
+ *   timestamp: number,
+ *   status: string,
+ *   fileKey: string,
+ *   reason?: string,
+ *   expectedHashes?: string[],
+ *   actualHash?: string,
+ *   url?: string,
+ *   destination?: string,
+ *   httpStatus?: number,
+ *   clientId?: string,
+ *   assetType?: string,
+ *   batchId: string,
+ * }} VerdictRow
+ */
+
 const UI_SLICE = 100;
 const RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_ROWS_TOTAL = 10_000;
@@ -69,6 +90,41 @@ export function createVerificationResultsStore(db) {
     }
 
     return {
+        /**
+         * Every verdict row. Callers filter in memory (by batchId, appVersion,
+         * etc.) in line with the storage-wide getAll+filter convention.
+         * @returns {Promise<VerdictRow[]>}
+         */
+        async getAll() {
+            return db.read(['verificationResults'], ({ verificationResults }) =>
+                verificationResults.getAll()
+            );
+        },
+
+        /**
+         * Claimed verdicts grouped by batchId. Unclaimed rows (batchId === '')
+         * are filtered out. Done in memory per the storage-wide getAll+filter
+         * convention; the join table is small enough to let the caller look
+         * up only the batchIds it cares about.
+         * @returns {Promise<Map<string, VerdictRow[]>>}
+         */
+        async getByBatchId() {
+            const all = await db.read(['verificationResults'], ({ verificationResults }) =>
+                verificationResults.getAll()
+            );
+            const byBatchId = new Map();
+            for (const v of all) {
+                if (!v.batchId) continue;
+                const list = byBatchId.get(v.batchId);
+                if (list) {
+                    list.push(v);
+                } else {
+                    byBatchId.set(v.batchId, [v]);
+                }
+            }
+            return byBatchId;
+        },
+
         /**
          * Return the latest UI_SLICE rows for the given appVersion, newest first.
          * Passing nullish returns rows with no appVersion (pre-manifest events).
