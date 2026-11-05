@@ -18,6 +18,8 @@ import { createSwContext } from './context.js';
 import { createLogger } from '../core/logger.js';
 import { createApiHandler } from './api-handler.js';
 import { createSecurityProcessor } from './security-processor.js';
+import { createTaskManager } from './telemetry/task-manager.js';
+import { createTelemetryExecutor } from './telemetry/telemetry-executor.js';
 
 const logger = createLogger();
 
@@ -43,10 +45,22 @@ export function createServices(swGlobal) {
     logger.log('Configuration:', config);
 
     const appStore = createAppStore(swGlobal.indexedDB);
-    const securityProcessor = createSecurityProcessor({ appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext);
+    const taskManager = createTaskManager();
+    const telemetryExecutor = createTelemetryExecutor({
+        swContext,
+        appStore,
+        manifestService,
+        taskManager,
+    });
+    const securityProcessor = createSecurityProcessor({
+        appStore,
+        telemetryExecutor,
+        taskManager,
+    });
+
     const core = {
         swContext,
         appStore,

@@ -7,7 +7,7 @@
  * indexes.
  */
 
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { VERIFICATION_STATUS_BY_NAME } from '../../core/constants.js';
 import { createLogger } from '../../core/logger.js';
 
 /** @typedef {import('./verification-results-store.js').VerdictRow} VerdictRow */
@@ -34,19 +34,15 @@ import { createLogger } from '../../core/logger.js';
 const logger = createLogger();
 
 const PURGE_RATE_LIMIT_MS = 60_000;
-
-/** @type {Set<string>} */
-const VIOLATION_STATUSES = new Set(
-    Object.values(VERIFICATION_STATUS)
-        .filter((v) => v.isViolation)
-        .map((v) => v.description)
-);
+const EVENTS_RETRY_STATE_KEY = 'EVENTS_RETRY_STATE_KEY';
+const EVENTS_RETRY_DEFAULT = { attemptNumber: 0, nextAttemptAt: 0 };
 
 /**
  * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createTelemetryBatchesStore(db) {
     let lastPurgeAt = 0;
+    let cachedRetryState = null;
 
     return {
         /** @param {BatchRecord} batch */
@@ -108,7 +104,9 @@ export function createTelemetryBatchesStore(db) {
                     const batch = {
                         id: crypto.randomUUID(),
                         createdAt: Date.now(),
-                        priority: claimedVerdicts.some((v) => VIOLATION_STATUSES.has(v.status)),
+                        priority: claimedVerdicts.some(
+                            (v) => VERIFICATION_STATUS_BY_NAME.get(v.status)?.isViolation
+                        ),
                     };
                     await telemetryBatches.add(batch);
                     for (const verdict of claimedVerdicts) {
@@ -124,8 +122,9 @@ export function createTelemetryBatchesStore(db) {
         },
 
         /**
-         * Flip all `ids` to sent in one tx. Array signature is required —
-         * a merged POST must flip every contributing batch atomically.
+         * Flip all `ids` to sent AND reset retry state in a single tx — "we
+         * succeeded" is the atomic unit. Array signature is required: a merged
+         * POST must flip every contributing batch together.
          * @param {string[]} ids
          */
         async markSent(ids) {
@@ -133,19 +132,62 @@ export function createTelemetryBatchesStore(db) {
                 logger.log('telemetryBatchesStore.markSent: empty id list; skipping');
                 return;
             }
-            await db.write(['telemetryBatches'], async ({ telemetryBatches }) => {
-                const now = Date.now();
-                for (const id of ids) {
-                    const batch = await telemetryBatches.get(id);
-                    if (!batch) {
-                        logger.log(
-                            `telemetryBatchesStore.markSent: no batch for id ${id}; skipping`
-                        );
-                        continue;
+            await db.write(
+                ['telemetryBatches', 'settings'],
+                async ({ telemetryBatches, settings }) => {
+                    const now = Date.now();
+                    for (const id of ids) {
+                        const batch = await telemetryBatches.get(id);
+                        if (!batch) {
+                            logger.log(
+                                `telemetryBatchesStore.markSent: no batch for id ${id}; skipping`
+                            );
+                            continue;
+                        }
+                        batch.sentAt = now;
+                        await telemetryBatches.put(batch);
                     }
-                    batch.sentAt = now;
-                    await telemetryBatches.put(batch);
+                    cachedRetryState = EVENTS_RETRY_DEFAULT;
+                    await settings.put(EVENTS_RETRY_DEFAULT, EVENTS_RETRY_STATE_KEY);
                 }
+            );
+        },
+
+        /**
+         * Executor-level retry state for the events channel. Stored in the
+         * `settings` object store but owned by this module since it tracks
+         * batch-send progress, not per-install singletons.
+         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number}>}
+         */
+        async getRetryState() {
+            if (cachedRetryState === null) {
+                cachedRetryState = await db.read(['settings'], async ({ settings }) => {
+                    const state = await settings.get(EVENTS_RETRY_STATE_KEY);
+                    return state ?? EVENTS_RETRY_DEFAULT;
+                });
+            }
+            return cachedRetryState;
+        },
+
+        /**
+         * Bump attemptNumber + compute next backoff with jitter in one tx.
+         * Caller supplies the policy (base/cap). Returns the new state.
+         * @param {{baseMs: number, capMs: number}} policy
+         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number}>}
+         */
+        async bumpRetryState({ baseMs, capMs }) {
+            return db.write(['settings'], async ({ settings }) => {
+                const prev = (await settings.get(EVENTS_RETRY_STATE_KEY)) ?? EVENTS_RETRY_DEFAULT;
+                const nextAttempt = prev.attemptNumber + 1;
+                const base = Math.min(capMs, baseMs * 2 ** (nextAttempt - 1));
+                const jitter = Math.random() * base * 0.5;
+                const next = {
+                    attemptNumber: nextAttempt,
+                    nextAttemptAt: Date.now() + base + jitter,
+                };
+                cachedRetryState = next;
+                await settings.put(next, EVENTS_RETRY_STATE_KEY);
+                return next;
             });
         },
 

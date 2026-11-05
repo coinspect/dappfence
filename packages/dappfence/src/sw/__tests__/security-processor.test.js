@@ -7,21 +7,26 @@ import { createVerificationResultsStore } from '../storage/verification-results-
 import { VERIFICATION_STATUS } from '../../core/constants.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
 
-function createSwContext({ userAgent = 'test-ua', origin = 'https://example.com' } = {}) {
-    return {
-        getUserAgent: () => userAgent,
-        getLocationOrigin: () => origin,
-    };
-}
-
-function createProcessor({ db = createInMemoryDb(), swContext = createSwContext() } = {}) {
+function createProcessor({ db = createInMemoryDb() } = {}) {
     const appStore = {
         trustedManifestStore: createManifestStore(db),
         securityStore: createSecurityStore(db),
         settingsStore: createSettingsStore(db),
         verificationResultsStore: createVerificationResultsStore(db),
     };
-    const securityProcessor = createSecurityProcessor({ swContext, appStore });
+    const telemetryExecutor = {
+        scheduleSend: () => {},
+        scheduleSyncSend: async () => false,
+    };
+    const taskManager = {
+        attach: () => {},
+        run: async (fn) => fn(),
+    };
+    const securityProcessor = createSecurityProcessor({
+        appStore,
+        telemetryExecutor,
+        taskManager,
+    });
     return { appStore, securityProcessor };
 }
 
