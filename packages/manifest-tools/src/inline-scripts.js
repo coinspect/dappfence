@@ -1,6 +1,36 @@
 import { promises as fs } from 'node:fs';
 import { calculateStringHash } from './build.js';
 
+// Attribute values are entity-decoded by the HTML tokenizer (HTML Living Standard
+// §13.2.5 character reference state), and CSP hashes the decoded body (CSP3
+// §match-element-for-event-handler). The five named refs below are the ones that
+// realistically appear in JS handler bodies; numeric refs (`&#NN;` / `&#xNN;`)
+// cover anything else a developer might escape. Any other named entity is a
+// no-op + warning: the browser would decode it (e.g. `&nbsp;` → U+00A0) and our
+// hash would silently miss, so loud failure is better than wrong hash.
+const NAMED_ATTR_ENTITIES = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" };
+
+function decodeAttrEntities(s, warnings) {
+    return s.replace(
+        /&(?:#x([0-9a-fA-F]+);|#(\d+);|([a-zA-Z][a-zA-Z0-9]*);)/g,
+        (match, hex, dec, name) => {
+            if (hex !== undefined) {
+                return String.fromCodePoint(parseInt(hex, 16));
+            }
+            if (dec !== undefined) {
+                return String.fromCodePoint(parseInt(dec, 10));
+            }
+            if (name in NAMED_ATTR_ENTITIES) {
+                return NAMED_ATTR_ENTITIES[name];
+            }
+            warnings.push(
+                `Unrecognized HTML entity &${name}; in on* handler — hash will not match browser; restructure the attribute or extend NAMED_ATTR_ENTITIES`
+            );
+            return match;
+        }
+    );
+}
+
 // Find `<script` (7 chars) followed by whitespace, >, or / — case-insensitive.
 // Returns the index of `<`, or -1.
 function indexOfOpenScript(html, from) {
@@ -314,7 +344,8 @@ function _hashAttrs(html) {
             while (j < html.length && !/[\s>/]/.test(html[j])) j++;
             const { pairs, end } = parseOnAttrs(html, j);
             i = end;
-            for (const { name, value } of pairs) {
+            for (const { name, value: rawValue } of pairs) {
+                const value = decodeAttrEntities(rawValue, warnings);
                 if (!seen.has(value)) {
                     seen.add(value);
                     attrs.push({ name, value, hash: calculateStringHash(value) });

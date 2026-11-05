@@ -5,6 +5,17 @@ import { MODE, TRANSFORM } from '@dappfence/core/constants';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Remote destination for the /csp-cloud-* hand-QA pages. Set via env var at
+// build time, e.g. `REPORTING_URL=https://... npm run build`, or put it in
+// `.env.local` and run with `node --env-file=.env.local`. If unset, the two
+// /csp-cloud-* pages + their manifests are skipped entirely and hidden from
+// the Dev Tools table. Localhost worker URL for /csp-worker-* pages stays
+// hardcoded on purpose.
+const REPORTING_URL = process.env.REPORTING_URL ?? null;
+if (!REPORTING_URL) {
+    console.warn('[build-config] REPORTING_URL not set — skipping /csp-cloud-* pages');
+}
+
 const EXTERNAL_ASSETS = {
     'http://code.jquery.com/jquery-3.7.1.min.js': [
         'sha256-dHRfBy/qpMhrsW1oz1R0O4A+2QuM+wZNTuk8mQAKGBU=',
@@ -66,7 +77,12 @@ const defaultManifest = {
     },
     csp: {
         pages: {
-            '/csp-test-allowed': { extractFrom: 'index.html' },
+            // Catch-all: every path starts with '/'. Any page generated from
+            // simple-app.html has identical inline-script + on* attribute hashes
+            // (template vars only land in attrs/comments, not inside <script>),
+            // so one extraction covers all of them. Specific keys below win via
+            // exact match.
+            '/': { extractFrom: 'index.html' },
             '/csp-test-denied': [],
         },
     },
@@ -90,6 +106,10 @@ const simpleAppPages = {
         template: 'simple-app.html',
         manifest: 'csp-report-only-manifest.json',
     },
+    'no-csp-entries.html': {
+        template: 'simple-app.html',
+        manifest: 'no-csp-entries-manifest.json',
+    },
     'telemetry.html': {
         template: 'simple-app.html',
         manifest: 'telemetry-manifest.json',
@@ -104,6 +124,24 @@ const simpleAppPages = {
             EVENTS_ENDPOINT_ATTR: 'data-events-endpoint="/capture/events-config-reporting"',
         },
     },
+    'csp-worker-protected.html': {
+        template: 'simple-app.html',
+        manifest: 'csp-worker-protected-manifest.json',
+    },
+    'csp-worker-reporting.html': {
+        template: 'simple-app.html',
+        manifest: 'csp-worker-reporting-manifest.json',
+    },
+    ...(REPORTING_URL && {
+        'csp-cloud-protected.html': {
+            template: 'simple-app.html',
+            manifest: 'csp-cloud-protected-manifest.json',
+        },
+        'csp-cloud-reporting.html': {
+            template: 'simple-app.html',
+            manifest: 'csp-cloud-reporting-manifest.json',
+        },
+    }),
 };
 
 const simpleAppBase = {
@@ -130,6 +168,10 @@ const simpleAppBase = {
                 reportSample: true,
             },
         },
+        'no-csp-entries-manifest.json': {
+            ...defaultManifest,
+            csp: { ...defaultManifest.csp, pages: {} },
+        },
         'telemetry-manifest.json': {
             ...defaultManifest,
             telemetry: {
@@ -147,22 +189,84 @@ const simpleAppBase = {
                 logsFilter: 1,
             },
         },
+        'csp-worker-protected-manifest.json': {
+            ...defaultManifest,
+            mode: MODE.PROTECTED,
+            csp: {
+                ...defaultManifest.csp,
+                reportUri: 'http://127.0.0.1:8787/csp-report',
+                reportSample: true,
+            },
+            telemetry: {
+                eventsEndpoint: 'http://127.0.0.1:8787/report',
+                logsEndpoint: 'http://127.0.0.1:8787/logs',
+                logsFilter: 1,
+            },
+        },
+        'csp-worker-reporting-manifest.json': {
+            ...defaultManifest,
+            mode: MODE.REPORTING,
+            csp: {
+                ...defaultManifest.csp,
+                reportUri: 'http://127.0.0.1:8787/csp-report',
+                reportSample: true,
+            },
+            telemetry: {
+                eventsEndpoint: 'http://127.0.0.1:8787/report',
+                logsEndpoint: 'http://127.0.0.1:8787/logs',
+                logsFilter: 1,
+            },
+        },
+        ...(REPORTING_URL && {
+            'csp-cloud-protected-manifest.json': {
+                ...defaultManifest,
+                mode: MODE.PROTECTED,
+                csp: {
+                    ...defaultManifest.csp,
+                    reportUri: `${REPORTING_URL}/csp-report`,
+                    reportSample: true,
+                },
+                telemetry: {
+                    eventsEndpoint: `${REPORTING_URL}/report`,
+                    logsEndpoint: `${REPORTING_URL}/logs`,
+                    logsFilter: 1,
+                },
+            },
+            'csp-cloud-reporting-manifest.json': {
+                ...defaultManifest,
+                mode: MODE.REPORTING,
+                csp: {
+                    ...defaultManifest.csp,
+                    reportUri: `${REPORTING_URL}/csp-report`,
+                    reportSample: true,
+                },
+                telemetry: {
+                    eventsEndpoint: `${REPORTING_URL}/report`,
+                    logsEndpoint: `${REPORTING_URL}/logs`,
+                    logsFilter: 1,
+                },
+            },
+        }),
     },
     pages: simpleAppPages,
 };
 
+// Shared across every target; the Dev Tools table in simple-app.html uses it
+// to hide the two /csp-cloud-* rows when REPORTING_URL is unset.
+const CLOUD_FLAG = { BUILD_CLOUD_PAGES: !!REPORTING_URL };
+
 const BUILD_CONFIGURATIONS = {
     'simple-app': {
         ...simpleAppBase,
-        templateFlags: { USE_APP_SW: false, USE_APP: true },
+        templateFlags: { ...CLOUD_FLAG, USE_APP_SW: false, USE_APP: true },
     },
     'simple-app-sw-fixed': {
         ...simpleAppBase,
-        templateFlags: { USE_APP_SW: true, USE_APP: true },
+        templateFlags: { ...CLOUD_FLAG, USE_APP_SW: true, USE_APP: true },
     },
     'simple-app-sw-capture': {
         ...simpleAppBase,
-        templateFlags: { USE_SW_REGISTER: true, USE_APP: false },
+        templateFlags: { ...CLOUD_FLAG, USE_SW_REGISTER: true, USE_APP: false },
     },
     'tampering-test': {
         ...directories,
@@ -181,7 +285,7 @@ const BUILD_CONFIGURATIONS = {
     },
     'reporting-test': {
         ...simpleAppBase,
-        templateFlags: { USE_SW_REGISTER: true, USE_APP: false },
+        templateFlags: { ...CLOUD_FLAG, USE_SW_REGISTER: true, USE_APP: false },
         manifests: {
             'integrity-manifest.json': { ...defaultManifest, mode: MODE.REPORTING },
             'no-not-found-manifest.json': {
