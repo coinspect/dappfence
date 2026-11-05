@@ -83,7 +83,7 @@ describe('telemetry executor: Background Sync retry', () => {
             });
             await appStore.verificationResultsStore.add(violation());
 
-            expect(await telemetryExecutor.onEvent()).toBe(false);
+            expect(await telemetryExecutor.scheduleSyncSend()).toBe(true);
             expect(swContext.registerSync).toHaveBeenCalledWith(SYNC_TAG_REPORT_EVENTS);
 
             // Chromium fires the registered sync as soon as it sees connectivity,
@@ -145,9 +145,9 @@ describe('telemetry executor: keepalive body quota', () => {
                 );
             }
 
-            const delivered = await telemetryExecutor.onEvent();
+            const stillPending = await telemetryExecutor.scheduleSyncSend();
 
-            expect(delivered).toBe(true);
+            expect(stillPending).toBe(false);
             expect(posted.flatMap((envelope) => envelope.events)).toHaveLength(50);
             expect(await appStore.telemetryBatchesStore.getPending()).toHaveLength(0);
         },

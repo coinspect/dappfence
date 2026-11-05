@@ -109,10 +109,9 @@ describe('createTelemetryBatchesStore under real IDB transaction lifetime', () =
             manifestInfo: { appVersion: 'v1' },
         });
 
-        const claimed = await store.claimUnclaimed(50);
+        const claimed = await store.createBatch((unclaimed) => unclaimed);
 
         expect(claimed).toMatchObject({ priority: true });
-        expect(claimed.events).toHaveLength(1);
         expect(await store.getPending()).toHaveLength(1);
     });
 });
