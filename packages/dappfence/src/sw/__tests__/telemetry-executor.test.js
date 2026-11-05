@@ -54,8 +54,7 @@ const violation = (extras = {}) => ({
 
 // Drive a full send cycle and report its delivery outcome.
 async function drive(telemetryExecutor) {
-    telemetryExecutor.scheduleTelemetrySend();
-    const stillPending = await telemetryExecutor.hasPendingTelemetry();
+    const stillPending = await telemetryExecutor.scheduleSyncSend();
     return !stillPending;
 }
 

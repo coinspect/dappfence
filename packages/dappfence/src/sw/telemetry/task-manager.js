@@ -19,6 +19,7 @@ export function createTaskManager({ graceMs = 3000, logger = defaultLogger } = {
     let workCount = 0;
     let keepaliveResolve = null;
     let graceTimer = null;
+    let carrierIsSync = false;
 
     function cancelGrace() {
         if (graceTimer != null) {
@@ -35,18 +36,12 @@ export function createTaskManager({ graceMs = 3000, logger = defaultLogger } = {
                 keepaliveResolve();
             }
             keepaliveResolve = null;
+            carrierIsSync = false;
             logger.log('[tm] keepalive released');
         }, graceMs);
     }
 
-    function attach(event) {
-        const hasWork = workCount > 0;
-        const inGrace = graceTimer !== null;
-        if (!hasWork && !inGrace) {
-            logger.log('[tm] attach skipped: idle (no work, no grace)');
-            return;
-        }
-        cancelGrace();
+    function hopEvent(event) {
         const prevResolve = keepaliveResolve;
         const keepalivePromise = new Promise((r) => {
             keepaliveResolve = r;
@@ -55,12 +50,34 @@ export function createTaskManager({ graceMs = 3000, logger = defaultLogger } = {
         if (prevResolve) {
             prevResolve();
         }
+    }
+
+    function attach(event, isSync = false) {
+        const hasWork = workCount > 0;
+        const inGrace = graceTimer !== null;
+        if (!hasWork && !inGrace) {
+            logger.log('[tm] attach skipped: idle (no work, no grace)');
+            return;
+        }
+        cancelGrace();
+        // Sync always takes the carrier (upgrade or sideways). An existing sync
+        // carrier (~5min budget) is preserved against short-budget events (~30s).
+        // Otherwise, hop.
+        if (isSync) {
+            hopEvent(event);
+            carrierIsSync = true;
+            logger.log(`[tm] hopped to sync; work=${workCount}, inGrace=${inGrace}`);
+        } else if (carrierIsSync) {
+            logger.log('[tm] hop skipped: preserving sync carrier');
+        } else {
+            hopEvent(event);
+            logger.log(`[tm] hopped; work=${workCount}, inGrace=${inGrace}`);
+        }
         if (!hasWork) {
             // In grace: restart the clock so this event's attach keeps the
             // keepalive alive for another graceMs instead of resolving stale.
             scheduleRelease();
         }
-        logger.log(`[tm] attached; hopped=${!!prevResolve}, work=${workCount}, inGrace=${inGrace}`);
     }
 
     function hold() {
