@@ -26,11 +26,11 @@ const IDENTITY_FIELDS = [
 
 /**
  * Telemetry executor — batches verification events and ships them to the
- * manifest-declared endpoint. Exposes two methods to the security-processor
- * facade: `scheduleTelemetrySend()` (fire-and-forget trigger that ensures a
- * send loop is running) and `hasPendingTelemetry()` (awaits any in-flight send
- * and reports whether retry is still needed — used by the sync handler to
- * decide whether to throw).
+ * manifest-declared endpoint. Exposes `scheduleSend(trigger)` to the
+ * security-processor facade. `trigger='regular'` gates on local backoff and
+ * is fire-and-forget; `trigger='sync'` ignores local backoff (the browser's
+ * sync wake-up IS the attempt time) and is awaitable so the sync handler
+ * can throw to keep Chromium's retry ticket alive.
  *
  * @param {object} deps
  * @param {object} deps.swContext
@@ -41,8 +41,8 @@ const IDENTITY_FIELDS = [
 export function createTelemetryExecutor({ swContext, appStore, manifestService, taskManager }) {
     const { telemetryBatchesStore, verificationResultsStore, settingsStore } = appStore;
 
-    let scheduleRequest = false;
-    let pendingTelemetryPromise = null;
+    let sendScheduled = false;
+    let pendingSendPromise = null;
     let cachedMaxEventsBytes = null;
 
     function renderEnvelope({ appVersion, installationTime, origin, userAgent, sentAt, events }) {
@@ -270,15 +270,10 @@ export function createTelemetryExecutor({ swContext, appStore, manifestService, 
         logger.log(
             `sendEvents: POST failed, attempt=${next.attemptNumber}, next retry at ${new Date(next.nextAttemptAt).toISOString()}`
         );
-        try {
-            await swContext.registerSync(SYNC_TAG_REPORT_EVENTS);
-        } catch (regErr) {
-            logger.warn('sync.register failed; next fetch/ping drives retry:', regErr);
-        }
         return false;
     }
 
-    async function sendLoop() {
+    async function sendLoop(isSyncAttempt = false) {
         try {
             const { appVersion, telemetryEndpoints } = await manifestService.resolveManifest();
             const endpoint = telemetryEndpoints?.events;
@@ -286,16 +281,27 @@ export function createTelemetryExecutor({ swContext, appStore, manifestService, 
                 logger.log('sendLoop: no events endpoint; exiting');
                 return false;
             }
-            const state = await telemetryBatchesStore.getRetryState();
-            if (Date.now() < state.nextAttemptAt) {
-                logger.log(
-                    `sendLoop: backoff active, +${state.nextAttemptAt - Date.now()}ms to go`
-                );
-                return false;
+
+            if (!isSyncAttempt) {
+                const state = await telemetryBatchesStore.getRetryState();
+                const delta = state.nextAttemptAt - Date.now();
+                if (delta > 0) {
+                    logger.log(`sendLoop: backoff active, +${delta}ms to go`);
+                    return false;
+                }
             }
+            // Upscale to sync: insurance in case this cycle doesn't deliver.
+            // Noop on browsers without Background Sync. Idempotent per tag, so
+            // calling inside a firing sync event is harmless.
+            try {
+                await swContext.registerSync(SYNC_TAG_REPORT_EVENTS);
+            } catch (err) {
+                logger.warn('sync.register failed:', err);
+            }
+
             const maxEventsBytes = await getMaxEventsBytes();
             const selectVerdicts = makeSelectVerdicts(maxEventsBytes);
-            scheduleRequest = false;
+            sendScheduled = false;
             await telemetryBatchesStore.purge(Date.now() - SENT_RETENTION_MS);
             let pendingBatches = await telemetryBatchesStore.getPending();
             while (true) {
@@ -322,15 +328,15 @@ export function createTelemetryExecutor({ swContext, appStore, manifestService, 
                         return true;
                     }
                     pendingBatches = await telemetryBatchesStore.getPending();
-                    scheduleRequest = false;
+                    sendScheduled = false;
                     continue;
                 }
                 if (pendingBatches.length > 0) {
                     continue;
                 }
-                // pendingBatches empty: exit unless a late scheduleTelemetrySend raced in
-                if (scheduleRequest) {
-                    scheduleRequest = false;
+                // pendingBatches empty: exit unless a late scheduleSend raced in
+                if (sendScheduled) {
+                    sendScheduled = false;
                     continue;
                 }
                 logger.log('sendLoop: nothing waiting; nothing to send');
@@ -342,23 +348,51 @@ export function createTelemetryExecutor({ swContext, appStore, manifestService, 
         }
     }
 
-    function scheduleTelemetrySend() {
-        scheduleRequest = true;
-        if (!pendingTelemetryPromise) {
-            pendingTelemetryPromise = taskManager.run(() =>
-                sendLoop().finally(() => {
-                    pendingTelemetryPromise = null;
-                })
+    /**
+     * @param {boolean} isSyncAttempt
+     */
+    function scheduleTelemetrySend(isSyncAttempt) {
+        sendScheduled = true;
+        if (!pendingSendPromise) {
+            pendingSendPromise = taskManager.run(() =>
+                sendLoop(isSyncAttempt)
+                    .then((stillPending) => ({ stillPending, wasSyncAttempt: isSyncAttempt }))
+                    .finally(() => {
+                        pendingSendPromise = null;
+                    })
             );
         }
+        return pendingSendPromise;
     }
 
-    async function hasPendingTelemetry() {
-        if (!pendingTelemetryPromise) {
-            return false;
+    /**
+     * Fire-and-forget regular trigger. Gates on local backoff inside the
+     * cycle; production callers don't await the returned promise.
+     *
+     */
+    function scheduleSend() {
+        scheduleTelemetrySend(false);
+    }
+
+    /**
+     * Sync-handler entry point. Ensures at least one bypass cycle actually
+     * ran (not just a coalesced regular no-op) and returns whether work
+     * remains undelivered so the caller can throw to keep Chromium's retry
+     * ticket alive.
+     *
+     * @returns {Promise<boolean>} true if work remains undelivered
+     */
+    async function scheduleSyncSend() {
+        if (pendingSendPromise) {
+            const outcome = await pendingSendPromise;
+            if (outcome.wasSyncAttempt) {
+                return outcome.stillPending;
+            }
         }
-        return pendingTelemetryPromise;
+        // we want at least one sync attempt
+        const outcome = await scheduleTelemetrySend(true);
+        return outcome.stillPending;
     }
 
-    return { scheduleTelemetrySend, hasPendingTelemetry };
+    return { scheduleSend, scheduleSyncSend };
 }

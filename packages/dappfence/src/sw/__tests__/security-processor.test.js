@@ -15,8 +15,8 @@ function createProcessor({ db = createInMemoryDb() } = {}) {
         verificationResultsStore: createVerificationResultsStore(db),
     };
     const telemetryExecutor = {
-        scheduleTelemetrySend: () => {},
-        hasPendingTelemetry: async () => false,
+        scheduleSend: () => {},
+        scheduleSyncSend: async () => false,
     };
     const taskManager = {
         attach: () => {},
