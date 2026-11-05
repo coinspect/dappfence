@@ -301,4 +301,59 @@ describe('extractInlineAttrHashes', () => {
         );
         await expect(extractInlineAttrHashes(p)).rejects.toThrow('unsupported charset');
     });
+
+    it('decodes named HTML entities before hashing (quot, amp, lt, gt, apos)', async () => {
+        const p = await writeHtml(
+            '<html><body>' +
+                `<button onclick="f('&quot;x&quot;')">a</button>` +
+                `<button onclick="g('&amp;')">b</button>` +
+                `<button onclick="h(a&lt;b&amp;&amp;c&gt;d)">c</button>` +
+                `<button onclick="i('&apos;y&apos;')">d</button>` +
+                '</body></html>'
+        );
+        const { attrs, warnings } = await extractInlineAttrHashes(p);
+        expect(warnings).toEqual([]);
+        expect(attrs.map((a) => a.value)).toEqual([
+            `f('"x"')`,
+            `g('&')`,
+            'h(a<b&&c>d)',
+            `i(''y'')`,
+        ]);
+        expect(attrs[0].hash).toBe(calculateStringHash(`f('"x"')`));
+    });
+
+    it('decodes decimal and hex numeric character references', async () => {
+        const p = await writeHtml(
+            '<html><body>' +
+                `<button onclick="f('&#34;a&#34;')">dec</button>` +
+                `<button onclick="g('&#x22;b&#x22;')">hex</button>` +
+                '</body></html>'
+        );
+        const { attrs, warnings } = await extractInlineAttrHashes(p);
+        expect(warnings).toEqual([]);
+        expect(attrs[0].value).toBe(`f('"a"')`);
+        expect(attrs[1].value).toBe(`g('"b"')`);
+    });
+
+    it('deduplicates on the decoded value, not the raw source', async () => {
+        const p = await writeHtml(
+            '<html><body>' +
+                `<button onclick='f("x")'>a</button>` +
+                `<button onclick="f(&quot;x&quot;)">b</button>` +
+                '</body></html>'
+        );
+        const { attrs } = await extractInlineAttrHashes(p);
+        expect(attrs).toHaveLength(1);
+        expect(attrs[0].value).toBe('f("x")');
+    });
+
+    it('warns and leaves source unchanged for unrecognized named entities', async () => {
+        const p = await writeHtml(
+            '<html><body><button onclick="f(&nbsp;x)">y</button></body></html>'
+        );
+        const { attrs, warnings } = await extractInlineAttrHashes(p);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('&nbsp;');
+        expect(attrs[0].value).toBe('f(&nbsp;x)');
+    });
 });
