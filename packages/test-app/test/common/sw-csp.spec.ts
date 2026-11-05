@@ -339,6 +339,42 @@ test.describe('CSP injection', () => {
         ]);
     });
 
+    test('report-uri from manifest.csp.reportUri is emitted as the last directive', async ({
+        page,
+        swHelper,
+    }) => {
+        await swHelper.interceptAndModifyPageContent({
+            pattern: '/csp-test-denied',
+            formula: 'remap',
+            args: { file: 'index.html' },
+        });
+        const response = await page.goto('/csp-test-denied');
+        expect(response.fromServiceWorker()).toBeTruthy();
+        const headers = response.headers();
+
+        // Enforce header carries the report-uri; no Report-Only header is emitted
+        // since csp-report-manifest.json does not set csp.reportOnly.
+        const csp = headers['content-security-policy'];
+        expect(csp).toBeDefined();
+        expect(headers['content-security-policy-report-only']).toBeUndefined();
+
+        // Kept last so consumers extracting the URI with a `\S+`-style regex
+        // don't accidentally capture the `; ` separator and a following directive.
+        const directives = csp.split('; ');
+        expect(directives[directives.length - 1]).toBe(`report-uri ${REPORT_URI}`);
+    });
+});
+
+test.describe('CSP injection (no csp.pages entries)', () => {
+    test.beforeEach(async ({ page, swHelper }) => {
+        // Bootstrap under no-csp-entries-manifest.json — csp.pages is empty,
+        // so paths without an explicit entry get a nonce-only CSP that blocks
+        // every inline script. Exercises the forcing-function property.
+        await page.goto('/no-csp-entries.html');
+        await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+        await swHelper.waitForServiceWorkerActivation();
+    });
+
     test('all inline scripts are blocked when the manifest has no hashes for the page', async ({
         page,
         swHelper,
@@ -370,9 +406,8 @@ test.describe('CSP injection', () => {
     test('CSP is always emitted on document navigations, even without a csp.pages entry', async ({
         page,
     }) => {
-        // Navigate to '/' → resolves to '/index.html'. The manifest has no
-        // csp.pages entry for '/index.html' (only '/csp-test-allowed'), so the
-        // CSP header emits with just the nonce + '*' — no inline script hashes.
+        // The no-csp-entries manifest has csp.pages: {}, so no path matches —
+        // CSP header emits with just the nonce + '*', no inline script hashes.
         // All inline scripts on the page are blocked by the browser as a result;
         // this is the forcing-function property (see docs/csp-injection-strategy.md).
         const response = await page.goto('/');
@@ -396,31 +431,6 @@ test.describe('CSP injection', () => {
         expect(result.cspTimer).toBeUndefined();
         expect(result.rscChunks).toBeUndefined();
         expect(result.bypassExecuted).toBeUndefined();
-    });
-
-    test('report-uri from manifest.csp.reportUri is emitted as the last directive', async ({
-        page,
-        swHelper,
-    }) => {
-        await swHelper.interceptAndModifyPageContent({
-            pattern: '/csp-test-denied',
-            formula: 'remap',
-            args: { file: 'index.html' },
-        });
-        const response = await page.goto('/csp-test-denied');
-        expect(response.fromServiceWorker()).toBeTruthy();
-        const headers = response.headers();
-
-        // Enforce header carries the report-uri; no Report-Only header is emitted
-        // since csp-report-manifest.json does not set csp.reportOnly.
-        const csp = headers['content-security-policy'];
-        expect(csp).toBeDefined();
-        expect(headers['content-security-policy-report-only']).toBeUndefined();
-
-        // Kept last so consumers extracting the URI with a `\S+`-style regex
-        // don't accidentally capture the `; ` separator and a following directive.
-        const directives = csp.split('; ');
-        expect(directives[directives.length - 1]).toBe(`report-uri ${REPORT_URI}`);
     });
 });
 

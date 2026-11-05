@@ -303,16 +303,23 @@ export function startServer({
     function saveTestResponse(
         testParams,
         result,
-        filePath = '',
-        extraHeaders = {},
-        intercept = null
+        statusCode,
+        { filePath = '', extraHeaders = {}, intercept = null } = {}
     ) {
         const params = testParameters[testParams.testKey];
         if (params && params.saveResponses) {
             if (!params.testResponse) {
                 params.testResponse = [];
             }
-            params.testResponse.push({ ...testParams, filePath, result, extraHeaders, intercept });
+            params.testResponse.push({
+                ...testParams,
+                filePath,
+                result,
+                extraHeaders,
+                intercept,
+                statusCode,
+                receivedAt: Date.now(),
+            });
         }
     }
 
@@ -392,7 +399,7 @@ export function startServer({
     function serveFile(filePath, res, req, testParams) {
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                saveTestResponse(testParams, 'error reading file', filePath);
+                saveTestResponse(testParams, 'error reading file', 404, { filePath });
                 logRequestToConsole(
                     req,
                     testParams,
@@ -429,7 +436,8 @@ export function startServer({
               )
             : data;
 
-        saveTestResponse(testParams, result, filePath, extraHeaders, intercept);
+        const statusCode = intercept?.statusCode ?? 200;
+        saveTestResponse(testParams, result, statusCode, { filePath, extraHeaders, intercept });
         logRequestToConsole(
             req,
             testParams,
@@ -440,7 +448,7 @@ export function startServer({
             res,
             resData,
             intercept?.args?.steps ? intercept.args : null,
-            intercept?.statusCode ?? 200,
+            statusCode,
             (intercept && intercept.contentType) || mimeType || 'application/octet-stream',
             extraHeaders
         );
@@ -628,7 +636,7 @@ export function startServer({
             }
         }
 
-        saveTestResponse(testParams, 'file not found');
+        saveTestResponse(testParams, 'file not found', 404);
         logRequestToConsole(
             req,
             testParams,
