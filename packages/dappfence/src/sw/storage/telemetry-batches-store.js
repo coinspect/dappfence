@@ -7,7 +7,7 @@
  * indexes.
  */
 
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { VERIFICATION_STATUS_BY_NAME } from '../../core/constants.js';
 import { createLogger } from '../../core/logger.js';
 
 /** @typedef {import('./verification-results-store.js').VerdictRow} VerdictRow */
@@ -36,13 +36,6 @@ const logger = createLogger();
 const PURGE_RATE_LIMIT_MS = 60_000;
 const EVENTS_RETRY_STATE_KEY = 'EVENTS_RETRY_STATE_KEY';
 const EVENTS_RETRY_DEFAULT = { attemptNumber: 0, nextAttemptAt: 0 };
-
-/** @type {Set<string>} */
-const VIOLATION_STATUSES = new Set(
-    Object.values(VERIFICATION_STATUS)
-        .filter((v) => v.isViolation)
-        .map((v) => v.description)
-);
 
 /**
  * @param {import('./indexeddb.js').DbHandle} db
@@ -111,7 +104,9 @@ export function createTelemetryBatchesStore(db) {
                     const batch = {
                         id: crypto.randomUUID(),
                         createdAt: Date.now(),
-                        priority: claimedVerdicts.some((v) => VIOLATION_STATUSES.has(v.status)),
+                        priority: claimedVerdicts.some(
+                            (v) => VERIFICATION_STATUS_BY_NAME.get(v.status)?.isViolation
+                        ),
                     };
                     await telemetryBatches.add(batch);
                     for (const verdict of claimedVerdicts) {
