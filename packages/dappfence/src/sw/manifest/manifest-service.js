@@ -28,18 +28,38 @@ const getEffectiveMode = (manifest) =>
  */
 export const createManifestService = (deps) => {
     const manifestLoader = createManifestLoader(deps);
+    const { settingsStore } = deps.appStore;
+    const { config } = deps;
     const strategy = isFeatureEnabled('enforce_content_rules')
         ? { verifyAgainstManifest: securityVerifyAgainstManifest, isAllowed: isRequestAllowed }
         : { verifyAgainstManifest: basicVerifyAgainstManifest, isAllowed: () => false };
     const verifier = createVerifier(deps, manifestLoader, strategy);
 
+    const resolveTelemetryEndpoints = async (manifest) => {
+        const t = manifest?.telemetry ?? {};
+        const installationTime = await settingsStore.getInstallationTime();
+        const range = t.logsInstallationRange;
+        const inRange =
+            (range?.from == null || installationTime >= range.from) &&
+            (range?.to == null || installationTime <= range.to);
+        const logsSampledIn = inRange && installationTime % t.logsFilter === 0;
+        return {
+            // Manifest wins; config.{events,logs}Endpoint is bootstrap fallback.
+            events: t.eventsEndpoint ?? config.eventsEndpoint ?? null,
+            logs: logsSampledIn ? t.logsEndpoint ?? config.logsEndpoint ?? null : null,
+        };
+    };
+
     const resolveManifest = async () => {
         const latestManifest = await manifestLoader.resolveLatest();
         const mode = getEffectiveMode(latestManifest?.manifest);
+        const telemetryEndpoints = await resolveTelemetryEndpoints(latestManifest?.manifest);
         logger.log(`Resolved manifest ${latestManifest?.appVersion} with mode ${mode}`);
 
         return {
             mode,
+            appVersion: latestManifest?.appVersion,
+            telemetryEndpoints,
             prepareRequest: (request) => verifier.prepareRequest(request, latestManifest),
             verifyResponse: (req, response, clientId = null) =>
                 verifier.verifyResponse(req, response, clientId, latestManifest),

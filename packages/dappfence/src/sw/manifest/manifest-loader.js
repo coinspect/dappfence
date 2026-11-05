@@ -34,6 +34,11 @@ import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger();
 
+// Logs sampling default when the manifest doesn't specify (or is missing).
+// 1-in-1000 — conservative baseline so a stray logsEndpoint without an
+// explicit logsFilter doesn't fan logs out to every install.
+export const DEFAULT_LOGS_FILTER = 1000;
+
 // Reads a build-time flag with a caller-supplied default. Not `isFeatureEnabled`
 // because it collapses "missing" and "explicitly false" — the tri-state needs both.
 const flagOrDefault = (name, defaultValue) => {
@@ -156,6 +161,33 @@ export const normalizeManifestData = (manifestData) => {
                 : {},
     };
 
+    const rawTelemetry =
+        manifestData?.telemetry && typeof manifestData.telemetry === 'object'
+            ? manifestData.telemetry
+            : {};
+    const telemetry = {
+        // Null = channel disabled at manifest level; services.js config may
+        // still supply a bootstrap fallback.
+        eventsEndpoint:
+            typeof rawTelemetry.eventsEndpoint === 'string' ? rawTelemetry.eventsEndpoint : null,
+        logsEndpoint:
+            typeof rawTelemetry.logsEndpoint === 'string' ? rawTelemetry.logsEndpoint : null,
+        // 1-in-N sampling for logs; `installationTime % logsFilter === 0` opts in.
+        // Non-positive / noninteger values collapse to DEFAULT_LOGS_FILTER.
+        logsFilter:
+            Number.isInteger(rawTelemetry.logsFilter) && rawTelemetry.logsFilter >= 1
+                ? rawTelemetry.logsFilter
+                : DEFAULT_LOGS_FILTER,
+        logsInstallationRange: {
+            from: Number.isInteger(rawTelemetry.logsInstallationRange?.from)
+                ? rawTelemetry.logsInstallationRange.from
+                : null,
+            to: Number.isInteger(rawTelemetry.logsInstallationRange?.to)
+                ? rawTelemetry.logsInstallationRange.to
+                : null,
+        },
+    };
+
     return {
         ...(typeof manifestData === 'object' && manifestData !== null ? manifestData : {}),
         files: normalizedFiles,
@@ -164,6 +196,7 @@ export const normalizeManifestData = (manifestData) => {
         redirects: normalizeRedirects(manifestData?.redirects),
         mode: manifestData?.mode ?? MODE.REPORTING,
         csp,
+        telemetry,
     };
 };
 
