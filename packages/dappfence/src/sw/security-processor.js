@@ -161,7 +161,7 @@ export function createSecurityProcessor({ appStore, telemetryExecutor, taskManag
             if (event) {
                 taskManager.attach(event);
             }
-            telemetryExecutor.scheduleTelemetrySend();
+            telemetryExecutor.scheduleSend();
         } catch (err) {
             logger.error('handleReport failed:', err);
         }
@@ -197,9 +197,8 @@ export function createSecurityProcessor({ appStore, telemetryExecutor, taskManag
     async function reportOnSync(/** @type {SyncEvent} */ event) {
         logger.log(`reportOnSync lastChance=${event?.lastChance}`);
         await safely(flushPending, (e) => logger.error('flushPending failed:', e));
-        taskManager.attach(event);
-        telemetryExecutor.scheduleTelemetrySend();
-        if (await telemetryExecutor.hasPendingTelemetry()) {
+        taskManager.attach(event, true);
+        if (await telemetryExecutor.scheduleSyncSend()) {
             throw new Error(
                 'sync drain: ship failed; rejecting waitUntil to schedule backoff + lastChance'
             );
