@@ -52,6 +52,44 @@ describe('createDatabase', () => {
             await db.write(['settings'], ({ settings }) => settings.put('v', 't'));
             expect(idb._trace.opens).toBe(1);
         });
+
+        it('re-opens after onclose invalidates the cached handle', async () => {
+            const idb = makeMockIDB();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db.read(['manifests'], ({ manifests }) => manifests.get('a'));
+            expect(idb._trace.opens).toBe(1);
+            // Browser fires close on the active handle (SW termination / forced close).
+            idb._db._fireClose();
+            // Next tx: wrapper should see the cached promise is nulled, re-open.
+            await db.read(['manifests'], ({ manifests }) => manifests.get('b'));
+            expect(idb._trace.opens).toBe(2);
+        });
+
+        it('re-opens after onversionchange invalidates the cached handle', async () => {
+            const idb = makeMockIDB();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db.read(['manifests'], ({ manifests }) => manifests.get('a'));
+            expect(idb._trace.opens).toBe(1);
+            // Another SW opens the DB at a higher version → versionchange fires.
+            idb._db._fireVersionChange();
+            await db.read(['manifests'], ({ manifests }) => manifests.get('b'));
+            expect(idb._trace.opens).toBe(2);
+        });
+
+        it('retries once when a tx throws InvalidStateError mid-flight', async () => {
+            const idb = makeMockIDB();
+            const db = createDatabase(idb, TEST_CONFIG);
+            await db.read(['manifests'], ({ manifests }) => manifests.get('a'));
+            expect(idb._trace.opens).toBe(1);
+            // Simulate the race: connection is in cache but the handle has gone
+            // bad without the wrapper being notified (dbClosed=true, no onclose
+            // event dispatched to invalidate the cache). First transaction()
+            // call inside runTx throws InvalidStateError; tx() catches, clears
+            // the cache, re-opens, re-runs — second attempt succeeds.
+            idb._db.close();
+            await db.read(['manifests'], ({ manifests }) => manifests.get('b'));
+            expect(idb._trace.opens).toBe(2);
+        });
     });
 
     describe('tx shape', () => {

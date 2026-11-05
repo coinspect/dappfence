@@ -63,7 +63,7 @@ describe('createAppStore', () => {
                     'manifests',
                     'activeBlocks',
                     'settings',
-                    'verificationResults',
+                    'verificationResults2',
                 ])
             );
         });
@@ -110,7 +110,7 @@ describe('schema evolution', () => {
     it('current SCHEMA does not clash with any historical shape at the same physical name', () => {
         for (const [v, historical] of Object.entries(HISTORICAL_SCHEMAS)) {
             if (Number(v) === VERSION) {
-                continue; // same as current — nothing to compare
+                continue;
             }
             for (const [logical, currentConfig] of Object.entries(SCHEMA)) {
                 const currentPhysical = currentConfig.objectStore ?? logical;
