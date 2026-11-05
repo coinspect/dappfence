@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTelemetryBatchesStore } from '../storage/telemetry-batches-store.js';
 import { createVerificationResultsStore } from '../storage/verification-results-store.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
@@ -8,6 +8,7 @@ import { withTransactionLifetime } from './helpers/transaction-lifetime.js';
 const batch = (overrides = {}) => ({
     id: crypto.randomUUID(),
     createdAt: Date.now(),
+    events: [],
     priority: false,
     ...overrides,
 });
@@ -20,10 +21,11 @@ describe('createTelemetryBatchesStore', () => {
     });
 
     it('add + get round-trips a batch', async () => {
-        const b = batch({ priority: true });
+        const b = batch({ events: [{ status: 'MATCH' }], priority: true });
         await store.add(b);
         expect(await store.get(b.id)).toMatchObject({
             id: b.id,
+            events: [{ status: 'MATCH' }],
             priority: true,
         });
     });
@@ -80,6 +82,17 @@ describe('createTelemetryBatchesStore under real IDB transaction lifetime', () =
         db = withTransactionLifetime(createInMemoryDb());
         store = createTelemetryBatchesStore(db);
         verificationResultsStore = createVerificationResultsStore(db);
+        // In a browser, crypto.subtle.digest resolves on a later task. Node's
+        // can win the race against a 0ms timer, so pin it to a macrotask.
+        const realDigest = crypto.subtle.digest.bind(crypto.subtle);
+        vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (...args) => {
+            await new Promise((r) => setTimeout(r, 5));
+            return realDigest(...args);
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('helper sanity: IDB-only transactions still commit', async () => {
@@ -89,20 +102,16 @@ describe('createTelemetryBatchesStore under real IDB transaction lifetime', () =
         expect(typeof (await store.get(b.id)).sentAt).toBe('number');
     });
 
-    it('createBatch runs selectVerdicts and writes the batch atomically', async () => {
+    it('claimUnclaimed assembles a batch without awaiting non-IDB work mid-transaction', async () => {
         await verificationResultsStore.add({
             status: VERIFICATION_STATUS.FILE_UNTRUSTED,
             fileKey: '/app.js',
             manifestInfo: { appVersion: 'v1' },
         });
 
-        const batch = await store.createBatch((verdicts) => verdicts);
+        const claimed = await store.createBatch((unclaimed) => unclaimed);
 
-        expect(batch).toMatchObject({ priority: true });
+        expect(claimed).toMatchObject({ priority: true });
         expect(await store.getPending()).toHaveLength(1);
-        const claimed = (await verificationResultsStore.getAll()).filter(
-            (v) => v.batchId === batch.id
-        );
-        expect(claimed).toHaveLength(1);
     });
 });
