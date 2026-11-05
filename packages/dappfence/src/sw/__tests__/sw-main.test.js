@@ -107,11 +107,27 @@ describe('initializeServiceWorker', () => {
             reportWaiter = p;
         });
         mockServices.fetchHandler.mockResolvedValue(new Response('ok'));
-        await fetchCallback({ respondWith, waitUntil }, vi.fn());
+        await fetchCallback(
+            { request: { destination: 'document' }, respondWith, waitUntil },
+            vi.fn()
+        );
         await reportWaiter;
         expect(respondWith).toHaveBeenCalled();
         expect(waitUntil).toHaveBeenCalled();
         expect(mockServices.securityProcessor.reportAfterFetch).toHaveBeenCalled();
+    });
+
+    it('fetch listener skips respondWith when destination is report', () => {
+        initializeServiceWorker();
+        const fetchCallback = mockServices.hookService.addEventListener.mock.calls.find(
+            (c) => c[0] === 'fetch'
+        )[1];
+        const respondWith = vi.fn();
+        const waitUntil = vi.fn();
+        fetchCallback({ request: { destination: 'report' }, respondWith, waitUntil }, vi.fn());
+        expect(respondWith).not.toHaveBeenCalled();
+        expect(waitUntil).not.toHaveBeenCalled();
+        expect(mockServices.fetchHandler).not.toHaveBeenCalled();
     });
 
     it('install handler callback calls event.waitUntil with installHandler result', async () => {

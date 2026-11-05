@@ -23,6 +23,12 @@ export function initializeServiceWorker() {
     hookService.installHooks();
 
     hookService.addEventListener('fetch', (event, callChildHandlers) => {
+        // Report fetches (CSP/Reporting API) arrive with no-cors + redirect:error,
+        // which the public fetch() API rejects — so we can't forward them.
+        // Skipping respondWith hand control back to the browser's native fetch.
+        if (event.request.destination === 'report') {
+            return;
+        }
         logger.log('Security SW fetch');
         const fetchPromise = fetchHandler(event, callChildHandlers);
         event.respondWith(fetchPromise);
