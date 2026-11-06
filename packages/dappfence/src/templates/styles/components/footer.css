@@ -1,0 +1,29 @@
+/* DappFence branding footer ("Protected by" + logo), shared by every page via
+   partials/footer.html. The logo carries its own dark badge, so it reads on
+   both the light and the dark theme. */
+
+.df-footer {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--df-text-muted);
+}
+
+/* Wraps the SVG from assets/logo.svg, included as-is. CSS beats the file's
+   width/height attributes; the viewBox keeps the aspect ratio. */
+.df-logo {
+    display: block;
+    flex-shrink: 0;
+}
+
+.df-iso:has(+ .df-logo){
+    margin-right: -12px;
+}
+
+.df-logo svg {
+    display: block;
+    width: auto;
+    height: var(--df-logo-height, 28px);
+}
