@@ -19,14 +19,17 @@ src/templates/
     emergency-panel.html
   partials/                   HTML fragments shared by pages
     head.html                 <meta> tags, <title>{{title}}, the styles slot
-    footer.html               "Protected by DappFence" + timestamp
+    footer.html               "Protected by" + the DappFence logo; every page includes it
     block-templates.html      <template> markup for the warning page's block cards
+  assets/
+    logo.svg                  DappFence logo, the designer's export as-is; footer.html inlines it
   styles/
     tokens.css                --df-* design tokens (colour, radius, font)
     themes.css                token overrides (.df-theme-dark)
     base.css                  reset and body defaults
     components/               one file per reusable component
-      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  info-row.css
+      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  footer.css
+      info-row.css
     pages/                    one entry stylesheet per page
       security-warning.css
       emergency-panel.css
@@ -187,15 +190,16 @@ by ID.
 
 ### Component reference
 
-| File             | Classes                                                                                                                |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__branding`, `__timestamp` |
-| `button.css`     | `.df-btn`, `--danger`                                                                                                  |
-| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)                           |
-| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                                           |
-| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                                    |
-| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                                  |
-| `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                                 |
+| File             | Classes                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__timestamp` |
+| `button.css`     | `.df-btn`, `--danger`                                                                                    |
+| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)             |
+| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                             |
+| `footer.css`     | `.df-footer`, `__label`, `.df-logo` (height via `--df-logo-height`, default 28px)                        |
+| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                      |
+| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                    |
+| `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                   |
 
 ## Page-specific constraints
 
@@ -314,6 +318,10 @@ Edit `styles/tokens.css`. Every component reads the token.
 
 1. Create `partials/<name>.html`. Use `{{key}}` for anything the including page should supply.
 2. Include it: `<!-- @include ../partials/<name>.html key="value" -->`.
+
+An `.svg` can be included the same way (`<!-- @include ../assets/logo.svg -->`): it's inlined as
+markup, minus its `<?xml ?>` declaration and comments. Its `<style>` and `id`s land in the page
+as-is, so include each SVG at most once per page.
 
 ### Add a theme
 
