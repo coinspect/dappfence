@@ -31,6 +31,17 @@ describe('expandIncludes', () => {
         expect(expandIncludes(page, root)).toBe('<div>\n    <p>one</p>\n    <p>two</p>\n</div>\n');
     });
 
+    it('inlines an .svg without its XML declaration or comments', () => {
+        write(
+            'logo.svg',
+            '<?xml version="1.0" encoding="UTF-8"?>\n<svg viewBox="0 0 1 1">\n  <!-- Generator: x -->\n  <path d="M0 0"/>\n</svg>\n'
+        );
+        const page = write('page.html', '<span>\n    <!-- @include logo.svg -->\n</span>\n');
+        expect(expandIncludes(page, root)).toBe(
+            '<span>\n    <svg viewBox="0 0 1 1">\n      <path d="M0 0"/>\n    </svg>\n</span>\n'
+        );
+    });
+
     it('fills {{key}} placeholders from include attributes', () => {
         write('head.html', '<title>{{title}}</title>');
         const page = write('page.html', '<!-- @include head.html title="Hi there" -->');
