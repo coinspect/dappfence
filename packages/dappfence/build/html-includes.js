@@ -14,6 +14,8 @@ const PLACEHOLDER_PATTERN = /\{\{\s*([\w-]+)\s*\}\}/g;
  * - Attributes fill `{{key}}` placeholders in the included file only; a
  *   placeholder without a value is a build error.
  * - Included lines are re-indented to the directive's indentation.
+ * - An `.svg` file is inlined as markup, minus its `<?xml ?>` declaration and
+ *   comments, so a designer's export can be included unedited.
  *
  * Pure string work with no clock or environment input, so the output depends
  * only on the source files (release builds must reproduce byte-for-byte).
@@ -44,6 +46,10 @@ function expand(file, root, onFile, stack, values) {
         throw new Error(`[html-includes] cannot read ${file}${from}: ${err.message}`);
     }
 
+    if (file.endsWith('.svg')) {
+        source = inlineSvg(source);
+    }
+
     const filled = source.replace(PLACEHOLDER_PATTERN, (_match, key) => {
         if (!(key in values)) {
             throw new Error(`[html-includes] ${file}: no value for {{${key}}}`);
@@ -68,6 +74,24 @@ function expand(file, root, onFile, stack, values) {
             .map((line) => (line ? indent + line : line))
             .join('\n');
     });
+}
+
+/**
+ * Turn a standalone SVG file into markup that can sit inside an HTML page:
+ * drop the XML declaration (an HTML parser turns it into a bogus comment) and
+ * editor comments such as Illustrator's "Generator" line.
+ *
+ * @param {string} source
+ */
+function inlineSvg(source) {
+    return (
+        source
+            .replace(/<\?xml[^>]*\?>/g, '')
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .split('\n')
+            .filter((line) => line.trim())
+            .join('\n') + '\n'
+    );
 }
 
 /**
