@@ -38,6 +38,7 @@ import {
     resolveContained,
     normalizeBase,
 } from '@dappfence/manifest-tools/manifest';
+import { loadMessages } from '@dappfence/manifest-tools/messages';
 
 const resolveDappfenceJsPath = (scriptSrc) =>
     fileURLToPath(
@@ -100,6 +101,8 @@ export default function dappfence(options = {}) {
     let resolvedOutDir;
     // Normalized base path (e.g. '/my-app'); empty string when site is at root.
     let resolvedBase = '';
+    // Project root; the `messages` directory is resolved against it.
+    let resolvedRoot = process.cwd();
 
     return {
         name: '@dappfence/vite',
@@ -150,6 +153,7 @@ export default function dappfence(options = {}) {
             }
 
             resolvedOutDir = path.resolve(config.root, config.build.outDir);
+            resolvedRoot = config.root;
             resolvedBase = normalizeBase(config.base ?? '/', '[@dappfence/vite]');
         },
 
@@ -230,6 +234,9 @@ export default function dappfence(options = {}) {
                 scriptHash: { [scriptSrcWebKey]: dappfenceScriptHash },
                 pathPrefix: resolvedBase,
                 csp: opts.csp,
+                ...(opts.messages && {
+                    messages: await loadMessages(resolvedRoot, opts.messages),
+                }),
             });
         },
     };

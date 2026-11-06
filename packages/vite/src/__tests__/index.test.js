@@ -175,6 +175,29 @@ describe('@dappfence/vite closeBundle', () => {
         expect(manifest.pay.files['/dappfence.js']).toBeTruthy();
     });
 
+    it('signs the `messages` directory into the manifest', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>hi</body></html>',
+            'dappfence-messages/es.json': JSON.stringify({ 'emergency.contact': 'Escribinos' }),
+        });
+        const plugin = dappfence({ secretKey: SECRET_KEY, messages: 'dappfence-messages' });
+        await runPlugin(plugin, outDir);
+
+        const manifest = JSON.parse(
+            await fs.readFile(path.join(outDir, 'integrity-manifest.json'), 'utf8')
+        );
+        expect(manifest.pay.messages).toEqual({ es: { 'emergency.contact': 'Escribinos' } });
+    });
+
+    it('fails the build on an unknown message key', async () => {
+        const outDir = await makeOutDir({
+            'index.html': '<html><head></head><body>hi</body></html>',
+            'dappfence-messages/es.json': JSON.stringify({ 'emergency.typo': 'x' }),
+        });
+        const plugin = dappfence({ secretKey: SECRET_KEY, messages: 'dappfence-messages' });
+        await expect(runPlugin(plugin, outDir)).rejects.toThrow(/emergency\.typo/);
+    });
+
     it('writes SPA-fallback routes, injects them, and hashes them under their web path', async () => {
         const outDir = await makeOutDir({
             'index.html': '<html><head></head><body>app</body></html>',

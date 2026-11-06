@@ -25,9 +25,30 @@ async function sendPendingMessages(pendingMessages, client) {
 
 /**
  * @param {object} swContext
+ * @param {object} [deps]
+ * @param {() => Promise<object | undefined>} [deps.getMessageOverrides] - `messages` of the
+ *        latest trusted manifest, sent to each ready client for its emergency panel
  */
-export function createMessageBroker(swContext) {
+export function createMessageBroker(
+    swContext,
+    { getMessageOverrides = async () => undefined } = {}
+) {
     const pendingMessages = new Map();
+
+    // The emergency panel shows after storage was wiped, when neither the SW
+    // nor the manifest may be left, so the client has to hold its text early.
+    async function sendMessageOverrides(clientId) {
+        try {
+            const overrides = await getMessageOverrides();
+            if (!overrides || Object.keys(overrides).length === 0) {
+                return;
+            }
+            const client = await swContext.getClient(clientId);
+            await client?.postMessage({ type: MSG.MESSAGES, overrides });
+        } catch (error) {
+            logger.error(`Failed to send message overrides to client ${clientId}:`, error);
+        }
+    }
 
     async function broadcastSecurityViolation() {
         try {
@@ -69,6 +90,7 @@ export function createMessageBroker(swContext) {
     }
 
     async function handleClientReady(clientId) {
+        await sendMessageOverrides(clientId);
         try {
             logger.log(`handleClientReady called with clientId: ${clientId}`);
 
