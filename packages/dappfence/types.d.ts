@@ -10,13 +10,22 @@ declare const __COMMIT__: string;
 declare const __BUILD_DATE__: string;
 declare const __NODE_VERSION__: string;
 
-// --- Vite ?raw and virtual-module imports ---
+// --- Vite ?raw / ?inline / ?template and virtual-module imports ---
 
 declare module '*.html?raw' {
     const content: string;
     export default content;
 }
 declare module '*.css?raw' {
+    const content: string;
+    export default content;
+}
+declare module '*.css?inline' {
+    const content: string;
+    export default content;
+}
+// Expanded by build/html-includes.js
+declare module '*.html?template' {
     const content: string;
     export default content;
 }

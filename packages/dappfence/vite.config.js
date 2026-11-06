@@ -2,10 +2,26 @@ import { defineConfig } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
+import htmlIncludes from './build/html-includes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig(({ mode }) => ({
+// Feature flags for a build mode. e2e tests hit a plain-HTTP dev server; the `test` block
+// overlays flags that would break under HTTP (e.g. upgrade-insecure-requests).
+function readFeatureFlags(mode) {
+    const flags = JSON.parse(readFileSync(resolve(__dirname, 'feature_flag.json'), 'utf-8'));
+    const modeFlags = { ...flags[mode] };
+    if (process.env.TEST === '1') {
+        Object.assign(modeFlags, flags.test);
+    }
+    return modeFlags;
+}
+
+// `vite serve` runs only the template preview app (preview/, see docs/templates.md).
+// Vitest also reports command 'serve', so it is excluded explicitly.
+const isTemplatePreview = (command) => command === 'serve' && !process.env.VITEST;
+
+export default defineConfig(({ mode, command }) => ({
     // Build configuration for single file output
     build: {
         // Output to src/ so the existing dev server can serve it
@@ -71,16 +87,27 @@ export default defineConfig(({ mode }) => ({
         __VERSION__: JSON.stringify(process.env.npm_package_version || '0.1.0'),
         __COMMIT__: JSON.stringify(process.env.COMMIT_HASH || 'not-for-release'),
         __DEV__: mode !== 'production',
+        // Builds substitute __FEATURES__ in renderChunk below; the preview has no chunks.
+        ...(isTemplatePreview(command) && {
+            __FEATURES__: JSON.stringify(readFeatureFlags(mode)),
+        }),
     },
 
     // Vite cache (avoid node_modules inside this package)
     cacheDir: resolve(__dirname, '../../node_modules/.vite'),
 
+    // Template preview server (npm run dev:templates). Listen on all interfaces:
+    // Vite's default is localhost only, which dev container port forwarding
+    // can't reach. strictPort fails loudly instead of moving to 5556.
+    server: { port: 5555, strictPort: true, host: true },
+
     // Unit tests (vitest)
     test: {
         root: __dirname,
-        include: ['src/**/*.test.js'],
+        include: ['src/**/*.test.js', 'build/**/*.test.js'],
         onConsoleLog: () => false, // Silence production logger output during tests
+        // Process template stylesheets so `?inline` imports return real CSS in tests
+        css: { include: [/src\/templates\//] },
         coverage: {
             provider: 'v8',
             all: true,
@@ -89,8 +116,24 @@ export default defineConfig(({ mode }) => ({
         },
     },
 
-    // Plugins (none needed - using built-in ?raw imports)
     plugins: [
+        // `*.html?template` imports: expands <!-- @include --> partials at build time
+        htmlIncludes({ root: resolve(__dirname, 'src/templates') }),
+        {
+            // The warning page's "Remove Site Lock" button POSTs here; there is
+            // no service worker in the preview to answer it.
+            name: 'template-preview-unblock-stub',
+            apply: 'serve',
+            configureServer(server) {
+                server.middlewares.use('/sw-api/site-unblock', (req, res, next) => {
+                    if (req.method !== 'POST') {
+                        return next();
+                    }
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end('{"success":true,"message":"preview unblocked"}');
+                });
+            },
+        },
         {
             name: 'watch-feature-flags',
             buildStart() {
@@ -100,17 +143,8 @@ export default defineConfig(({ mode }) => ({
                 if (!code.includes('__FEATURES__')) {
                     return null;
                 }
-                const flags = JSON.parse(
-                    readFileSync(resolve(__dirname, 'feature_flag.json'), 'utf-8')
-                );
-                // e2e tests hit a plain-HTTP dev server; the `test` block overlays
-                // flags that would break under HTTP (e.g. upgrade-insecure-requests).
-                const modeFlags = { ...flags[mode] };
-                if (process.env.TEST === '1') {
-                    Object.assign(modeFlags, flags.test);
-                }
                 return {
-                    code: code.replace(/__FEATURES__/g, JSON.stringify(modeFlags)),
+                    code: code.replace(/__FEATURES__/g, JSON.stringify(readFeatureFlags(mode))),
                     map: null,
                 };
             },

@@ -1,0 +1,130 @@
+/* Card: the centred panel every DappFence page is built around.
+   .df-card--raised  white panel with a coloured header (security warning)
+   .df-card--alert   bordered, padded panel (emergency panel) */
+
+.df-card {
+    width: 100%;
+    max-width: 620px;
+    margin: auto;
+    background: var(--df-surface);
+    border-radius: var(--df-radius);
+}
+
+.df-card--raised {
+    box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.35),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+    animation: df-slide-in 0.3s ease-out;
+}
+
+.df-card--alert {
+    max-width: 634px; /* 550px content + padding + border */
+    padding: 40px;
+    border: 2px solid var(--df-red-500);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+@keyframes df-slide-in {
+    from {
+        transform: translateY(16px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.df-card__header {
+    position: relative;
+    padding: 26px 24px 22px;
+    text-align: center;
+    color: white;
+    background: linear-gradient(135deg, var(--df-red-600), var(--df-red-700));
+    border-radius: var(--df-radius) var(--df-radius) 0 0;
+}
+.df-card__header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.df-card__icon {
+    font-size: 42px;
+    line-height: 1;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+.df-card__title {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.df-card__body {
+    padding: 24px 26px 22px;
+}
+
+.df-card__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 24px;
+    text-align: center;
+    background: var(--df-surface-soft);
+    border-top: 1px solid var(--df-border);
+    border-radius: 0 0 var(--df-radius) var(--df-radius);
+}
+
+.df-card__branding {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--df-text-muted);
+}
+
+.df-card__timestamp {
+    font-size: 11px;
+    font-family: var(--df-font-mono);
+    color: var(--df-text-subtle);
+}
+
+@media (max-width: 576px) {
+    .df-card__header {
+        padding: 22px 18px 18px;
+    }
+    .df-card__title {
+        font-size: 20px;
+    }
+    .df-card__body {
+        padding: 20px 18px 18px;
+    }
+    .df-card__footer {
+        flex-direction: column;
+        gap: 4px;
+    }
+}
+
+@media (prefers-contrast: high) {
+    .df-card--raised {
+        border: 3px solid #ffffff;
+    }
+    .df-card__header {
+        background: #cc0000;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .df-card--raised {
+        animation: none;
+    }
+}
