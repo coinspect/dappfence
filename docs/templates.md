@@ -415,7 +415,7 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 | `preview/sample-messages/` | Sample integrator overrides (Spanish) for the `overrides` scenarios    |
 | `preview/preview.js`       | Catalog: thumbnails, width toggle, links to the full page and HTML     |
 | `preview/frame.js`         | Full-page view                                                         |
-| `src/templates/preview/`   | Preview-only templates: the logo variants sheet (`logos.html`)         |
+| `src/templates/preview/`   | Preview-only templates: the logo variants pages (`logos*.html`)        |
 
 `preview/` is not published (the package's `files` lists only `dist`), and nothing in it reaches a
 build. `vite.config.js` defines `__FEATURES__` from `feature_flag.json` for `vite serve` only,
@@ -429,9 +429,11 @@ records, as the service worker stores them (`status`, `reason`, `assetType`, `fi
 them. Use `ts(minutesAgo)` for timestamps, so renders stay the same between runs.
 
 The **Logo variants** page (`/frame.html?page=logos`) shows the footer, `partials/logo.html` at
-several sizes, the isotype and wordmark on their own, and the resolved `--df-logo-*` palette, in the
-light and the dark theme side by side. It lives in `src/templates/preview/` because includes can't
-reach outside `src/templates/`; only `preview/pages.js` imports it, so it never reaches a bundle.
+several sizes, the isotype and wordmark on their own, and the resolved `--df-logo-*` palette. Its
+`default` scenario follows the theme like any page (use the toggle, or `both` in the catalog); the
+`side-by-side` scenario always shows the light and the dark sheet next to each other at full size,
+for comparing details. Both live in `src/templates/preview/` because includes can't reach outside
+`src/templates/`; only `preview/pages.js` imports them, so they never reach a bundle.
 
 ### Add a page to the preview
 
