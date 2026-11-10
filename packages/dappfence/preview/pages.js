@@ -7,6 +7,9 @@
 import { createSecurityPageResponse } from '../src/sw/response.js';
 import { createEmergencyPanel } from '../src/client/emergency-panel.js';
 import { resolveMessages, validateMessages } from '../src/messages/index.js';
+import { renderMessages, renderTemplate } from '../src/core/template.js';
+import logosHtml from '../src/templates/preview/logos.html?template';
+import logosCss from '../src/templates/preview/logos.css?inline';
 import { warningScenarios } from './scenarios.js';
 import sampleEs from './sample-messages/es.json';
 
@@ -49,6 +52,14 @@ export const PAGES = {
             const messages = text ? resolveMessages(text.languages, text.overrides) : undefined;
             return `<!doctype html><html lang="en">${createEmergencyPanel(messages)}</html>`;
         },
+    },
+    logos: {
+        title: 'Logo variants',
+        scenarios: { default: null },
+        // Preview-only sheet (src/templates/preview/): every logo variant in
+        // the light and dark theme, through the real partials and tokens.
+        render: async () =>
+            renderMessages(renderTemplate(logosHtml, logosCss), resolveMessages(['en'])),
     },
 };
 

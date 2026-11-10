@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- @include ../partials/head.html title="DappFence logo variants" -->
+    </head>
+    <body class="df-logos">
+        <!-- @include logo-sheet.html theme="" label="Light (default)" -->
+        <!-- @include logo-sheet.html theme="df-theme-dark" label="Dark (.df-theme-dark)" -->
+        <script>
+            // Print each swatch's resolved colour, so the sheet always shows the
+            // values tokens.css / themes.css currently define.
+            for (const swatch of document.querySelectorAll('.df-swatch')) {
+                const value = getComputedStyle(swatch)
+                    .getPropertyValue(swatch.dataset.token)
+                    .trim();
+                swatch.querySelector('.df-swatch__value').textContent = value;
+            }
+        </script>
+    </body>
+</html>
