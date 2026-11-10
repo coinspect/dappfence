@@ -1,7 +1,8 @@
 // Template preview catalog: every page × scenario as a live thumbnail. Clicking
-// a thumbnail opens the full page (frame.html). The width lives in the URL
-// (?width=), so Vite's reload after a template edit keeps it.
-import { PAGES, WIDTHS, readSelection, renderScenario } from './pages.js';
+// a thumbnail opens the full page (frame.html). Width and theme live in the URL
+// (?width=&theme=), so Vite's reload after a template edit keeps them, and
+// every link carries the theme, so the full page opens in the same one.
+import { PAGES, THEMES, WIDTHS, readSelection, renderScenario, viewQuery } from './pages.js';
 
 const THUMB_WIDTH = 320;
 const THUMB_VIEWPORT_HEIGHT = 900;
@@ -23,31 +24,44 @@ function scenarioLabel(pageName, scenario) {
     return `${scenario} (${data.length} block${data.length === 1 ? '' : 's'})`;
 }
 
-function widthToggle(current, onPick) {
+function segmented(title, options, current, onPick) {
     return el(
         'div',
-        { className: 'segmented', title: 'Thumbnail viewport width' },
-        Object.entries(WIDTHS).map(([name, px]) =>
+        { className: 'segmented', title },
+        options.map(([value, label]) =>
             el('button', {
-                textContent: `${name} ${px}`,
-                ariaPressed: String(name === current),
-                onclick: () => onPick(name),
+                textContent: label,
+                ariaPressed: String(value === current),
+                onclick: () => onPick(value),
             })
         )
     );
 }
 
-function pickWidth(width) {
+function pick(change) {
     // Re-render in place instead of navigating, so nothing unloads.
-    history.replaceState(null, '', '?' + new URLSearchParams({ width }));
-    renderCatalog(width);
+    const next = { ...readSelection(location.search), ...change };
+    const query = viewQuery({ width: next.width, theme: next.theme });
+    history.replaceState(null, '', query ? '?' + query : location.pathname);
+    renderCatalog(next.width, next.theme);
 }
 
-async function renderCatalog(width) {
+async function renderCatalog(width, theme) {
     const viewport = WIDTHS[width];
     const scale = THUMB_WIDTH / viewport;
     controls.replaceChildren(
-        widthToggle(width, pickWidth),
+        segmented(
+            'Thumbnail viewport width',
+            Object.entries(WIDTHS).map(([name, px]) => [name, `${name} ${px}`]),
+            width,
+            (value) => pick({ width: value })
+        ),
+        segmented(
+            'Theme: auto follows this browser; light / dark force it',
+            THEMES.map((name) => [name, name]),
+            theme,
+            (value) => pick({ theme: value })
+        ),
         el('span', { className: 'hint', textContent: 'Click a page to open it full size' })
     );
 
@@ -56,7 +70,7 @@ async function renderCatalog(width) {
     for (const [pageName, page] of Object.entries(PAGES)) {
         const grid = el('div', { className: 'grid' });
         for (const scenario of Object.keys(page.scenarios)) {
-            const fullPage = 'frame.html?' + new URLSearchParams({ page: pageName, scenario });
+            const fullPage = 'frame.html?' + viewQuery({ page: pageName, scenario, theme });
             // Sandboxed without allow-modals: the pages' scripts still run, but
             // they can't open dialogs (a beforeunload prompt in a thumbnail
             // would otherwise fire whenever this page navigates).
@@ -80,7 +94,9 @@ async function renderCatalog(width) {
                     ]),
                 ])
             );
-            renders.push(renderScenario(pageName, scenario).then((html) => (frame.srcdoc = html)));
+            renders.push(
+                renderScenario(pageName, scenario, theme).then((html) => (frame.srcdoc = html))
+            );
         }
         section.append(el('h2', { textContent: page.title }), grid);
     }
@@ -88,4 +104,5 @@ async function renderCatalog(width) {
     await Promise.all(renders);
 }
 
-renderCatalog(readSelection(location.search).width);
+const initial = readSelection(location.search);
+renderCatalog(initial.width, initial.theme);

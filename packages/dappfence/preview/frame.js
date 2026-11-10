@@ -6,8 +6,8 @@
 // view-source of this URL only shows the empty shell below.
 import { readSelection, renderScenario } from './pages.js';
 
-const { pageName, scenario } = readSelection(location.search);
-const html = await renderScenario(pageName, scenario);
+const { pageName, scenario, theme } = readSelection(location.search);
+const html = await renderScenario(pageName, scenario, theme);
 
 if (new URLSearchParams(location.search).get('view') === 'source') {
     showSource(html);
