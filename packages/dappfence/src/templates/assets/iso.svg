@@ -1,0 +1,49 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="dappfence-iso-gradient" width="500" height="488" version="1.1" viewBox="72 50 292 285" role="img" aria-label="DappFence gradient isotype">
+  <!-- Generator: Adobe Illustrator 30.8.2, SVG Export Plug-In . SVG Version: 2.1.4 Build 7)  -->
+  <defs>
+    <linearGradient id="df-lockup-linear-gradient" x1="209.4" y1="-2336.8" x2="209.4" y2="-2570.6" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #bd8cf5);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-accent, #a27dea);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #7505f0);"/>
+    </linearGradient>
+    <radialGradient id="df-lockup-radial-gradient" cx="306.5" cy="-2380.8" fx="306.5" fy="-2380.8" r="123.1" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset=".3" style="stop-color: var(--df-logo-highlight, #fff);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-highlight, #fff); stop-opacity: 0;"/>
+    </radialGradient>
+    <radialGradient id="df-lockup-radial-gradient1" cx="324.7" cy="-2506.3" fx="324.7" fy="-2506.3" r="121.3" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-glow, #cfacff);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-glow, #cfacff); stop-opacity: 0;"/>
+    </radialGradient>
+    <linearGradient id="df-lockup-linear-gradient1" x1="182.4" y1="-2396.2" x2="182.4" y2="-2461.7" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-mid, #9d65dc);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-shade, #7943c0);"/>
+    </linearGradient>
+    <linearGradient id="df-lockup-linear-gradient2" x1="199" y1="-2417" x2="216.9" y2="-2488.7" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #bd8cf5);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-gradient-mid, #9d65dc);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #7505f0);"/>
+    </linearGradient>
+    <linearGradient id="df-lockup-linear-gradient3" x1="276.9" y1="-2396.6" x2="231.1" y2="-2508.9" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-highlight, #fff);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-slash-mid, #eee4fc);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-glow, #cfacff);"/>
+    </linearGradient>
+    <linearGradient id="df-lockup-linear-gradient4" x1="306.8" y1="-2416.4" x2="306.8" y2="-2487.4" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" style="stop-color: var(--df-logo-highlight, #fff);"/>
+      <stop offset=".6" style="stop-color: var(--df-logo-panel-mid, #f4edfc);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-panel-end, #e4d5f9);"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <g id="outer-ring">
+      <path d="M209.4,68.5c-71.7,3.1-129.5,74.6-116.4,145.4,10.2,73.2,91.2,123,161.2,99,28.8-8.5,52.8-30.1,67.6-55.9,1-2.4,9.4-15.2,4.1-13.9-25.5,13.2-42,38.7-69.2,49-95.4,40.2-194.2-72.1-131.6-158.9,26.4-40.2,82.8-58.1,127.3-39.8,26,8.2,40.9,30.6,59,48.8,37,19.7.4-33.4-10.9-41.6-24.2-22.3-58.3-35.2-91.2-32.1h0Z" style="fill: url(#df-lockup-linear-gradient);"/>
+      <path d="M209.4,68.5c-71.7,3.1-129.5,74.6-116.4,145.4,10.2,73.2,91.2,123,161.2,99,28.8-8.5,52.8-30.1,67.6-55.9,1-2.4,9.4-15.2,4.1-13.9-25.5,13.2-42,38.7-69.2,49-95.4,40.2-194.2-72.1-131.6-158.9,26.4-40.2,82.8-58.1,127.3-39.8,26,8.2,40.9,30.6,59,48.8,37,19.7.4-33.4-10.9-41.6-24.2-22.3-58.3-35.2-91.2-32.1h0Z" style="fill: url(#df-lockup-radial-gradient);"/>
+      <path d="M209.4,68.5c-71.7,3.1-129.5,74.6-116.4,145.4,10.2,73.2,91.2,123,161.2,99,28.8-8.5,52.8-30.1,67.6-55.9,1-2.4,9.4-15.2,4.1-13.9-25.5,13.2-42,38.7-69.2,49-95.4,40.2-194.2-72.1-131.6-158.9,26.4-40.2,82.8-58.1,127.3-39.8,26,8.2,40.9,30.6,59,48.8,37,19.7.4-33.4-10.9-41.6-24.2-22.3-58.3-35.2-91.2-32.1h0Z" style="fill: url(#df-lockup-radial-gradient1);"/>
+    </g>
+    <path id="rear-panel" d="M174.2,144.7l59.1-2.1c6.3-.4,9.5,3.9,8.5,9.2l-1.1,4.6-28.9,3.5c-9.5.7-17.6,5.7-22.8,13.4l-22.1,34.1-37,.4c-6,0-8.5-3.5-6.3-9.2l25.4-40.8c6-8.8,13.8-12,25.4-13h-.2Z" style="fill: url(#df-lockup-linear-gradient1);"/>
+    <path id="front-panel" d="M252.4,162.7c-14-.4-29.6-.4-38.7.7-10.9,1.1-18.6,5.7-25,15.5l-25.7,42.9c-3.1,4.6-1.8,9.5,3.1,11.6,14.8,1.1,38.3.7,54.9.4,3.5-4.6,7.7-14.4,12.3-23.6l16.2-37.7c1.6-3.5,2.6-6.8,2.8-9.9h0Z" style="fill: url(#df-lockup-linear-gradient2);"/>
+    <path id="slash-mark" d="M272.3,144.1c2.4-2.1,7-2.1,9.9,0,1.8,1.8,0,5.7-1.8,9.2l-44,97.8c-1.1,3.9-3.5,5.7-8.1,4.2-3.9-1.1-3.1-4.2-1.4-8.1l42.2-97.1c1.1-2.8,1.8-4.6,3.1-6h0Z" style="fill: url(#df-lockup-linear-gradient3); stroke: var(--df-logo-outline, none); stroke-width: 1.5px; stroke-linejoin: round; paint-order: stroke fill;"/>
+    <path id="protected-panel" d="M301.1,160.6h43c6.7,0,10.3,2.9,7.7,10.3l-20.6,52c-2.2,6.4-6.1,10.3-12.9,10.3h-54c-3.5,0-4.1-1.9-2.2-6.7l22.5-54.2c2.9-7.7,7.7-11.6,16.4-11.6h.1Z" style="fill: url(#df-lockup-linear-gradient4); stroke: var(--df-logo-outline, none); stroke-width: 1.5px; stroke-linejoin: round; paint-order: stroke fill;"/>
+  </g>
+  </svg>
