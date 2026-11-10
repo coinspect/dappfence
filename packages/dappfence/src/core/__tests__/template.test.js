@@ -3,6 +3,7 @@ import securityWarningHtml from '../../templates/pages/security-warning.html?tem
 import securityWarningCss from '../../templates/styles/pages/security-warning.css?inline';
 import emergencyPanelHtml from '../../templates/pages/emergency-panel.html?template';
 import emergencyPanelCss from '../../templates/styles/pages/emergency-panel.css?inline';
+import themesCss from '../../templates/styles/themes.css?raw';
 import {
     MESSAGE_MARKER_PATTERN,
     STYLES_MARKER,
@@ -46,10 +47,26 @@ describe.each(Object.entries(PAGES))('%s template', (_name, [html, css]) => {
         expect(css).toMatch(/--df-red-600/);
     });
 
+    it('follows the viewer theme: no hard-coded theme class, dark tokens bundled', () => {
+        expect(html).not.toMatch(/<body[^>]*df-theme-/);
+        expect(css).toContain('prefers-color-scheme: dark');
+    });
+
     it('renders with the stylesheet in place of the marker', () => {
         const rendered = renderTemplate(html, css);
         expect(rendered).not.toContain(STYLES_MARKER);
         expect(rendered).toContain(css);
+    });
+});
+
+describe('themes.css', () => {
+    const declarations = (block) => block.match(/--df-[\w-]+:\s*[^;]+;/g);
+
+    it('applies the same dark tokens for .df-theme-dark and the OS dark preference', () => {
+        const forced = themesCss.match(/^\.df-theme-dark \{([\s\S]*?)^\}/m)[1];
+        const fromOs = themesCss.match(/body:not\(\.df-theme-light\) \{([\s\S]*?)^ {4}\}/m)[1];
+        expect(declarations(forced).length).toBeGreaterThan(0);
+        expect(declarations(fromOs)).toEqual(declarations(forced));
     });
 });
 

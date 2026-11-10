@@ -1,5 +1,5 @@
 /* Emergency panel: replaces the whole document when the watchdog database is
-   force-closed. Dark theme; see themes.css. */
+   force-closed. Follows the viewer's light/dark preference; see themes.css. */
 
 @import '../tokens.css';
 @import '../themes.css';

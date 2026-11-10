@@ -1,7 +1,10 @@
 /* Design tokens shared by every DappFence page. Components read only these
-   variables, so a theme (see themes.css) is just a set of overrides. */
+   variables, so a theme (see themes.css) is just a set of overrides.
+   These are the light theme. .df-theme-light re-applies them, so it forces
+   light even when the OS prefers dark or an ancestor is dark. */
 
-:root {
+:root,
+.df-theme-light {
     /* Brand / severity */
     --df-red-900: #7f1d1d;
     --df-red-700: #b91c1c;
@@ -9,6 +12,7 @@
     --df-red-500: #ef4444;
     --df-red-300: #fca5a5;
     --df-red-soft: #fee2e2;
+    --df-danger-text: #b91c1c; /* red text on a tinted box; dark: themes.css */
     --df-amber-600: #d97706;
     --df-amber-soft: #fef3c7;
     --df-amber-border: #fcd34d;
