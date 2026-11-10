@@ -4,18 +4,11 @@
 @import '../tokens.css';
 @import '../themes.css';
 @import '../base.css';
+@import '../components/page.css';
 @import '../components/card.css';
 @import '../components/callout.css';
 @import '../components/logo.css';
 @import '../components/footer.css';
-
-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-}
 
 .df-emergency__icon {
     margin-bottom: 20px;

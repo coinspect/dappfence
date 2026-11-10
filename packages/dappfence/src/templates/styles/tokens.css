@@ -15,7 +15,7 @@
     --df-amber-text: #92400e;
 
     /* Surfaces and text */
-    --df-bg: #f8fafc;
+    --df-bg: #f6f3fd; /* brand page background; dark: themes.css */
     --df-surface: #ffffff;
     --df-surface-soft: #f8fafc;
     --df-border: #e2e8f0;

@@ -31,7 +31,7 @@ src/templates/
     base.css                  reset and body defaults
     components/               one file per reusable component
       badge.css  block.css  button.css  callout.css  card.css  disclosure.css  footer.css
-      info-row.css  logo.css
+      info-row.css  logo.css  page.css
     pages/                    one entry stylesheet per page
       security-warning.css
       emergency-panel.css
@@ -197,6 +197,7 @@ by ID.
 
 | File             | Classes                                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `page.css`       | `.df-page`: full-viewport brand backdrop (`--df-bg`), card centred; wraps every page                     |
 | `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__timestamp` |
 | `button.css`     | `.df-btn`, `--danger`                                                                                    |
 | `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)             |
@@ -213,6 +214,7 @@ by ID.
 
 -   It's a full document (`<!doctype html>`), served by the service worker at
     `/sw-api/security-warning`.
+-   Light theme: the card sits on the brand page (`.df-page`, light `--df-bg`).
 -   Its CSP is `default-src 'unsafe-inline' 'self'`, so CSS and scripts must stay inline. Don't link
     external stylesheets, fonts or images.
 -   It must keep the `<script id="dappfence-config">` placeholder. `response.js` slices the page
@@ -224,7 +226,8 @@ by ID.
 
 -   It's a **fragment** (`<head>…</head><body>…</body>`, no doctype or `<html>`), because it
     replaces `document.documentElement.innerHTML` of an already-loaded page.
--   `<body class="df-theme-dark">` switches it to the dark tokens.
+-   `<body class="df-theme-dark">` switches it to the dark tokens, so the brand page (`.df-page`)
+    shows the dark brand background.
 -   An end-to-end test depends on the `<h1>` text `Security Action Required`.
 -   **No `<script>` in the markup.** Scripts inserted through `innerHTML` never run, so
     `showEmergencyPanel()` in `src/client/emergency-panel.js` attaches the behaviour after inserting
