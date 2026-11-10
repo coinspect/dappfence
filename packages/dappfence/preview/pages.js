@@ -9,6 +9,7 @@ import { createEmergencyPanel } from '../src/client/emergency-panel.js';
 import { resolveMessages, validateMessages } from '../src/messages/index.js';
 import { renderMessages, renderTemplate } from '../src/core/template.js';
 import logosHtml from '../src/templates/preview/logos.html?template';
+import logosSideBySideHtml from '../src/templates/preview/logos-side-by-side.html?template';
 import logosCss from '../src/templates/preview/logos.css?inline';
 import { warningScenarios } from './scenarios.js';
 import sampleEs from './sample-messages/es.json';
@@ -55,11 +56,13 @@ export const PAGES = {
     },
     logos: {
         title: 'Logo variants',
-        scenarios: { default: null },
-        // Preview-only sheet (src/templates/preview/): every logo variant in
-        // the light and dark theme, through the real partials and tokens.
-        render: async () =>
-            renderMessages(renderTemplate(logosHtml, logosCss), resolveMessages(['en'])),
+        // Preview-only sheets (src/templates/preview/): every logo variant
+        // through the real partials and tokens. `default` follows the theme
+        // like any page; `side-by-side` always shows light and dark at full
+        // size, for comparing details.
+        scenarios: { default: logosHtml, 'side-by-side': logosSideBySideHtml },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, logosCss), resolveMessages(['en'])),
     },
 };
 
