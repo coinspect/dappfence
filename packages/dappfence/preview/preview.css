@@ -131,6 +131,20 @@ button,
     border-top: 1px solid var(--border);
 }
 
+/* `both` mode: two thumbnails per card, so the columns need more room. */
+.grid--pair {
+    grid-template-columns: repeat(auto-fill, minmax(496px, 1fr));
+}
+
+.thumbs--pair {
+    display: grid;
+    /* Column width comes from PAIR_THUMB_WIDTH in preview.js. */
+    grid-template-columns: repeat(2, var(--pair-thumb-width));
+}
+.thumbs--pair .thumb + .thumb {
+    border-left: 1px solid var(--border);
+}
+
 .thumb {
     display: block;
     position: relative;

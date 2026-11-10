@@ -379,14 +379,16 @@ back on the same view, because every setting lives in the URL.
 
 | URL                                                             | View                                                                                |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `/?width=phone&theme=dark`                                      | **Catalog**: every page × scenario as a live thumbnail. Click one to open it.       |
+| `/?width=phone&theme=both`                                      | **Catalog**: every page × scenario as a live thumbnail. Click one to open it.       |
 | `/frame.html?page=security-warning&scenario=signer`             | **Full page**: the page as a top-level document, exactly as a visitor sees it       |
 | `/frame.html?page=security-warning&scenario=signer&view=source` | **HTML**: the rendered HTML string as text, exactly as the service worker serves it |
 
 -   **Theme:** `auto` (the default) shows the pages as shipped, following this browser's light/dark
     preference; `light` and `dark` force one by adding `df-theme-<theme>` to the page's `<body>`.
     The catalog's toggle sets it for every thumbnail, and every link (full page, HTML) carries it.
-    Add `&theme=dark` to any full-page URL to switch that view directly.
+    The catalog also has `both` (`/?theme=both`): each scenario as a light and a dark thumbnail side
+    by side, each opening the full page in its own theme. Add `&theme=dark` to any full-page URL to
+    switch that view directly.
 -   **Width:** the catalog renders thumbnails at `desktop` (1280), `tablet` (768) or `phone` (390)
     width. For the full page, resize the window or use DevTools' device toolbar.
 -   **HTML:** the "HTML" link under each thumbnail shows the rendered HTML (partials expanded, CSS
