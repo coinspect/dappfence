@@ -86,12 +86,6 @@
     border-radius: 0 0 var(--df-radius) var(--df-radius);
 }
 
-.df-card__branding {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--df-text-muted);
-}
-
 .df-card__timestamp {
     font-size: 11px;
     font-family: var(--df-font-mono);

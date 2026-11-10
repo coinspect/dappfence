@@ -19,14 +19,19 @@ src/templates/
     emergency-panel.html
   partials/                   HTML fragments shared by pages
     head.html                 <meta> tags, <title>{{title}}, the styles slot
-    footer.html               "Protected by DappFence" + timestamp
+    footer.html               "Protected by" + the DappFence logo; every page includes it
+    logo.html                 DappFence logo (isotype + wordmark); include it as often as needed
     block-templates.html      <template> markup for the warning page's block cards
+  assets/                     designer's SVG exports, colours as --df-logo-* tokens
+    iso.svg                   DappFence isotype; logo.html inlines it
+    logo.svg                  DappFence wordmark; logo.html inlines it
   styles/
-    tokens.css                --df-* design tokens (colour, radius, font)
+    tokens.css                --df-* design tokens (colour, radius, font, logo palette)
     themes.css                token overrides (.df-theme-dark)
     base.css                  reset and body defaults
     components/               one file per reusable component
-      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  info-row.css
+      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  footer.css
+      info-row.css  logo.css
     pages/                    one entry stylesheet per page
       security-warning.css
       emergency-panel.css
@@ -190,15 +195,17 @@ by ID.
 
 ### Component reference
 
-| File             | Classes                                                                                                                |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__branding`, `__timestamp` |
-| `button.css`     | `.df-btn`, `--danger`                                                                                                  |
-| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)                           |
-| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                                           |
-| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                                    |
-| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                                  |
-| `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                                 |
+| File             | Classes                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__timestamp` |
+| `button.css`     | `.df-btn`, `--danger`                                                                                    |
+| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)             |
+| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                             |
+| `footer.css`     | `.df-footer`, `__label`                                                                                  |
+| `logo.css`       | `.df-logo`, `__iso`, `__wordmark` (height via `--df-logo-height`, default 28px)                          |
+| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                      |
+| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                    |
+| `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                   |
 
 ## Page-specific constraints
 
@@ -317,6 +324,18 @@ Edit `styles/tokens.css`. Every component reads the token.
 
 1. Create `partials/<name>.html`. Use `{{key}}` for anything the including page should supply.
 2. Include it: `<!-- @include ../partials/<name>.html key="value" -->`.
+
+A placeholder can have a default, `{{key=value}}`, used when the include doesn't set `key`.
+
+An `.svg` can be included the same way (`<!-- @include ../assets/logo.svg -->`): it's inlined as
+markup, minus its `<?xml ?>` declaration and comments. Its `id`s land in the page as-is unless the
+include sets `id-prefix="p"`: then every `id` becomes `p-<id>`, and so does every `url(#…)` and
+`href="#…"` reference to it. If the same SVG is included again with the same prefix, that copy gets
+`p-2`, `p-3`, … in include order, so the output stays reproducible. A page that ends up with a
+duplicate `id` fails the build.
+
+`partials/logo.html` uses `id-prefix="{{prefix=df-logo}}"`, so it can be included any number of
+times with no arguments. Pass `prefix="…"` only if you want specific ids.
 
 ### Add a theme
 
