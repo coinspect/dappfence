@@ -66,8 +66,15 @@ export const PAGES = {
 export const WIDTHS = { desktop: 1280, tablet: 768, phone: 390 };
 
 /**
- * Read page / scenario / width from a query string, falling back to the first
- * page, its first scenario and desktop width.
+ * Theme the preview renders pages in. `auto` leaves the page as shipped, so it
+ * follows this browser's light/dark preference; the others force a theme by
+ * adding its class to <body>, the same class an integrator would use.
+ */
+export const THEMES = ['auto', 'light', 'dark'];
+
+/**
+ * Read page / scenario / width / theme from a query string, falling back to
+ * the first page, its first scenario, desktop width and the auto theme.
  * @param {string} search
  */
 export function readSelection(search) {
@@ -79,11 +86,45 @@ export function readSelection(search) {
         ? params.get('scenario')
         : scenarioNames[0];
     const width = params.get('width') in WIDTHS ? params.get('width') : 'desktop';
-    return { pageName, page, scenario, width };
+    const theme = THEMES.includes(params.get('theme')) ? params.get('theme') : 'auto';
+    return { pageName, page, scenario, width, theme };
 }
 
-/** Render one page/scenario pair to HTML. */
-export function renderScenario(pageName, scenario) {
+/**
+ * Query string for a view, leaving out defaults so links stay short.
+ * @param {Record<string, string>} params
+ */
+export function viewQuery(params) {
+    const defaults = { width: 'desktop', theme: 'auto' };
+    return new URLSearchParams(
+        Object.entries(params).filter(([key, value]) => value && value !== defaults[key])
+    ).toString();
+}
+
+/**
+ * Add `df-theme-<theme>` to the rendered page's <body>, unless theme is auto.
+ * Only looks after </head>: the inlined CSS mentions `<body>` in comments.
+ * @param {string} html
+ * @param {string} theme
+ */
+function applyTheme(html, theme) {
+    if (theme === 'auto') {
+        return html;
+    }
+    const themeClass = `df-theme-${theme}`;
+    const bodyStart = html.indexOf('</head>') + 1; // 0 when there is no </head>
+    const tail = html
+        .slice(bodyStart)
+        .replace(/<body([^>]*)>/, (_match, attrs) =>
+            /\sclass="/.test(attrs)
+                ? `<body${attrs.replace(/(\sclass=")/, `$1${themeClass} `)}>`
+                : `<body${attrs} class="${themeClass}">`
+        );
+    return html.slice(0, bodyStart) + tail;
+}
+
+/** Render one page/scenario pair to HTML, in the given theme. */
+export async function renderScenario(pageName, scenario, theme = 'auto') {
     const page = PAGES[pageName];
-    return page.render(page.scenarios[scenario]);
+    return applyTheme(await page.render(page.scenarios[scenario]), theme);
 }
