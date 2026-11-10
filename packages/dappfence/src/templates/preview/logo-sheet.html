@@ -1,0 +1,125 @@
+<section class="df-sheet {{theme}}">
+    <h2 class="df-sheet__title">{{label}}</h2>
+
+    <div class="df-sheet__row">
+        <h3 class="df-sheet__label">Footer</h3>
+        <!-- @include ../partials/footer.html -->
+    </div>
+
+    <div class="df-sheet__row">
+        <h3 class="df-sheet__label">Logo · partials/logo.html</h3>
+        <div class="df-sheet__items">
+            <figure class="df-sheet__item" style="--df-logo-height: 20px">
+                <!-- @include ../partials/logo.html -->
+                <figcaption>20px</figcaption>
+            </figure>
+            <figure class="df-sheet__item">
+                <!-- @include ../partials/logo.html -->
+                <figcaption>28px (default)</figcaption>
+            </figure>
+            <figure class="df-sheet__item" style="--df-logo-height: 48px">
+                <!-- @include ../partials/logo.html -->
+                <figcaption>48px</figcaption>
+            </figure>
+            <figure class="df-sheet__item" style="--df-logo-height: 72px">
+                <!-- @include ../partials/logo.html -->
+                <figcaption>72px</figcaption>
+            </figure>
+        </div>
+    </div>
+
+    <div class="df-sheet__row">
+        <h3 class="df-sheet__label">Isotype · assets/iso.svg</h3>
+        <div class="df-sheet__items">
+            <figure class="df-sheet__item df-sheet__mark" style="--df-mark-height: 32px">
+                <!-- @include ../assets/iso.svg id-prefix="df-sheet-iso" -->
+                <figcaption>32px</figcaption>
+            </figure>
+            <figure class="df-sheet__item df-sheet__mark" style="--df-mark-height: 64px">
+                <!-- @include ../assets/iso.svg id-prefix="df-sheet-iso" -->
+                <figcaption>64px</figcaption>
+            </figure>
+            <figure class="df-sheet__item df-sheet__mark" style="--df-mark-height: 128px">
+                <!-- @include ../assets/iso.svg id-prefix="df-sheet-iso" -->
+                <figcaption>128px</figcaption>
+            </figure>
+        </div>
+    </div>
+
+    <div class="df-sheet__row">
+        <h3 class="df-sheet__label">Wordmark · assets/logo.svg</h3>
+        <div class="df-sheet__items">
+            <figure class="df-sheet__item df-sheet__mark" style="--df-mark-height: 24px">
+                <!-- @include ../assets/logo.svg id-prefix="df-sheet-wordmark" -->
+                <figcaption>24px</figcaption>
+            </figure>
+            <figure class="df-sheet__item df-sheet__mark" style="--df-mark-height: 56px">
+                <!-- @include ../assets/logo.svg id-prefix="df-sheet-wordmark" -->
+                <figcaption>56px</figcaption>
+            </figure>
+        </div>
+    </div>
+
+    <div class="df-sheet__row">
+        <h3 class="df-sheet__label">Palette · --df-logo-*</h3>
+        <ul class="df-swatches">
+            <li class="df-swatch" data-token="--df-logo-wordmark">
+                <span class="df-swatch__chip" style="background: var(--df-logo-wordmark)"></span>
+                <code>wordmark</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-accent">
+                <span class="df-swatch__chip" style="background: var(--df-logo-accent)"></span>
+                <code>accent</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-gradient-start">
+                <span
+                    class="df-swatch__chip"
+                    style="background: var(--df-logo-gradient-start)"
+                ></span>
+                <code>gradient-start</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-gradient-mid">
+                <span
+                    class="df-swatch__chip"
+                    style="background: var(--df-logo-gradient-mid)"
+                ></span>
+                <code>gradient-mid</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-gradient-end">
+                <span
+                    class="df-swatch__chip"
+                    style="background: var(--df-logo-gradient-end)"
+                ></span>
+                <code>gradient-end</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-shade">
+                <span class="df-swatch__chip" style="background: var(--df-logo-shade)"></span>
+                <code>shade</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-highlight">
+                <span class="df-swatch__chip" style="background: var(--df-logo-highlight)"></span>
+                <code>highlight</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-glow">
+                <span class="df-swatch__chip" style="background: var(--df-logo-glow)"></span>
+                <code>glow</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-slash-mid">
+                <span class="df-swatch__chip" style="background: var(--df-logo-slash-mid)"></span>
+                <code>slash-mid</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-panel-mid">
+                <span class="df-swatch__chip" style="background: var(--df-logo-panel-mid)"></span>
+                <code>panel-mid</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-panel-end">
+                <span class="df-swatch__chip" style="background: var(--df-logo-panel-end)"></span>
+                <code>panel-end</code><span class="df-swatch__value"></span>
+            </li>
+            <li class="df-swatch" data-token="--df-logo-outline">
+                <span class="df-swatch__chip df-swatch__chip--outline"></span>
+                <code>outline</code><span class="df-swatch__value"></span>
+            </li>
+        </ul>
+    </div>
+</section>
