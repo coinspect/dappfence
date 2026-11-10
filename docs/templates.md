@@ -27,7 +27,7 @@ src/templates/
     logo.svg                  DappFence wordmark; logo.html inlines it
   styles/
     tokens.css                --df-* design tokens (colour, radius, font, logo palette)
-    themes.css                token overrides (.df-theme-dark)
+    themes.css                dark theme: OS preference, or forced with .df-theme-dark / -light
     base.css                  reset and body defaults
     components/               one file per reusable component
       badge.css  block.css  button.css  callout.css  card.css  disclosure.css  footer.css
@@ -164,7 +164,10 @@ Each page's entry file imports, in this order:
 
 1. `tokens.css`: the `--df-*` variables. **Components use only these variables**, never raw colours,
    unless a colour is specific to one component variant (for example the asset-type chip colours).
-2. `themes.css` (optional): classes that override tokens. `.df-theme-dark` goes on `<body>`.
+2. `themes.css`: the dark tokens. Pages follow the viewer's OS preference (`prefers-color-scheme`);
+   `.df-theme-dark` or `.df-theme-light` on `<body>` (or any element) forces a theme. The dark
+   tokens are written twice, once per selector; a unit test keeps the two blocks identical. Every
+   page imports it, so no page hard-codes a theme (also tested).
 3. `base.css`: reset (`box-sizing`, zero margins) and page defaults. Only `<body>` paints a
    background, so a theme class on `<body>` also colours the whole window (the browser carries the
    `<body>` background out to the canvas when `<html>` has none).
@@ -214,7 +217,7 @@ by ID.
 
 -   It's a full document (`<!doctype html>`), served by the service worker at
     `/sw-api/security-warning`.
--   Light theme: the card sits on the brand page (`.df-page`, light `--df-bg`).
+-   It sits on the brand page (`.df-page`) and follows the viewer's light/dark preference.
 -   Its CSP is `default-src 'unsafe-inline' 'self'`, so CSS and scripts must stay inline. Don't link
     external stylesheets, fonts or images.
 -   It must keep the `<script id="dappfence-config">` placeholder. `response.js` slices the page
@@ -226,8 +229,8 @@ by ID.
 
 -   It's a **fragment** (`<head>…</head><body>…</body>`, no doctype or `<html>`), because it
     replaces `document.documentElement.innerHTML` of an already-loaded page.
--   `<body class="df-theme-dark">` switches it to the dark tokens, so the brand page (`.df-page`)
-    shows the dark brand background.
+-   It sits on the brand page (`.df-page`) and follows the viewer's light/dark preference, like the
+    security warning. Don't put a theme class on its `<body>`.
 -   An end-to-end test depends on the `<h1>` text `Security Action Required`.
 -   **No `<script>` in the markup.** Scripts inserted through `innerHTML` never run, so
     `showEmergencyPanel()` in `src/client/emergency-panel.js` attaches the behaviour after inserting
@@ -342,8 +345,9 @@ times with no arguments. Pass `prefix="…"` only if you want specific ids.
 
 ### Add a theme
 
-Add a `.df-theme-<name>` class to `themes.css` that overrides tokens only, import `themes.css` in
-the page entry, and put the class on `<body>`.
+Add a `.df-theme-<name>` class to `themes.css` that overrides tokens only. A token that only looks
+right in one theme (for example a text colour on a tinted box) needs a value in both: `tokens.css`
+for light, and both dark blocks in `themes.css`.
 
 ### Add a page
 

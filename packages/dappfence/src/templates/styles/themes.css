@@ -1,5 +1,8 @@
-/* Dark theme, used by the emergency panel. Apply with class="df-theme-dark"
-   on <body>. */
+/* Dark theme. Pages follow the viewer's OS preference; a class on <body> (or
+   any element) forces a theme:
+     class="df-theme-dark"   dark, whatever the OS says
+     class="df-theme-light"  light (the tokens.css values), whatever the OS says
+   The two blocks below must stay identical; a unit test checks it. */
 
 .df-theme-dark {
     --df-bg: #0f0321;
@@ -7,6 +10,15 @@
     --df-text: #f3f4f6;
     --df-text-strong: #ffffff;
     --df-text-muted: #9ca3af;
+    --df-text-subtle: #8f99a8;
+    --df-surface-soft: #1f2937;
+    --df-border: #374151;
+    --df-divider: rgba(255, 255, 255, 0.08);
+    --df-red-soft: rgba(239, 68, 68, 0.15);
+    --df-danger-text: #fca5a5;
+    --df-amber-soft: rgba(217, 119, 6, 0.12);
+    --df-amber-border: rgba(252, 211, 77, 0.35);
+    --df-amber-text: #fcd34d;
 
     /* Logo palette: the designer's original colours (see tokens.css). */
     --df-logo-wordmark: #7e54e8;
@@ -21,4 +33,37 @@
     --df-logo-panel-mid: #f4edfc;
     --df-logo-panel-end: #e4d5f9;
     --df-logo-outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not(.df-theme-light) {
+        --df-bg: #0f0321;
+        --df-surface: #111827;
+        --df-text: #f3f4f6;
+        --df-text-strong: #ffffff;
+        --df-text-muted: #9ca3af;
+        --df-text-subtle: #8f99a8;
+        --df-surface-soft: #1f2937;
+        --df-border: #374151;
+        --df-divider: rgba(255, 255, 255, 0.08);
+        --df-red-soft: rgba(239, 68, 68, 0.15);
+        --df-danger-text: #fca5a5;
+        --df-amber-soft: rgba(217, 119, 6, 0.12);
+        --df-amber-border: rgba(252, 211, 77, 0.35);
+        --df-amber-text: #fcd34d;
+
+        /* Logo palette: the designer's original colours (see tokens.css). */
+        --df-logo-wordmark: #7e54e8;
+        --df-logo-accent: #a27dea;
+        --df-logo-gradient-start: #bd8cf5;
+        --df-logo-gradient-mid: #9d65dc;
+        --df-logo-gradient-end: #7505f0;
+        --df-logo-shade: #7943c0;
+        --df-logo-highlight: #fff;
+        --df-logo-glow: #cfacff;
+        --df-logo-slash-mid: #eee4fc;
+        --df-logo-panel-mid: #f4edfc;
+        --df-logo-panel-end: #e4d5f9;
+        --df-logo-outline: none;
+    }
 }

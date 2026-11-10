@@ -1,11 +1,11 @@
 /* Brand page shell shared by every page: a full-viewport backdrop in the
-   theme's --df-bg (brand lavender in light, brand purple in .df-theme-dark)
+   theme's --df-bg (brand lavender in light, brand purple in dark)
    with the card centred on it. It fills at least the viewport and grows with
    the card, so the document scrolls. Deliberately not a fixed overlay: it must
    not cover anything else in the body (the emergency panel's guards are
    tested by clicking a link appended after it).
 
-   <body [class="df-theme-dark"]>
+   <body>
        <div class="df-page"> <div class="df-card …">…</div> </div>
    </body> */
 

@@ -2,6 +2,7 @@
    blocked. */
 
 @import '../tokens.css';
+@import '../themes.css';
 @import '../base.css';
 @import '../components/page.css';
 @import '../components/card.css';
