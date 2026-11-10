@@ -6,6 +6,8 @@
 @import '../base.css';
 @import '../components/card.css';
 @import '../components/callout.css';
+@import '../components/logo.css';
+@import '../components/footer.css';
 
 body {
     display: flex;
@@ -38,4 +40,8 @@ body {
 
 .df-emergency .df-callout {
     margin-bottom: 30px;
+}
+
+.df-emergency .df-footer {
+    margin-top: 8px;
 }

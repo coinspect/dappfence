@@ -2,9 +2,23 @@
    on <body>. */
 
 .df-theme-dark {
-    --df-bg: #0b0f19;
+    --df-bg: #0f0321;
     --df-surface: #111827;
     --df-text: #f3f4f6;
     --df-text-strong: #ffffff;
     --df-text-muted: #9ca3af;
+
+    /* Logo palette: the designer's original colours (see tokens.css). */
+    --df-logo-wordmark: #7e54e8;
+    --df-logo-accent: #a27dea;
+    --df-logo-gradient-start: #bd8cf5;
+    --df-logo-gradient-mid: #9d65dc;
+    --df-logo-gradient-end: #7505f0;
+    --df-logo-shade: #7943c0;
+    --df-logo-highlight: #fff;
+    --df-logo-glow: #cfacff;
+    --df-logo-slash-mid: #eee4fc;
+    --df-logo-panel-mid: #f4edfc;
+    --df-logo-panel-end: #e4d5f9;
+    --df-logo-outline: none;
 }
