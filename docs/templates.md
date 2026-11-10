@@ -79,6 +79,7 @@ styles/pages/security-warning.css ──?inline──▶ Vite CSS pipeline ─�
 -   The path is **relative to the file that contains the directive**.
 -   `key="value"` attributes fill `{{key}}` placeholders **in the included file only**. They are
     plain text substitutions, not escaped, so only put static, author-written strings there.
+    `{{key=value}}` gives a placeholder a default.
 -   Included content is re-indented to the directive's indentation, so the expanded page stays
     readable when you debug a bundle.
 -   Includes can nest.
@@ -87,12 +88,14 @@ styles/pages/security-warning.css ──?inline──▶ Vite CSS pipeline ─�
 
 The plugin stops the build (and fails the tests) when:
 
-| Condition                                      | Error message contains            |
-| ---------------------------------------------- | --------------------------------- |
-| Included file doesn't exist                    | `cannot read … (included from …)` |
-| A file includes itself, directly or indirectly | `include cycle: a -> b -> a`      |
-| A path resolves outside `src/templates/`       | `… is outside …`                  |
-| A `{{placeholder}}` has no matching attribute  | `no value for {{key}}`            |
+| Condition                                       | Error message contains                   |
+| ----------------------------------------------- | ---------------------------------------- |
+| Included file doesn't exist                     | `cannot read … (included from …)`        |
+| A file includes itself, directly or indirectly  | `include cycle: a -> b -> a`             |
+| A path resolves outside `src/templates/`        | `… is outside …`                         |
+| A `{{placeholder}}` has no attribute or default | `no value for {{key}}`                   |
+| An `id-prefix` isn't a valid id start           | `id-prefix "…" must start with a letter` |
+| The expanded page repeats an `id`               | `duplicate id "…"`                       |
 
 There is no fallback output: a broken template never reaches a bundle.
 
@@ -402,7 +405,7 @@ complete HTML document. It appears in the catalog automatically.
 
 | Test                                     | Covers                                                                                                                                              |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build/__tests__/html-includes.test.js`  | include expansion, placeholders, indentation, every error case                                                                                      |
+| `build/__tests__/html-includes.test.js`  | include expansion, placeholders, SVG id prefixes, indentation, every error case                                                                     |
 | `src/core/__tests__/template.test.js`    | each page fully expanded, styles marker present once, CSS bundled with `@import`s inlined, every `<template>` id and `data-slot` used by the script |
 | `src/sw/__tests__/response.test.js`      | config placeholder and the view fields the page script reads                                                                                        |
 | `packages/test-app/test/**` (Playwright) | the real pages served in the browser                                                                                                                |
