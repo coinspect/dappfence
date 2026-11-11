@@ -3,36 +3,36 @@
   <!-- Generator: Adobe Illustrator 30.8.2, SVG Export Plug-In . SVG Version: 2.1.4 Build 7)  -->
   <defs>
     <linearGradient id="df-lockup-linear-gradient" x1="209.4" y1="-2336.8" x2="209.4" y2="-2570.6" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #bd8cf5);"/>
-      <stop offset=".5" style="stop-color: var(--df-logo-accent, #a27dea);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #7505f0);"/>
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #85c6dc);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-accent, #66b8d4);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #0092bf);"/>
     </linearGradient>
     <radialGradient id="df-lockup-radial-gradient" cx="306.5" cy="-2380.8" fx="306.5" fy="-2380.8" r="123.1" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset=".3" style="stop-color: var(--df-logo-highlight, #fff);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-highlight, #fff); stop-opacity: 0;"/>
+      <stop offset=".3" style="stop-color: var(--df-logo-highlight, #f6f7f7);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-highlight, #f6f7f7); stop-opacity: 0;"/>
     </radialGradient>
     <radialGradient id="df-lockup-radial-gradient1" cx="324.7" cy="-2506.3" fx="324.7" fy="-2506.3" r="121.3" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-glow, #cfacff);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-glow, #cfacff); stop-opacity: 0;"/>
+      <stop offset="0" style="stop-color: var(--df-logo-glow, #a8d5e4);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-glow, #a8d5e4); stop-opacity: 0;"/>
     </radialGradient>
     <linearGradient id="df-lockup-linear-gradient1" x1="182.4" y1="-2396.2" x2="182.4" y2="-2461.7" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-gradient-mid, #9d65dc);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-shade, #7943c0);"/>
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-mid, #44abcd);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-shade, #0090bf);"/>
     </linearGradient>
     <linearGradient id="df-lockup-linear-gradient2" x1="199" y1="-2417" x2="216.9" y2="-2488.7" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #bd8cf5);"/>
-      <stop offset=".5" style="stop-color: var(--df-logo-gradient-mid, #9d65dc);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #7505f0);"/>
+      <stop offset="0" style="stop-color: var(--df-logo-gradient-start, #85c6dc);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-gradient-mid, #44abcd);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-gradient-end, #0092bf);"/>
     </linearGradient>
     <linearGradient id="df-lockup-linear-gradient3" x1="276.9" y1="-2396.6" x2="231.1" y2="-2508.9" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-highlight, #fff);"/>
-      <stop offset=".5" style="stop-color: var(--df-logo-slash-mid, #eee4fc);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-glow, #cfacff);"/>
+      <stop offset="0" style="stop-color: var(--df-logo-highlight, #f6f7f7);"/>
+      <stop offset=".5" style="stop-color: var(--df-logo-slash-mid, #dde8f0);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-glow, #a8d5e4);"/>
     </linearGradient>
     <linearGradient id="df-lockup-linear-gradient4" x1="306.8" y1="-2416.4" x2="306.8" y2="-2487.4" gradientTransform="translate(0 -2253.2) scale(1 -1)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" style="stop-color: var(--df-logo-highlight, #fff);"/>
-      <stop offset=".6" style="stop-color: var(--df-logo-panel-mid, #f4edfc);"/>
-      <stop offset="1" style="stop-color: var(--df-logo-panel-end, #e4d5f9);"/>
+      <stop offset="0" style="stop-color: var(--df-logo-highlight, #f6f7f7);"/>
+      <stop offset=".6" style="stop-color: var(--df-logo-panel-mid, #e2ebf1);"/>
+      <stop offset="1" style="stop-color: var(--df-logo-panel-end, #cbe2eb);"/>
     </linearGradient>
   </defs>
   <g>
