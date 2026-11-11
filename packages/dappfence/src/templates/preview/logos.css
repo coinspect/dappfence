@@ -95,13 +95,6 @@
     box-shadow: inset 0 0 0 1px var(--df-divider);
 }
 
-/* outline is a stroke colour (none in dark), so draw it as a ring. */
-.df-swatch__chip--outline {
-    box-shadow:
-        inset 0 0 0 3px var(--df-logo-outline, transparent),
-        inset 0 0 0 1px var(--df-divider);
-}
-
 .df-swatch code {
     font-family: var(--df-font-mono);
     color: var(--df-text);
