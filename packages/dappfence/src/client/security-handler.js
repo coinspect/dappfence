@@ -19,17 +19,20 @@ let redirectAttempted = false;
  */
 export function handleSecurityMessage(event) {
     const { data } = event;
-    if (data?.type === MSG.MESSAGES) {
-        // A page script can dispatch a synthetic `message` on
-        // navigator.serviceWorker, but only the browser sets isTrusted.
-        if (event.isTrusted) {
-            setMessageOverrides(data.overrides);
-        } else {
-            logger.warn('Ignoring untrusted message overrides event');
-        }
+    if (data?.type !== MSG.MESSAGES && data?.type !== MSG.SECURITY_BLOCK) {
         return;
     }
-    if (data?.type !== MSG.SECURITY_BLOCK || redirectAttempted) {
+    // A page script can dispatch a synthetic `message` on
+    // navigator.serviceWorker, but only the browser sets isTrusted.
+    if (!event.isTrusted) {
+        logger.warn(`Ignoring untrusted ${data.type} event`);
+        return;
+    }
+    if (data.type === MSG.MESSAGES) {
+        setMessageOverrides(data.overrides);
+        return;
+    }
+    if (redirectAttempted) {
         return;
     }
     logger.error('Security violation detected');
