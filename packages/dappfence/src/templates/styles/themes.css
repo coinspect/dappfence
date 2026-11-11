@@ -32,7 +32,6 @@
     --df-logo-slash-mid: #dde8f0;
     --df-logo-panel-mid: #e2ebf1;
     --df-logo-panel-end: #cbe2eb;
-    --df-logo-outline: none;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,6 +63,5 @@
         --df-logo-slash-mid: #dde8f0;
         --df-logo-panel-mid: #e2ebf1;
         --df-logo-panel-end: #cbe2eb;
-        --df-logo-outline: none;
     }
 }
