@@ -39,10 +39,10 @@
     --df-logo-gradient-mid: #007da5; /* front panel middle, rear panel top */
     --df-logo-gradient-end: #005b83; /* ring and front panel, bottom */
     --df-logo-shade: #006089; /* rear panel, bottom */
-    --df-logo-highlight: #cde3ec; /* ring sheen, slash and right panel top */
-    --df-logo-glow: #7eb8cb; /* ring glow, slash bottom */
-    --df-logo-slash-mid: #a7d0dc; /* slash middle */
-    --df-logo-panel-mid: #7eb8cb; /* right panel middle */
+    --df-logo-highlight: #8fc0d3; /* ring sheen, slash and right panel top */
+    --df-logo-glow: #5ea7c0; /* ring glow, slash bottom */
+    --df-logo-slash-mid: #79b3c8; /* slash middle */
+    --df-logo-panel-mid: #5ea7c0; /* right panel middle */
     --df-logo-panel-end: #4b9eb9; /* right panel bottom */
 
     /* Shape and type */
