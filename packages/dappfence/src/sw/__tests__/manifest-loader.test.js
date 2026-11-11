@@ -356,3 +356,20 @@ describe('normalizeManifestData', () => {
         });
     });
 });
+
+describe('normalizeManifestData — messages', () => {
+    it('keeps valid overrides and drops the rest', () => {
+        const { messages } = normalizeManifestData({
+            files: {},
+            messages: {
+                es: { 'emergency.title': 'Acción requerida', 'not.a.key': 'x' },
+                'bad tag': { 'emergency.title': 'x' },
+            },
+        });
+        expect(messages).toEqual({ es: { 'emergency.title': 'Acción requerida' } });
+    });
+
+    it('defaults to no overrides', () => {
+        expect(normalizeManifestData({ files: {} }).messages).toEqual({});
+    });
+});

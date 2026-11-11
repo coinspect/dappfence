@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createEmergencyPanel, showEmergencyPanel } from '../emergency-panel.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    createEmergencyPanel,
+    resetMessageOverrides,
+    setMessageOverrides,
+    showEmergencyPanel,
+} from '../emergency-panel.js';
+import { handleSecurityMessage } from '../security-handler.js';
 
-function fakeWindow() {
+afterEach(() => resetMessageOverrides());
+
+function fakeWindow(languages = []) {
     const listeners = {};
     return {
+        navigator: { languages },
         document: { documentElement: { innerHTML: '<body>app</body>' } },
         addEventListener: vi.fn((type, fn, capture) => {
             listeners[type] = { fn, capture };
@@ -59,5 +68,64 @@ describe('showEmergencyPanel', () => {
         const outside = { target: { closest: () => null }, preventDefault: vi.fn() };
         fn(outside);
         expect(outside.preventDefault).not.toHaveBeenCalled();
+    });
+});
+
+describe('emergency panel text', () => {
+    const contact = 'emergency.contact';
+
+    it('renders the built-in English text with no overrides', () => {
+        const html = createEmergencyPanel();
+        expect(html).toContain('<title>Critical Security Notice</title>');
+        expect(html).toContain('verified support channel');
+        expect(html).not.toMatch(/\{\{t:/);
+    });
+
+    it('uses verified overrides for the viewer locale, escaped', () => {
+        setMessageOverrides({ es: { [contact]: 'Escribinos a <soporte@example.com>' } });
+        const win = fakeWindow(['es-AR']);
+        showEmergencyPanel(win);
+        expect(win.document.documentElement.innerHTML).toContain(
+            'Escribinos a &lt;soporte@example.com&gt;'
+        );
+    });
+
+    it('accepts overrides only once', () => {
+        setMessageOverrides({ en: { [contact]: 'first' } });
+        setMessageOverrides({ en: { [contact]: 'second' } });
+        expect(createEmergencyPanel()).toContain('first');
+    });
+
+    it('drops invalid override entries', () => {
+        setMessageOverrides({ en: { [contact]: 42, 'emergency.title': 'Ok' } });
+        const html = createEmergencyPanel();
+        expect(html).toContain('Ok');
+        expect(html).toContain('verified support channel');
+    });
+
+    it('uses the localized leave warning', () => {
+        setMessageOverrides({ es: { 'emergency.leaveWarning': '¿Recargar?' } });
+        const win = fakeWindow(['es']);
+        showEmergencyPanel(win);
+        const event = { preventDefault: vi.fn(), returnValue: undefined };
+        win.listeners.beforeunload.fn(event);
+        expect(event.returnValue).toBe('¿Recargar?');
+    });
+});
+
+describe('DAPPFENCE_MESSAGES from the service worker', () => {
+    const overrides = { en: { 'emergency.contact': 'From the SW' } };
+    const data = { type: 'DAPPFENCE_MESSAGES', overrides };
+
+    it('applies overrides from a browser-dispatched event', () => {
+        handleSecurityMessage({ isTrusted: true, data });
+        expect(createEmergencyPanel()).toContain('From the SW');
+    });
+
+    // Page scripts can dispatch synthetic `message` events on
+    // navigator.serviceWorker; only the browser sets isTrusted.
+    it('ignores a synthetic event', () => {
+        handleSecurityMessage({ isTrusted: false, data });
+        expect(createEmergencyPanel()).not.toContain('From the SW');
     });
 });

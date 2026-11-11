@@ -33,6 +33,7 @@ import {
 } from './manifest.js';
 import { dappfenceAttrsPlugin } from './inject/attrs-virtual-plugin.js';
 import { deriveIdentity, SUPPORTED_SIGNATURE_TYPES } from '@dappfence/manifest-tools';
+import { loadMessages } from '@dappfence/manifest-tools/messages';
 import {
     buildScriptTag,
     resolveContained,
@@ -186,6 +187,8 @@ export default function dappfence(options = {}) {
     let resolvedServerDir = null;
     // Normalized base path (e.g. '/my-app'); empty string when site is at root.
     let resolvedBase = '';
+    // Project root; the `messages` directory is resolved against it.
+    let resolvedRoot = process.cwd();
     // Populated by astro:build:ssr — route.pattern → absolute compiled chunk path.
     const ssrRouteToChunk = new Map();
 
@@ -203,6 +206,9 @@ export default function dappfence(options = {}) {
             // `virtual:dappfence/attrs` import has no other provider, so registering one
             // without the other is a resolve error.
             'astro:config:setup'({ command, logger, config, updateConfig, addMiddleware }) {
+                if (config.root) {
+                    resolvedRoot = fileURLToPath(config.root);
+                }
                 let envKey;
                 ({ secretKey, envKey } = resolveSecretKey(explicitKey, command, config));
 
@@ -393,6 +399,10 @@ export default function dappfence(options = {}) {
                     ...(extraHashes && { extraHashes }),
                     enumerablePatterns,
                     ...(cspPages && Object.keys(cspPages).length > 0 && { cspPages }),
+                    // opts.messages is a directory; the spread above would pass the path itself.
+                    messages: opts.messages
+                        ? await loadMessages(resolvedRoot, opts.messages)
+                        : undefined,
                 });
             },
         },

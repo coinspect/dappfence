@@ -1,5 +1,6 @@
 import { createLogger } from '../core/logger.js';
 import { MSG } from '../core/constants.js';
+import { setMessageOverrides } from './emergency-panel.js';
 
 const logger = createLogger();
 
@@ -16,9 +17,22 @@ let redirectAttempted = false;
  * added to history — pressing Back after dismissing the warning should not
  * return the user to the tampered page.
  */
-function handleSecurityMessage(event) {
+export function handleSecurityMessage(event) {
     const { data } = event;
-    if (data?.type !== MSG.SECURITY_BLOCK || redirectAttempted) {
+    if (data?.type !== MSG.MESSAGES && data?.type !== MSG.SECURITY_BLOCK) {
+        return;
+    }
+    // A page script can dispatch a synthetic `message` on
+    // navigator.serviceWorker, but only the browser sets isTrusted.
+    if (!event.isTrusted) {
+        logger.warn(`Ignoring untrusted ${data.type} event`);
+        return;
+    }
+    if (data.type === MSG.MESSAGES) {
+        setMessageOverrides(data.overrides);
+        return;
+    }
+    if (redirectAttempted) {
         return;
     }
     logger.error('Security violation detected');

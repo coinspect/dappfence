@@ -9,6 +9,7 @@ import { ASSET_TYPE, MODE, VERIFICATION_STATUS } from '../../core/constants.js';
 import { createSingleFlight, hasConfigManifest } from '../../core/utils.js';
 import { toPathname, verifyManifestSignature } from './verification.js';
 import { createLogger } from '../../core/logger.js';
+import { validateMessages } from '../../messages/index.js';
 
 /** @typedef {import('../../core/constants.js').AssetType} AssetType */
 /** @typedef {import('../../core/constants.js').ManifestLoadReason} ManifestLoadReason */
@@ -164,7 +165,21 @@ export const normalizeManifestData = (manifestData) => {
         redirects: normalizeRedirects(manifestData?.redirects),
         mode: manifestData?.mode ?? MODE.REPORTING,
         csp,
+        messages: normalizeMessages(manifestData?.messages),
     };
+};
+
+/**
+ * Integrator text overrides. manifest-tools already rejects bad entries at
+ * build time; this re-checks so a hand-built manifest can only ever supply
+ * known keys with plain-text values (see src/messages/index.js).
+ */
+const normalizeMessages = (raw) => {
+    const { messages, errors } = validateMessages(raw);
+    for (const error of errors) {
+        logger.warn(`Dropping manifest message (${error})`);
+    }
+    return messages;
 };
 
 const normalizeRedirects = (raw) => {

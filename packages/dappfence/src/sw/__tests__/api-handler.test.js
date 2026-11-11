@@ -188,6 +188,24 @@ describe('createApiHandler', () => {
             expect(onSecurityViolation).not.toHaveBeenCalled();
         });
 
+        it('takes text overrides only from the latest trusted manifest', async () => {
+            appStore.securityStore.isBlocked.mockResolvedValue(true);
+            appStore.trustedManifestStore.getLatest.mockResolvedValue({
+                appVersion: 'v1',
+                manifest: { files: {}, messages: { en: { 'warning.title': 'Signed title' } } },
+            });
+
+            const res = await handler(
+                '/sw-api/security-warning',
+                req('/sw-api/security-warning', { mode: 'navigate' })
+            );
+
+            const config = decodeURIComponent(
+                /decodeURIComponent\("([^"]+)"/.exec(await res.text())[1]
+            );
+            expect(JSON.parse(config).messages['warning.title']).toBe('Signed title');
+        });
+
         it('renders the security page and broadcasts when blocked', async () => {
             appStore.securityStore.isBlocked.mockResolvedValue(true);
 

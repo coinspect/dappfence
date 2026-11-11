@@ -68,11 +68,18 @@ export function createApiHandler({ onSecurityViolation, appStore }) {
         }
         logger.log(`fetch api Broadcasting active block condition`);
         await onSecurityViolation();
-        const [apiToken, activeBlocks] = await Promise.all([
+        const [apiToken, activeBlocks, latest] = await Promise.all([
             settingsStore.getApiToken(),
             securityStore.getActiveBlocks(),
+            trustedManifestStore.getLatest(),
         ]);
-        return createSecurityPageResponse(apiToken, activeBlocks);
+        // Text overrides come only from the latest manifest that passed signature
+        // verification. When the page shows because a *new* manifest was rejected,
+        // that's still the last trusted one; with none, built-in text is used.
+        return createSecurityPageResponse(apiToken, activeBlocks, {
+            languages: globalThis.navigator?.languages ?? [],
+            overrides: latest?.manifest?.messages,
+        });
     }
 
     async function handleSiteUnblock(_request) {

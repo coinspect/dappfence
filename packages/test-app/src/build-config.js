@@ -90,6 +90,17 @@ const simpleAppPages = {
         template: 'simple-app.html',
         manifest: 'csp-report-only-manifest.json',
     },
+    'messages.html': { template: 'simple-app.html', manifest: 'messages-manifest.json' },
+};
+
+// Signed text overrides, used by sw-messages.spec.ts (browser locale es-AR).
+const SPANISH_MESSAGES = {
+    es: {
+        'emergency.title': 'Se requiere una acción de seguridad',
+        'emergency.contact': 'Contactá a soporte en security@example.com.',
+        'warning.title': 'Advertencia de seguridad',
+        'block.FILE_UNTRUSTED.HASH_MISMATCH': 'Contenido del archivo alterado',
+    },
 };
 
 const simpleAppBase = {
@@ -107,6 +118,7 @@ const simpleAppBase = {
             ...defaultManifest,
             csp: { ...defaultManifest.csp, reportUri: '/capture/csp', reportSample: true },
         },
+        'messages-manifest.json': { ...defaultManifest, messages: SPANISH_MESSAGES },
         'csp-report-only-manifest.json': {
             ...defaultManifest,
             csp: {

@@ -8,6 +8,7 @@ import readline from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { calculateFileHash, signManifest } from '@dappfence/manifest-tools';
+import { assertValidMessages } from '@dappfence/manifest-tools/messages';
 import {
     extractInlineScriptHashes,
     extractInlineAttrHashes,
@@ -202,6 +203,7 @@ async function buildManifestsData(target, sharedFiles, { targetName, version, ou
             contentRules: manifest.contentRules || null,
             redirects: manifest.redirects || [],
             ...(csp ? { csp } : {}),
+            ...(manifest.messages ? { messages: assertValidMessages(manifest.messages) } : {}),
             metadata: { buildTime: new Date().toISOString(), version, target: targetName },
         };
 
