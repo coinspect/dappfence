@@ -4,6 +4,35 @@
         <meta charset="UTF-8" />
         <title>Template preview</title>
         <script type="module" src="./frame.js"></script>
+        <!-- Only for the ?view=source page; the full-page view replaces this document. -->
+        <style>
+            body {
+                margin: 0;
+                font:
+                    13px/1.5 ui-monospace,
+                    monospace;
+            }
+            .source__copy {
+                position: fixed;
+                top: 12px;
+                right: 12px;
+                padding: 4px 12px;
+            }
+            .source__code {
+                margin: 0;
+                padding: 16px;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+            }
+        </style>
     </head>
-    <body></body>
+    <body>
+        <!-- ?view=source: the rendered HTML as text. frame.js fills the slots. -->
+        <template id="source-view">
+            <div>
+                <button class="source__copy" type="button" data-slot="copy">Copy</button>
+                <pre class="source__code" data-slot="code"></pre>
+            </div>
+        </template>
+    </body>
 </html>

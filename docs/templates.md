@@ -413,7 +413,9 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 | `preview/pages.js`         | Page registry: each page's scenarios and a `render(scenario)` function |
 | `preview/scenarios.js`     | Raw block records and the security warning scenarios                   |
 | `preview/sample-messages/` | Sample integrator overrides (Spanish) for the `overrides` scenarios    |
-| `preview/preview.js`       | Catalog: thumbnails, width toggle, links to the full page and HTML     |
+| `preview/index.html`       | Catalog markup: toolbar and `<template>`s for sections, cards, thumbs  |
+| `preview/preview.js`       | Catalog logic: clones the templates and fills their `data-slot`s       |
+| `preview/frame.html`       | Full-page shell and the `?view=source` markup                          |
 | `preview/frame.js`         | Full-page view                                                         |
 | `src/templates/preview/`   | Preview-only templates: the logo variants pages (`logos*.html`)        |
 
