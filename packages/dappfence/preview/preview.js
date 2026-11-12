@@ -2,6 +2,9 @@
 // a thumbnail opens the full page (frame.html). Width and theme live in the URL
 // (?width=&theme=), so Vite's reload after a template edit keeps them, and
 // every link carries the theme, so the full page opens in the same one.
+//
+// The markup lives in index.html as <template> elements; this file only clones
+// them and fills their data-slot elements.
 import { PAGES, THEMES, WIDTHS, readSelection, renderScenario, viewQuery } from './pages.js';
 
 const THUMB_WIDTH = 320;
@@ -21,12 +24,17 @@ function catalogSelection(search) {
 }
 
 const app = document.getElementById('app');
-const controls = document.getElementById('controls');
+const widthControl = document.getElementById('width-control');
+const themeControl = document.getElementById('theme-control');
 
-function el(tag, props = {}, children = []) {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...children);
-    return node;
+/** A fresh copy of the <template id="…"> element's root. */
+function fromTemplate(id) {
+    return document.getElementById(id).content.firstElementChild.cloneNode(true);
+}
+
+/** The element marked data-slot="name" inside a cloned template. */
+function slot(node, name) {
+    return node.querySelector(`[data-slot="${name}"]`);
 }
 
 function scenarioLabel(pageName, scenario) {
@@ -37,17 +45,16 @@ function scenarioLabel(pageName, scenario) {
     return `${scenario} (${data.length} block${data.length === 1 ? '' : 's'})`;
 }
 
-function segmented(title, options, current, onPick) {
-    return el(
-        'div',
-        { className: 'segmented', title },
-        options.map(([value, label]) =>
-            el('button', {
-                textContent: label,
-                ariaPressed: String(value === current),
-                onclick: () => onPick(value),
-            })
-        )
+/** Fill a segmented control with one button per [value, label] option. */
+function fillSegmented(control, options, current, onPick) {
+    control.replaceChildren(
+        ...options.map(([value, label]) => {
+            const button = fromTemplate('segment-button');
+            button.textContent = label;
+            button.ariaPressed = String(value === current);
+            button.onclick = () => onPick(value);
+            return button;
+        })
     );
 }
 
@@ -65,81 +72,77 @@ function pick(change) {
  */
 function thumbnail(pageName, scenario, theme, viewport, thumbWidth) {
     const scale = thumbWidth / viewport;
-    const href = 'frame.html?' + viewQuery({ page: pageName, scenario, theme });
-    // Sandboxed without allow-modals: the pages' scripts still run, but
-    // they can't open dialogs (a beforeunload prompt in a thumbnail
-    // would otherwise fire whenever this page navigates).
-    const frame = el('iframe', { title: `${pageName} / ${scenario} / ${theme}`, tabIndex: -1 });
-    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    const link = fromTemplate('thumbnail');
+    link.href = 'frame.html?' + viewQuery({ page: pageName, scenario, theme });
+    link.title = `Open in ${theme} theme`;
+    link.style.height = `${THUMB_VIEWPORT_HEIGHT * scale}px`;
+
+    const frame = link.querySelector('iframe');
+    frame.title = `${pageName} / ${scenario} / ${theme}`;
     frame.style.width = `${viewport}px`;
     frame.style.height = `${THUMB_VIEWPORT_HEIGHT}px`;
     frame.style.transform = `scale(${scale})`;
-    const link = el('a', { className: 'thumb', href, title: `Open in ${theme} theme` }, [frame]);
-    link.style.height = `${THUMB_VIEWPORT_HEIGHT * scale}px`;
+
     const render = renderScenario(pageName, scenario, theme).then((html) => (frame.srcdoc = html));
     return { link, render };
 }
 
-function pairOrSingle(links, pair) {
-    const box = el('div', { className: pair ? 'thumbs thumbs--pair' : 'thumbs' }, links);
+/** One scenario card: its thumbnail(s) plus links to the full page and its HTML. */
+function scenarioCard(pageName, scenario, theme, viewport, renders) {
+    const pair = theme === 'both';
+    const card = fromTemplate('scenario-card');
+
+    const thumbs = (pair ? PAIR_THEMES : [theme]).map((t) =>
+        thumbnail(pageName, scenario, t, viewport, pair ? PAIR_THUMB_WIDTH : THUMB_WIDTH)
+    );
+    renders.push(...thumbs.map((t) => t.render));
+    const box = slot(card, 'thumbs');
+    box.append(...thumbs.map((t) => t.link));
     if (pair) {
+        box.classList.add('thumbs--pair');
         box.style.setProperty('--pair-thumb-width', `${PAIR_THUMB_WIDTH}px`);
     }
-    return box;
+
+    // In `both` mode the label links open the page as shipped (auto).
+    const fullPage =
+        'frame.html?' + viewQuery({ page: pageName, scenario, theme: pair ? 'auto' : theme });
+    const open = slot(card, 'open');
+    open.href = fullPage;
+    open.textContent = scenarioLabel(pageName, scenario);
+    slot(card, 'source').href = fullPage + '&view=source';
+
+    return card;
 }
 
 async function renderCatalog(width, theme) {
     const viewport = WIDTHS[width];
-    const pair = theme === 'both';
-    controls.replaceChildren(
-        segmented(
-            'Thumbnail viewport width',
-            Object.entries(WIDTHS).map(([name, px]) => [name, `${name} ${px}`]),
-            width,
-            (value) => pick({ width: value })
-        ),
-        segmented(
-            'Theme: auto follows this browser; light / dark force it; both shows each side by side',
-            CATALOG_THEMES.map((name) => [name, name]),
-            theme,
-            (value) => pick({ theme: value })
-        ),
-        el('span', { className: 'hint', textContent: 'Click a page to open it full size' })
+    fillSegmented(
+        widthControl,
+        Object.entries(WIDTHS).map(([name, px]) => [name, `${name} ${px}`]),
+        width,
+        (value) => pick({ width: value })
+    );
+    fillSegmented(
+        themeControl,
+        CATALOG_THEMES.map((name) => [name, name]),
+        theme,
+        (value) => pick({ theme: value })
     );
 
-    const section = el('div', { className: 'catalog' });
     const renders = [];
-    for (const [pageName, page] of Object.entries(PAGES)) {
-        const grid = el('div', { className: pair ? 'grid grid--pair' : 'grid' });
-        for (const scenario of Object.keys(page.scenarios)) {
-            const thumbs = (pair ? PAIR_THEMES : [theme]).map((t) =>
-                thumbnail(pageName, scenario, t, viewport, pair ? PAIR_THUMB_WIDTH : THUMB_WIDTH)
-            );
-            renders.push(...thumbs.map((t) => t.render));
-            // In `both` mode the label links open the page as shipped (auto).
-            const fullPage =
-                'frame.html?' +
-                viewQuery({ page: pageName, scenario, theme: pair ? 'auto' : theme });
-            grid.append(
-                el('div', { className: 'card' }, [
-                    pairOrSingle(
-                        thumbs.map((t) => t.link),
-                        pair
-                    ),
-                    el('div', { className: 'card__label' }, [
-                        el('a', { href: fullPage, textContent: scenarioLabel(pageName, scenario) }),
-                        el('a', {
-                            href: fullPage + '&view=source',
-                            textContent: 'HTML',
-                            title: 'Show the rendered HTML as text',
-                        }),
-                    ]),
-                ])
-            );
-        }
-        section.append(el('h2', { textContent: page.title }), grid);
-    }
-    app.replaceChildren(section);
+    const sections = Object.entries(PAGES).map(([pageName, page]) => {
+        const section = fromTemplate('page-section');
+        slot(section, 'title').textContent = page.title;
+        const grid = slot(section, 'cards');
+        grid.classList.toggle('grid--pair', theme === 'both');
+        grid.append(
+            ...Object.keys(page.scenarios).map((scenario) =>
+                scenarioCard(pageName, scenario, theme, viewport, renders)
+            )
+        );
+        return section;
+    });
+    app.replaceChildren(...sections);
     await Promise.all(renders);
 }
 

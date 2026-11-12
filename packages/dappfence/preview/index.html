@@ -10,8 +10,58 @@
     <body>
         <header class="bar">
             <a class="bar__brand" href="./">DappFence templates</a>
-            <div class="bar__controls" id="controls"></div>
+            <div class="bar__controls">
+                <!-- Buttons come from WIDTHS / THEMES in pages.js (segment-button template). -->
+                <div class="segmented" id="width-control" title="Thumbnail viewport width"></div>
+                <div
+                    class="segmented"
+                    id="theme-control"
+                    title="Theme: auto follows this browser; light / dark force it; both shows each side by side"
+                ></div>
+                <span class="hint">Click a page to open it full size</span>
+            </div>
         </header>
-        <main id="app"></main>
+        <main class="catalog" id="app"></main>
+
+        <!--
+            Markup for the catalog. preview.js clones these and fills the
+            elements marked data-slot; everything else is used as written.
+        -->
+
+        <!-- One toolbar option. Text and aria-pressed are set per option. -->
+        <template id="segment-button">
+            <button type="button"></button>
+        </template>
+
+        <!-- One page in PAGES: its title and a card per scenario. -->
+        <template id="page-section">
+            <section>
+                <h2 data-slot="title"></h2>
+                <div class="grid" data-slot="cards"></div>
+            </section>
+        </template>
+
+        <!-- One scenario: its thumbnail(s) and links to the full page. -->
+        <template id="scenario-card">
+            <div class="card">
+                <div class="thumbs" data-slot="thumbs"></div>
+                <div class="card__label">
+                    <a data-slot="open"></a>
+                    <a data-slot="source" title="Show the rendered HTML as text">HTML</a>
+                </div>
+            </div>
+        </template>
+
+        <!--
+            One live thumbnail: the rendered page in a scaled-down iframe.
+            Sandboxed without allow-modals: the pages' scripts still run, but
+            they can't open dialogs (a beforeunload prompt in a thumbnail would
+            otherwise fire whenever this page navigates).
+        -->
+        <template id="thumbnail">
+            <a class="thumb">
+                <iframe tabindex="-1" sandbox="allow-scripts allow-same-origin"></iframe>
+            </a>
+        </template>
     </body>
 </html>
