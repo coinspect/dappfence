@@ -1,6 +1,8 @@
 /* DappFence branding footer ("Protected by" + logo), shared by every page via
    partials/footer.html. The logo itself is partials/logo.html, styled by
-   logo.css; its colours follow the theme through the --df-logo-* tokens. */
+   logo.css. Here it is small and one colour: every --df-logo-* token is
+   pointed at --df-footer-logo (the label's muted text colour), so the
+   gradients collapse to a flat mark that follows the theme. */
 
 .df-footer {
     display: inline-flex;
@@ -10,4 +12,18 @@
     font-weight: 500;
     color: var(--df-text-muted);
     padding: 0 1em;
+
+    --df-footer-logo: var(--df-text-muted);
+    --df-logo-height: 18px;
+    --df-logo-wordmark: var(--df-footer-logo);
+    --df-logo-accent: var(--df-footer-logo);
+    --df-logo-gradient-start: var(--df-footer-logo);
+    --df-logo-gradient-mid: var(--df-footer-logo);
+    --df-logo-gradient-end: var(--df-footer-logo);
+    --df-logo-shade: var(--df-footer-logo);
+    --df-logo-highlight: var(--df-footer-logo);
+    --df-logo-glow: var(--df-footer-logo);
+    --df-logo-slash-mid: var(--df-footer-logo);
+    --df-logo-panel-mid: var(--df-footer-logo);
+    --df-logo-panel-end: var(--df-footer-logo);
 }
