@@ -1,0 +1,102 @@
+/* Base dialog for the template preview (preview/pages.js). Not part of any
+   shipped page: only the preview imports it. Uses the real tokens, theme and
+   page/card/footer components, so the shell matches what the pages render. */
+
+@import '../styles/tokens.css';
+@import '../styles/themes.css';
+@import '../styles/base.css';
+@import '../styles/components/page.css';
+@import '../styles/components/card.css';
+@import '../styles/components/logo.css';
+@import '../styles/components/footer.css';
+
+/* Brand band: the DappFence logo on the card surface. Colours follow the
+   theme through the --df-surface / --df-logo-* tokens. */
+.df-card__header--brand {
+    --df-logo-height: 2rem;
+    display: flex;
+    justify-content: center;
+    background: var(--df-surface);
+}
+
+.df-card__header--brand::after {
+    display: none;
+}
+
+/* Colour band holding the title, with the variant's icon in a pale disc
+   that straddles its top edge (--df-dialog-overlap of the disc sits above
+   the band). The variant points --df-dialog-accent at its semantic token
+   (tokens.css), which paints the band and the icon; the title is
+   --df-on-accent on the band. */
+.df-card__dialog-header {
+    --df-dialog-disc: 7rem;
+    --df-dialog-overlap: 0.65;
+    position: relative;
+    margin-top: calc(.5rem + var(--df-dialog-disc) * var(--df-dialog-overlap));
+    padding: calc(var(--df-dialog-disc) * (1 - var(--df-dialog-overlap)) + .5rem) 1rem 1rem;
+    text-align: center;
+    color: var(--df-on-accent);
+    background: var(--df-dialog-accent);
+}
+
+.df-card__dialog-header--brand {
+    --df-dialog-accent: var(--df-brand);
+}
+
+.df-card__dialog-header--info {
+    --df-dialog-accent: var(--df-info);
+}
+
+.df-card__dialog-header--warn {
+    --df-dialog-accent: var(--df-warn);
+}
+
+.df-card__dialog-header--error {
+    --df-dialog-accent: var(--df-error);
+}
+
+.df-card__dialog-icon {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: var(--df-dialog-disc);
+    height: var(--df-dialog-disc);
+    transform: translate(-50%, calc(var(--df-dialog-overlap) * -100%));
+    border-radius: 50%;
+    color: var(--df-dialog-accent);
+    background: var(--df-icon-disc);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.df-card__dialog-icon svg {
+    display: block;
+    width: 62%;
+    height: 62%;
+}
+
+.df-card__dialog-title {
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+@media (max-width: 576px) {
+    .df-card__dialog-header {
+        --df-dialog-disc: 92px;
+        margin-top: calc(24px + var(--df-dialog-disc) * var(--df-dialog-overlap));
+        padding-right: 18px;
+        padding-bottom: 18px;
+        padding-left: 18px;
+    }
+    .df-card__dialog-title {
+        font-size: 24px;
+    }
+}
+
+@media (prefers-contrast: high) {
+    .df-card__dialog-icon {
+        outline: 2px solid currentColor;
+    }
+}

@@ -11,6 +11,13 @@ import { renderMessages, renderTemplate } from '../src/core/template.js';
 import logosHtml from '../src/templates/preview/logos.html?template';
 import logosSideBySideHtml from '../src/templates/preview/logos-side-by-side.html?template';
 import logosCss from '../src/templates/preview/logos.css?inline';
+import baseDialogHtml from '../src/templates/preview/base-dialog.html?template';
+import baseDialogAlertHtml from '../src/templates/preview/base-dialog-alert.html?template';
+import baseDialogCss from '../src/templates/preview/base-dialog.css?inline';
+import shieldIcon from '../src/templates/assets/icons/shield.svg?raw';
+import infoIcon from '../src/templates/assets/icons/info.svg?raw';
+import warningIcon from '../src/templates/assets/icons/warning.svg?raw';
+import errorIcon from '../src/templates/assets/icons/error.svg?raw';
 import { warningScenarios } from './scenarios.js';
 import sampleEs from './sample-messages/es.json';
 
@@ -19,6 +26,22 @@ import sampleEs from './sample-messages/es.json';
 // keys the sample lacks fall back to built-in English.
 const SAMPLE_OVERRIDES = validateMessages({ es: sampleEs }).messages;
 const SAMPLE_TEXT = { languages: ['es-AR'], overrides: SAMPLE_OVERRIDES };
+
+/** The icon each base dialog variant shows in its disc. */
+const DIALOG_ICONS = { brand: shieldIcon, info: infoIcon, warn: warningIcon, error: errorIcon };
+
+/**
+ * base-dialog.html with its colour band switched from --brand to `variant`
+ * and the shield in its disc swapped for that variant's icon.
+ */
+function withDialogVariant(variant) {
+    return baseDialogHtml
+        .replace('df-card__dialog-header--brand', `df-card__dialog-header--${variant}`)
+        .replace(
+            /(<span class="df-card__dialog-icon">)[\s\S]*?(<\/span>)/,
+            (_match, open, close) => `${open}${DIALOG_ICONS[variant]}${close}`
+        );
+}
 
 /**
  * @typedef {object} PreviewPage
@@ -53,6 +76,23 @@ export const PAGES = {
             const messages = text ? resolveMessages(text.languages, text.overrides) : undefined;
             return `<!doctype html><html lang="en">${createEmergencyPanel(messages)}</html>`;
         },
+    },
+    'base-dialog': {
+        title: 'Base dialog',
+        // Preview-only (src/templates/preview/): the empty card shell the
+        // pages are built on. One scenario per colour band variant of the
+        // raised card (base-dialog.html ships with --brand and the shield;
+        // the others swap the class and the icon), plus `alert`, the
+        // emergency panel's card.
+        scenarios: {
+            brand: baseDialogHtml,
+            info: withDialogVariant('info'),
+            warn: withDialogVariant('warn'),
+            error: withDialogVariant('error'),
+            alert: baseDialogAlertHtml,
+        },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),
     },
     logos: {
         title: 'Logo variants',
