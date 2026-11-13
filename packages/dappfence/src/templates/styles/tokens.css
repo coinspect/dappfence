@@ -48,7 +48,8 @@
     --df-chip-manifest-bg: #fde8ec;
     --df-chip-manifest-border: #fbc5cf;
 
-    /* prefers-contrast: high. Forced, maximum-contrast values; not themed. */
+    /* High contrast (prefers-contrast: high). Forced, maximum-contrast values;
+       not themed. */
     --df-hc-bg: #000000;
     --df-hc-border: #ffffff;
     --df-hc-danger: #cc0000;

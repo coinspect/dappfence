@@ -7,7 +7,7 @@
 import { createSecurityPageResponse } from '../src/sw/response.js';
 import { createEmergencyPanel } from '../src/client/emergency-panel.js';
 import { resolveMessages, validateMessages } from '../src/messages/index.js';
-import { renderMessages, renderTemplate } from '../src/core/template.js';
+import { escapeHtml, renderMessages, renderTemplate } from '../src/core/template.js';
 import logosHtml from '../src/templates/preview/logos.html?template';
 import logosSideBySideHtml from '../src/templates/preview/logos-side-by-side.html?template';
 import logosCss from '../src/templates/preview/logos.css?inline';
@@ -15,6 +15,9 @@ import baseDialogHtml from '../src/templates/preview/base-dialog.html?template';
 import baseDialogCss from '../src/templates/preview/base-dialog.css?inline';
 import elementsHtml from '../src/templates/preview/elements.html?template';
 import elementsCss from '../src/templates/preview/elements.css?inline';
+import paletteHtml from '../src/templates/preview/palette.html?template';
+import paletteCss from '../src/templates/preview/palette.css?inline';
+import tokensCss from '../src/templates/styles/tokens.css?raw';
 import shieldIcon from '../src/templates/assets/icons/shield.svg?raw';
 import infoIcon from '../src/templates/assets/icons/info.svg?raw';
 import warningIcon from '../src/templates/assets/icons/warning.svg?raw';
@@ -42,6 +45,57 @@ function withDialogVariant(variant) {
             /(<span class="df-card__band-icon">)[\s\S]*?(<\/span>)/,
             (_match, open, close) => `${open}${DIALOG_ICONS[variant]}${close}`
         );
+}
+
+/** A token value that is a colour, or another token (which may be one). */
+const COLOUR_VALUE = /^(#|rgba?\(|hsla?\(|var\(--df-)/;
+
+/**
+ * The colour tokens of tokens.css, grouped by its section comments: a
+ * comment on its own line starts a group, named by its first phrase; a
+ * comment after a token is that token's note. Non-colour tokens (radius,
+ * font) are left out.
+ * @param {string} css
+ * @returns {{ name: string, tokens: { name: string, note: string }[] }[]}
+ */
+export function paletteGroups(css) {
+    const groups = [];
+    const pattern = /\/\*([\s\S]*?)\*\/|(--df-[\w-]+):\s*([^;]+);(?:[ \t]*\/\*([\s\S]*?)\*\/)?/g;
+    for (const [, comment, name, value, note] of css.matchAll(pattern)) {
+        if (comment !== undefined) {
+            const title = comment
+                .trim()
+                .split(/\.\s|,\s|\s\(|:\s/)[0]
+                .replace(/\.$/, '');
+            groups.push({ name: title, tokens: [] });
+        } else if (groups.length && COLOUR_VALUE.test(value.trim())) {
+            groups[groups.length - 1].tokens.push({ name, note: (note ?? '').trim() });
+        }
+    }
+    return groups.filter((group) => group.tokens.length);
+}
+
+/** Swatch markup for every colour token in tokens.css. */
+function paletteMarkup() {
+    return paletteGroups(tokensCss)
+        .map(
+            (group) => `<section class="df-palette__group">
+    <h3>${escapeHtml(group.name)}</h3>
+    <ul class="df-swatches">${group.tokens
+        .map(
+            ({ name, note }) => `
+        <li class="df-swatch" data-token="${name}">
+            <span class="df-swatch__chip"><span style="background: var(${name})"></span></span>
+            <code>${name}</code>
+            <span class="df-swatch__value"></span>
+            ${note ? `<span class="df-swatch__note">${escapeHtml(note)}</span>` : ''}
+        </li>`
+        )
+        .join('')}
+    </ul>
+</section>`
+        )
+        .join('\n');
 }
 
 /**
@@ -100,6 +154,14 @@ export const PAGES = {
         scenarios: { default: elementsHtml },
         render: async (html) =>
             renderMessages(renderTemplate(html, elementsCss), resolveMessages(['en'])),
+    },
+    palette: {
+        title: 'Palette',
+        // Preview-only sheet (src/templates/preview/): every colour token,
+        // generated from tokens.css, in light and dark side by side.
+        scenarios: { default: paletteHtml },
+        render: async (html) =>
+            renderTemplate(html.replaceAll('<div data-palette></div>', paletteMarkup), paletteCss),
     },
     logos: {
         title: 'Logo variants',

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- @include ../partials/head.html title="DappFence palette" -->
+    </head>
+    <body class="df-palette">
+        <!--
+            Every colour token in styles/tokens.css, light and dark side by
+            side. preview/pages.js generates the swatches from tokens.css
+            (grouped by its section comments) and puts them in place of each
+            <div data-palette></div>; swatch-values.html prints the value each
+            token resolves to in that sheet's theme.
+        -->
+        <section class="df-palette__sheet df-theme-light">
+            <h2 class="df-palette__title">Light (.df-theme-light)</h2>
+            <div data-palette></div>
+        </section>
+        <section class="df-palette__sheet df-theme-dark">
+            <h2 class="df-palette__title">Dark (.df-theme-dark)</h2>
+            <div data-palette></div>
+        </section>
+        <!-- @include swatch-values.html -->
+    </body>
+</html>
