@@ -12,7 +12,6 @@ import logosHtml from '../src/templates/preview/logos.html?template';
 import logosSideBySideHtml from '../src/templates/preview/logos-side-by-side.html?template';
 import logosCss from '../src/templates/preview/logos.css?inline';
 import baseDialogHtml from '../src/templates/preview/base-dialog.html?template';
-import baseDialogAlertHtml from '../src/templates/preview/base-dialog-alert.html?template';
 import baseDialogCss from '../src/templates/preview/base-dialog.css?inline';
 import elementsHtml from '../src/templates/preview/elements.html?template';
 import elementsCss from '../src/templates/preview/elements.css?inline';
@@ -38,9 +37,9 @@ const DIALOG_ICONS = { brand: shieldIcon, info: infoIcon, warn: warningIcon, err
  */
 function withDialogVariant(variant) {
     return baseDialogHtml
-        .replace('df-card__dialog-header--brand', `df-card__dialog-header--${variant}`)
+        .replace('df-card__band--brand', `df-card__band--${variant}`)
         .replace(
-            /(<span class="df-card__dialog-icon">)[\s\S]*?(<\/span>)/,
+            /(<span class="df-card__band-icon">)[\s\S]*?(<\/span>)/,
             (_match, open, close) => `${open}${DIALOG_ICONS[variant]}${close}`
         );
 }
@@ -84,14 +83,12 @@ export const PAGES = {
         // Preview-only (src/templates/preview/): the empty card shell the
         // pages are built on. One scenario per colour band variant of the
         // raised card (base-dialog.html ships with --brand and the shield;
-        // the others swap the class and the icon), plus `alert`, the
-        // emergency panel's card.
+        // the others swap the class and the icon).
         scenarios: {
             brand: baseDialogHtml,
             info: withDialogVariant('info'),
             warn: withDialogVariant('warn'),
             error: withDialogVariant('error'),
-            alert: baseDialogAlertHtml,
         },
         render: async (html) =>
             renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),
