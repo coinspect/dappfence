@@ -224,7 +224,9 @@ by ID.
 -   It must keep the `<script id="dappfence-config">` placeholder. `response.js` slices the page
     around it, and `src/sw/__tests__/response.test.js` checks that it's there.
 -   End-to-end tests depend on the title `Security Warning - Content Blocked`, the heading text
-    `Security Warning`, and a button named `Remove Site Lock`.
+    `Security Warning`, the advanced mode switch (`id="df-advanced"`, found through its
+    `<label for>`), and a button named `Remove Site Lock` inside the advanced mode it reveals
+    (`showAdvancedMode()` and `removeSiteLock()` in `test-app/test/sw-fixtures.ts`).
 
 ### Emergency panel (`pages/emergency-panel.html`)
 

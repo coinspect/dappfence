@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the Service Worker functionality.
  */
-import { expect, test } from '../sw-fixtures';
+import { expect, test, removeSiteLock } from '../sw-fixtures';
 
 /*
  * The manifest file serves as the root of trust for the integrity verification system.
@@ -22,7 +22,7 @@ test('should block navigation when integrity-manifest.json is tampered', async (
         await dialog.accept();
     });
     // If the user ignores the error, we keep going.
-    await page.getByRole('button', { name: 'Remove Site Lock' }).click();
+    await removeSiteLock(page);
     await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
 });
 
