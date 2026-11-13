@@ -114,6 +114,7 @@
     padding: 1rem 2rem;
     background: var(--df-surface);
     border-radius: var(--df-radius) var(--df-radius) 0 0;
+    border-top: 0.5px solid var(--df-card-accent-strong);
 }
 
 /* Colour band. --df-card-overlap of the disc sits above the band; the band's
@@ -241,6 +242,7 @@
     background: var(--df-surface-soft);
     border-top: 1px solid var(--df-border);
     border-radius: 0 0 var(--df-radius) var(--df-radius);
+    border-bottom: 0.5px solid var(--df-card-accent);
 }
 
 .df-card__timestamp {
