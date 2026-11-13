@@ -31,7 +31,7 @@
 
 .df-callout--danger {
     padding: 15px;
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--df-danger-tint);
     border-left: 4px solid var(--df-red-500);
     border-radius: 4px;
 }
