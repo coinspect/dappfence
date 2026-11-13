@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the Service Worker functionality.
  */
-import { expect, SWHelper, test } from '../sw-fixtures';
+import { expect, SWHelper, test, removeSiteLock } from '../sw-fixtures';
 import type { TestInfo } from '@playwright/test';
 
 /*
@@ -75,7 +75,7 @@ test.describe('should allow normal navigation after dismissing a security block 
         page1.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page1.getByRole('button', { name: 'Remove Site Lock' }).click();
+        await removeSiteLock(page1);
         await page1.waitForURL('/');
         await expect(page1).toHaveTitle('DappFence - Manifest Mode Example');
         await page2.goto('');
@@ -89,7 +89,7 @@ test.describe('should allow normal navigation after dismissing a security block 
         page2.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page2.getByRole('button', { name: 'Remove Site Lock' }).click();
+        await removeSiteLock(page2);
         await page2.waitForURL('/');
         await expect(page2).toHaveTitle('DappFence - Manifest Mode Example');
         await page1.goto('');
@@ -104,7 +104,7 @@ test.describe('should allow normal navigation after dismissing a security block 
         page1.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page1.getByRole('button', { name: 'Remove Site Lock' }).click();
+        await removeSiteLock(page1);
         await page1.waitForURL('/');
         await expect(page1).toHaveTitle('DappFence - Manifest Mode Example');
         await page2.reload();
@@ -118,7 +118,7 @@ test.describe('should allow normal navigation after dismissing a security block 
         page2.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page2.getByRole('button', { name: 'Remove Site Lock' }).click();
+        await removeSiteLock(page2);
         await page2.waitForURL('/');
         await expect(page2).toHaveTitle('DappFence - Manifest Mode Example');
         await page1.reload();
