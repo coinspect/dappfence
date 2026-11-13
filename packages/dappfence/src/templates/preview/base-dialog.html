@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- @include ../partials/head.html title="DappFence base dialog" -->
+    </head>
+    <body>
+        <!--
+            The bare .df-card--raised shell: a brand band with the logo, a
+            colour band holding the title, with the variant's icon in a disc
+            straddling its top edge, then body, the optional advanced mode
+            (a switch that shows a warning and the details, off by default)
+            and footer with placeholder text.
+
+            The shell lives in styles/components/card.css; the pages use it
+            as-is. The card's variant class (--brand, --info, --warn or
+            --error) colours the whole dialog and picks its icon. The
+            preview renders one scenario per variant by swapping the --brand
+            class (preview/pages.js).
+        -->
+        <div class="df-page">
+            <div class="df-card df-card--raised df-card--brand">
+                <div class="df-card__header">
+                    <!-- @include ../partials/logo.html -->
+                </div>
+                <div class="df-card__band">
+                    <!-- @include ../partials/band-icon.html -->
+                    <h1 class="df-card__title">Dialog title</h1>
+                </div>
+
+                <div class="df-card__body">
+                    <p>Body content goes here.</p>
+                </div>
+
+                <div class="df-card__advanced">
+                    <input
+                        class="df-switch__input"
+                        type="checkbox"
+                        role="switch"
+                        id="df-advanced"
+                        aria-controls="df-advanced-body"
+                    />
+                    <label class="df-card__advanced-toggle df-switch" for="df-advanced">
+                        <span>{{t:dialog.advanced}}</span>
+                        <span class="df-switch__track" aria-hidden="true"></span>
+                    </label>
+                    <div class="df-card__advanced-body" id="df-advanced-body">
+                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            {{t:dialog.advancedNotice}}
+                        </p>
+                        <p>Advanced content goes here.</p>
+                    </div>
+                </div>
+
+                <div class="df-card__footer">
+                    <!-- @include ../partials/footer.html -->
+                    <p class="df-card__timestamp">Footer timestamp</p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

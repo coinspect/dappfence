@@ -4,7 +4,7 @@
  * Ensures the Service Worker is installed and active before running each test.
  * These tests assume that the /index.html file is correct and has already been loaded at least once.
  */
-import { expect, test } from '../sw-fixtures';
+import { expect, test, removeSiteLock } from '../sw-fixtures';
 ['index', 'front-page'].forEach((name) => {
     test.describe(`after-load (${name})`, () => {
         test.beforeEach(async ({ page, swHelper }, testInfo) => {
@@ -99,7 +99,7 @@ import { expect, test } from '../sw-fixtures';
             page.on('dialog', async (dialog) => {
                 await dialog.accept();
             });
-            await page.getByRole('button', { name: 'Remove Site Lock' }).click();
+            await removeSiteLock(page);
             await page.waitForURL('/');
             await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
 

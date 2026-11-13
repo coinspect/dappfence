@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- @include ../partials/head.html title="DappFence elements" -->
+    </head>
+    <body>
+        <!--
+            Catalog of the small components, grouped by role: actions,
+            controls, status, text, notices, findings and branding. Each item
+            is captioned with its classes and stylesheet. Together they cover
+            every element of the security warning; the findings use the markup
+            its script builds (partials/block-templates.html), filled with
+            sample data.
+        -->
+        <main class="df-elements">
+            <h2 class="df-elements__title">Elements</h2>
+
+            <section class="df-elements__section">
+                <h3>Actions</h3>
+                <div class="df-elements__item">
+                    <h4>Buttons, by variant, without and with an icon</h4>
+                    <div class="df-elements__grid">
+                        <code>brand</code>
+                        <button class="df-btn df-btn--brand" type="button">Continue</button>
+                        <button class="df-btn df-btn--brand" type="button">
+                            <!-- @include ../assets/icons/shield.svg -->
+                            Continue
+                        </button>
+                        <code>info</code>
+                        <button class="df-btn df-btn--info" type="button">Learn more</button>
+                        <button class="df-btn df-btn--info" type="button">
+                            <!-- @include ../assets/icons/info.svg -->
+                            Learn more
+                        </button>
+                        <code>warn</code>
+                        <button class="df-btn df-btn--warn" type="button">Proceed anyway</button>
+                        <button class="df-btn df-btn--warn" type="button">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            Proceed anyway
+                        </button>
+                        <code>error</code>
+                        <button class="df-btn df-btn--error" type="button">Block site</button>
+                        <button class="df-btn df-btn--error" type="button">
+                            <!-- @include ../assets/icons/error.svg -->
+                            Block site
+                        </button>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-btn--brand / --info / --warn / --error</code> · button.css,
+                        assets/icons/
+                    </p>
+                </div>
+                <div class="df-elements__item">
+                    <h4>Danger button</h4>
+                    <div class="df-elements__wide">
+                        <button class="df-btn df-btn--danger" type="button">Unblock site</button>
+                    </div>
+                    <p class="df-elements__caption"><code>.df-btn--danger</code> · button.css</p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Controls</h3>
+                <div class="df-elements__item">
+                    <h4>Switch, off and on</h4>
+                    <div class="df-elements__switches">
+                        <input
+                            class="df-switch__input"
+                            type="checkbox"
+                            role="switch"
+                            id="df-switch-off"
+                        />
+                        <label class="df-switch" for="df-switch-off">
+                            <span>Off</span>
+                            <span class="df-switch__track" aria-hidden="true"></span>
+                        </label>
+                        <input
+                            class="df-switch__input"
+                            type="checkbox"
+                            role="switch"
+                            id="df-switch-on"
+                            checked
+                        />
+                        <label class="df-switch" for="df-switch-on">
+                            <span>On</span>
+                            <span class="df-switch__track" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <p class="df-elements__caption"><code>.df-switch</code> · switch.css</p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Status</h3>
+                <div class="df-elements__item">
+                    <h4>Severity chip, on each variant's band</h4>
+                    <div class="df-elements__fills">
+                        <div class="df-elements__fill" style="--df-elements-fill: var(--df-brand)">
+                            <span class="df-severity-chip">{{t:warning.chip}}</span>
+                            <code>brand</code>
+                        </div>
+                        <div class="df-elements__fill" style="--df-elements-fill: var(--df-info)">
+                            <span class="df-severity-chip">{{t:warning.chip}}</span>
+                            <code>info</code>
+                        </div>
+                        <div class="df-elements__fill" style="--df-elements-fill: var(--df-warn)">
+                            <span class="df-severity-chip">{{t:warning.chip}}</span>
+                            <code>warn</code>
+                        </div>
+                        <div class="df-elements__fill" style="--df-elements-fill: var(--df-error)">
+                            <span class="df-severity-chip">{{t:warning.chip}}</span>
+                            <code>error</code>
+                        </div>
+                    </div>
+                    <p class="df-elements__caption"><code>.df-severity-chip</code> · badge.css</p>
+                </div>
+                <div class="df-elements__item">
+                    <h4>Count badges</h4>
+                    <div class="df-elements__row">
+                        <span class="df-badge">3×</span>
+                        <span class="df-badge df-badge--strong">17</span>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-badge, .df-badge--strong</code> · badge.css
+                    </p>
+                </div>
+                <div class="df-elements__item">
+                    <h4>Asset-type chips</h4>
+                    <div class="df-elements__row">
+                        <span class="df-chip df-chip--service-worker"
+                            >{{t:warning.chip.serviceWorker}}</span
+                        >
+                        <span class="df-chip df-chip--manifest">{{t:warning.chip.manifest}}</span>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-chip--service-worker, .df-chip--manifest</code> · badge.css
+                    </p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Text</h3>
+                <div class="df-elements__item">
+                    <h4>Subtitle and message</h4>
+                    <div class="df-elements__surface">
+                        <h2 class="df-subtitle">{{t:warning.subtitle}}</h2>
+                        <p class="df-message">{{t:warning.message}}</p>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-subtitle, .df-message</code> · text.css
+                    </p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Notices</h3>
+                <div class="df-elements__item">
+                    <h4>Caution note (advanced mode)</h4>
+                    <div class="df-elements__surface">
+                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            {{t:dialog.advancedNotice}}
+                        </p>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-callout--warning .df-card__advanced-notice</code> · callout.css,
+                        card.css
+                    </p>
+                </div>
+                <div class="df-elements__item">
+                    <h4>Danger zone (Remove Site Lock)</h4>
+                    <div class="df-elements__surface">
+                        <div class="df-callout df-callout--warning">
+                            <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
+                            <p class="df-callout__text">{{t:warning.unlockText}}</p>
+                            <button class="df-btn df-btn--danger" type="button">
+                                🔓 {{t:warning.unlockButton}}
+                            </button>
+                        </div>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-callout--warning, .df-btn--danger</code> · callout.css, button.css
+                    </p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Findings</h3>
+                <div class="df-elements__item">
+                    <h4>
+                        Block list: a single block, a grouped block with its file rows, detail rows
+                        (value and hash)
+                    </h4>
+                    <div class="df-elements__surface">
+                        <div class="df-blocks">
+                            <h3 class="df-blocks__heading">
+                                {{t:warning.activeBlocks}}<span class="df-badge df-badge--strong"
+                                    >3</span
+                                >
+                            </h3>
+                            <div class="df-block-list">
+                                <details class="df-block" open>
+                                    <summary class="df-block__summary df-disclosure">
+                                        <div class="df-block__heading">
+                                            <span class="df-block__title"
+                                                >Manifest signer changed since pinning</span
+                                            >
+                                            <span class="df-block__name"
+                                                >/integrity-manifest.json</span
+                                            >
+                                        </div>
+                                        <span class="df-chip df-chip--manifest"
+                                            >{{t:warning.chip.manifest}}</span
+                                        >
+                                        <span class="df-badge">1×</span>
+                                    </summary>
+                                    <div class="df-block__body">
+                                        <div class="df-info-row">
+                                            <span class="df-info-row__label">Pinned signer:</span>
+                                            <span
+                                                class="df-info-row__value df-info-row__value--hash"
+                                                >0x0d5b81e9bd4d6ab0a0487ea9fe161a4152b11625</span
+                                            >
+                                        </div>
+                                        <div class="df-info-row">
+                                            <span class="df-info-row__label"
+                                                >{{t:warning.label.reason}}:</span
+                                            >
+                                            <span class="df-info-row__value">SIGNER_CHANGED</span>
+                                        </div>
+                                        <div class="df-info-row">
+                                            <span class="df-info-row__label"
+                                                >{{t:warning.label.firstSeen}}:</span
+                                            >
+                                            <span class="df-info-row__value"
+                                                >11/13/2026, 9:48:21 PM</span
+                                            >
+                                        </div>
+                                    </div>
+                                </details>
+                                <details class="df-block df-block--group" open>
+                                    <summary class="df-block__summary df-disclosure">
+                                        <div class="df-block__heading">
+                                            <span class="df-block__title"
+                                                >File content tampered</span
+                                            >
+                                            <span class="df-block__name">2 files</span>
+                                        </div>
+                                        <span class="df-badge">3×</span>
+                                    </summary>
+                                    <div class="df-block__body">
+                                        <div class="df-file-list">
+                                            <details class="df-file" open>
+                                                <summary class="df-file__row df-disclosure">
+                                                    <span class="df-file__key">/app.js</span>
+                                                    <span class="df-file__hash"
+                                                        >0x3f1c9a7e5b2d8c4f6a0e1b3d5c7a9e2f4b6d8a0c1e3f5a7b9d2c4e6f8a0b1c3d</span
+                                                    >
+                                                    <span class="df-badge">2×</span>
+                                                </summary>
+                                                <div class="df-file__body">
+                                                    <div class="df-info-row">
+                                                        <span class="df-info-row__label"
+                                                            >Expected hash:</span
+                                                        >
+                                                        <span
+                                                            class="df-info-row__value df-info-row__value--hash"
+                                                            >0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d</span
+                                                        >
+                                                    </div>
+                                                    <div class="df-info-row">
+                                                        <span class="df-info-row__label"
+                                                            >Actual hash:</span
+                                                        >
+                                                        <span
+                                                            class="df-info-row__value df-info-row__value--hash"
+                                                            >0x3f1c9a7e5b2d8c4f6a0e1b3d5c7a9e2f4b6d8a0c1e3f5a7b9d2c4e6f8a0b1c3d</span
+                                                        >
+                                                    </div>
+                                                    <div class="df-info-row">
+                                                        <span class="df-info-row__label"
+                                                            >{{t:warning.label.firstSeen}}:</span
+                                                        >
+                                                        <span class="df-info-row__value"
+                                                            >11/13/2026, 9:48:21 PM</span
+                                                        >
+                                                    </div>
+                                                </div>
+                                            </details>
+                                            <details class="df-file">
+                                                <summary class="df-file__row df-disclosure">
+                                                    <span class="df-file__key">/sw.js</span>
+                                                    <span class="df-file__hash"
+                                                        >0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d</span
+                                                    >
+                                                    <span class="df-chip df-chip--service-worker"
+                                                        >{{t:warning.chip.serviceWorker}}</span
+                                                    >
+                                                    <span class="df-badge">1×</span>
+                                                </summary>
+                                                <div class="df-file__body"></div>
+                                            </details>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code
+                            >.df-blocks, .df-block (--group), .df-file, .df-info-row
+                            (__value--hash)</code
+                        >
+                        · block.css, info-row.css, disclosure.css
+                    </p>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Branding</h3>
+                <div class="df-elements__item">
+                    <h4>Footer with timestamp</h4>
+                    <div class="df-card df-card--error df-elements__footer">
+                        <div class="df-card__footer">
+                            <!-- @include ../partials/footer.html -->
+                            <p class="df-card__timestamp">Blocked at 11/13/2026, 9:48:21 PM</p>
+                        </div>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-card__footer, .df-footer, .df-card__timestamp</code> · card.css,
+                        footer.css, logo.css
+                    </p>
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

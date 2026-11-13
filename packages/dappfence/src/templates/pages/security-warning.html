@@ -4,10 +4,13 @@
         <!-- @include ../partials/head.html title="{{t:warning.pageTitle}}" -->
     </head>
     <body>
-        <div class="df-overlay">
-            <div class="df-card df-card--raised">
+        <div class="df-page">
+            <div class="df-card df-card--raised df-card--error df-card--icon-warning">
                 <div class="df-card__header">
-                    <div class="df-card__icon">⚠️</div>
+                    <!-- @include ../partials/logo.html -->
+                </div>
+                <div class="df-card__band">
+                    <!-- @include ../partials/band-icon.html -->
                     <span class="df-severity-chip">{{t:warning.chip}}</span>
                     <h1 class="df-card__title">{{t:warning.title}}</h1>
                 </div>
@@ -15,26 +18,50 @@
                 <div class="df-card__body">
                     <h2 class="df-subtitle" id="security-subtitle">{{t:warning.subtitle}}</h2>
                     <p class="df-message" id="security-message">{{t:warning.message}}</p>
-                    <div class="df-blocks" id="security-advanced-success" style="display: none">
-                        <h3 class="df-blocks__heading">
-                            {{t:warning.activeBlocks}}<span
-                                class="df-badge df-badge--strong"
-                                id="block-count"
-                                >0</span
-                            >
-                        </h3>
-                        <div class="df-block-list" id="block-list"></div>
-                    </div>
-                    <div class="df-callout df-callout--warning">
-                        <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
-                        <p class="df-callout__text">{{t:warning.unlockText}}</p>
-                        <button class="df-btn df-btn--danger" id="site-unblock">
-                            🔓 {{t:warning.unlockButton}}
-                        </button>
+                </div>
+
+                <!-- Advanced mode (card.css): the block details and the unlock zone. -->
+                <div class="df-card__advanced">
+                    <input
+                        class="df-switch__input"
+                        type="checkbox"
+                        role="switch"
+                        id="df-advanced"
+                        aria-controls="df-advanced-body"
+                    />
+                    <label class="df-card__advanced-toggle df-switch" for="df-advanced">
+                        <span>{{t:dialog.advanced}}</span>
+                        <span class="df-switch__track" aria-hidden="true"></span>
+                    </label>
+                    <div class="df-card__advanced-body" id="df-advanced-body">
+                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            {{t:dialog.advancedNotice}}
+                        </p>
+                        <div class="df-blocks" id="security-advanced-success" style="display: none">
+                            <h3 class="df-blocks__heading">
+                                {{t:warning.activeBlocks}}<span
+                                    class="df-badge df-badge--strong"
+                                    id="block-count"
+                                    >0</span
+                                >
+                            </h3>
+                            <div class="df-block-list" id="block-list"></div>
+                        </div>
+                        <div class="df-callout df-callout--warning">
+                            <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
+                            <p class="df-callout__text">{{t:warning.unlockText}}</p>
+                            <button class="df-btn df-btn--danger" id="site-unblock">
+                                🔓 {{t:warning.unlockButton}}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- @include ../partials/footer.html -->
+                <div class="df-card__footer">
+                    <!-- @include ../partials/footer.html -->
+                    <p class="df-card__timestamp" id="security-timestamp"></p>
+                </div>
             </div>
         </div>
 

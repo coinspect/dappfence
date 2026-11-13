@@ -1,10 +1,67 @@
-/* Dark theme, used by the emergency panel. Apply with class="df-theme-dark"
-   on <body>. */
+/* Dark theme. Pages follow the viewer's OS preference; a class on <body> (or
+   any element) forces a theme:
+     class="df-theme-dark"   dark, whatever the OS says
+     class="df-theme-light"  light (the tokens.css values), whatever the OS says
+   The two blocks below must stay identical; a unit test checks it. */
 
 .df-theme-dark {
-    --df-bg: #0b0f19;
+    --df-bg: #00131b;
     --df-surface: #111827;
     --df-text: #f3f4f6;
     --df-text-strong: #ffffff;
     --df-text-muted: #9ca3af;
+    --df-text-subtle: #8f99a8;
+    --df-surface-soft: #1f2937;
+    --df-border: #374151;
+    --df-divider: rgba(255, 255, 255, 0.08);
+    --df-red-soft: rgba(239, 68, 68, 0.15);
+    --df-danger-text: #fca5a5;
+    --df-amber-soft: rgba(217, 119, 6, 0.12);
+    --df-amber-border: rgba(252, 211, 77, 0.35);
+    --df-amber-text: #fcd34d;
+
+    /* Logo palette: the designer's original colours (see tokens.css). */
+    --df-logo-wordmark: #3da9cd;
+    --df-logo-accent: #66b8d4;
+    --df-logo-gradient-start: #85c6dc;
+    --df-logo-gradient-mid: #44abcd;
+    --df-logo-gradient-end: #0092bf;
+    --df-logo-shade: #0090bf;
+    --df-logo-highlight: #f6f7f7;
+    --df-logo-glow: #a8d5e4;
+    --df-logo-slash-mid: #dde8f0;
+    --df-logo-panel-mid: #e2ebf1;
+    --df-logo-panel-end: #cbe2eb;
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not(.df-theme-light) {
+        --df-bg: #00131b;
+        --df-surface: #111827;
+        --df-text: #f3f4f6;
+        --df-text-strong: #ffffff;
+        --df-text-muted: #9ca3af;
+        --df-text-subtle: #8f99a8;
+        --df-surface-soft: #1f2937;
+        --df-border: #374151;
+        --df-divider: rgba(255, 255, 255, 0.08);
+        --df-red-soft: rgba(239, 68, 68, 0.15);
+        --df-danger-text: #fca5a5;
+        --df-amber-soft: rgba(217, 119, 6, 0.12);
+        --df-amber-border: rgba(252, 211, 77, 0.35);
+        --df-amber-text: #fcd34d;
+
+        /* Logo palette: the designer's original colours (see tokens.css). */
+        --df-logo-wordmark: #3da9cd;
+        --df-logo-accent: #66b8d4;
+        --df-logo-gradient-start: #85c6dc;
+        --df-logo-gradient-mid: #44abcd;
+        --df-logo-gradient-end: #0092bf;
+        --df-logo-shade: #0090bf;
+        --df-logo-highlight: #f6f7f7;
+        --df-logo-glow: #a8d5e4;
+        --df-logo-slash-mid: #dde8f0;
+        --df-logo-panel-mid: #e2ebf1;
+        --df-logo-panel-end: #cbe2eb;
+    }
 }

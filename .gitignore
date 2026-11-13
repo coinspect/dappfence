@@ -39,6 +39,7 @@ Thumbs.db
 
 # Build output (also in per-package .gitignore for standalone use)
 **/dist/
+**/dist-templates/
 **/coverage/
 **/test-results/
 

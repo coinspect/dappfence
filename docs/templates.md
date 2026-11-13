@@ -19,14 +19,20 @@ src/templates/
     emergency-panel.html
   partials/                   HTML fragments shared by pages
     head.html                 <meta> tags, <title>{{title}}, the styles slot
-    footer.html               "Protected by DappFence" + timestamp
+    footer.html               "Protected by" + the DappFence logo; every page includes it
+    logo.html                 DappFence logo (isotype + wordmark); include it as often as needed
+    band-icon.html            every dialog icon in the band's disc; card.css shows the variant's
     block-templates.html      <template> markup for the warning page's block cards
+  assets/                     designer's SVG exports, colours as --df-logo-* tokens
+    iso.svg                   DappFence isotype; logo.html inlines it
+    logo.svg                  DappFence wordmark; logo.html inlines it
   styles/
-    tokens.css                --df-* design tokens (colour, radius, font)
-    themes.css                token overrides (.df-theme-dark)
+    tokens.css                --df-* design tokens (colour, semantic variants, radius, font, logo palette)
+    themes.css                dark theme: OS preference, or forced with .df-theme-dark / -light
     base.css                  reset and body defaults
     components/               one file per reusable component
-      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  info-row.css
+      badge.css  block.css  button.css  callout.css  card.css  disclosure.css  footer.css
+      info-row.css  logo.css  page.css  switch.css  text.css
     pages/                    one entry stylesheet per page
       security-warning.css
       emergency-panel.css
@@ -79,6 +85,7 @@ styles/pages/security-warning.css ──?inline──▶ Vite CSS pipeline ─�
 -   The path is **relative to the file that contains the directive**.
 -   `key="value"` attributes fill `{{key}}` placeholders **in the included file only**. They are
     plain text substitutions, not escaped, so only put static, author-written strings there.
+    `{{key=value}}` gives a placeholder a default.
 -   Included content is re-indented to the directive's indentation, so the expanded page stays
     readable when you debug a bundle.
 -   Includes can nest.
@@ -87,12 +94,14 @@ styles/pages/security-warning.css ──?inline──▶ Vite CSS pipeline ─�
 
 The plugin stops the build (and fails the tests) when:
 
-| Condition                                      | Error message contains            |
-| ---------------------------------------------- | --------------------------------- |
-| Included file doesn't exist                    | `cannot read … (included from …)` |
-| A file includes itself, directly or indirectly | `include cycle: a -> b -> a`      |
-| A path resolves outside `src/templates/`       | `… is outside …`                  |
-| A `{{placeholder}}` has no matching attribute  | `no value for {{key}}`            |
+| Condition                                       | Error message contains                   |
+| ----------------------------------------------- | ---------------------------------------- |
+| Included file doesn't exist                     | `cannot read … (included from …)`        |
+| A file includes itself, directly or indirectly  | `include cycle: a -> b -> a`             |
+| A path resolves outside `src/templates/`        | `… is outside …`                         |
+| A `{{placeholder}}` has no attribute or default | `no value for {{key}}`                   |
+| An `id-prefix` isn't a valid id start           | `id-prefix "…" must start with a letter` |
+| The expanded page repeats an `id`               | `duplicate id "…"`                       |
 
 There is no fallback output: a broken template never reaches a bundle.
 
@@ -156,7 +165,10 @@ Each page's entry file imports, in this order:
 
 1. `tokens.css`: the `--df-*` variables. **Components use only these variables**, never raw colours,
    unless a colour is specific to one component variant (for example the asset-type chip colours).
-2. `themes.css` (optional): classes that override tokens. `.df-theme-dark` goes on `<body>`.
+2. `themes.css`: the dark tokens. Pages follow the viewer's OS preference (`prefers-color-scheme`);
+   `.df-theme-dark` or `.df-theme-light` on `<body>` (or any element) forces a theme. The dark
+   tokens are written twice, once per selector; a unit test keeps the two blocks identical. Every
+   page imports it, so no page hard-codes a theme (also tested).
 3. `base.css`: reset (`box-sizing`, zero margins) and page defaults. Only `<body>` paints a
    background, so a theme class on `<body>` also colours the whole window (the browser carries the
    `<body>` background out to the canvas when `<html>` has none).
@@ -187,15 +199,20 @@ by ID.
 
 ### Component reference
 
-| File             | Classes                                                                                                                |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `card.css`       | `.df-card` (`--raised`, `--alert`), `__header`, `__icon`, `__title`, `__body`, `__footer`, `__branding`, `__timestamp` |
-| `button.css`     | `.df-btn`, `--danger`                                                                                                  |
-| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)                           |
-| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                                           |
-| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                                    |
-| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                                  |
-| `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                                 |
+| File             | Classes                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page.css`       | `.df-page`: full-viewport brand backdrop (`--df-bg`), card centred; wraps every page                                                                                                                                                                                                                                                                                        |
+| `card.css`       | `.df-card` (`--raised`; variant `--brand/info/warn/error`, which sets `--df-card-accent` / `--df-card-accent-strong` and picks the icon; `--icon-<name>` overrides it), `__header`, `__band`, `__band-icon` (`partials/band-icon.html`), `__title`, `__body`, `__advanced` (switch: `__advanced-toggle`, `__advanced-body`, `__advanced-notice`), `__footer`, `__timestamp` |
+| `text.css`       | `.df-subtitle`, `.df-message`: the centred body text of a dialog                                                                                                                                                                                                                                                                                                            |
+| `button.css`     | `.df-btn`, `--danger`, `--brand`, `--info`, `--warn`, `--error`                                                                                                                                                                                                                                                                                                             |
+| `badge.css`      | `.df-badge` (`--strong`), `.df-severity-chip`, `.df-chip` (`--service-worker`, `--manifest`)                                                                                                                                                                                                                                                                                |
+| `callout.css`    | `.df-callout` (`--warning`, `--danger`), `__title`, `__text`                                                                                                                                                                                                                                                                                                                |
+| `footer.css`     | `.df-footer`, `__label`                                                                                                                                                                                                                                                                                                                                                     |
+| `logo.css`       | `.df-logo`, `__iso`, `__wordmark` (height via `--df-logo-height`, default 28px)                                                                                                                                                                                                                                                                                             |
+| `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                                                                                                                                                                                                                                                                                         |
+| `switch.css`     | `.df-switch`, `__input`, `__track`: CSS-only on/off switch on a checkbox                                                                                                                                                                                                                                                                                                    |
+| `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                                                                                                                                                                                                                                                                                       |
+| `block.css`      | `.df-blocks`, `__heading`, `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                                                                                                                                                                                                                                                           |
 
 ## Page-specific constraints
 
@@ -203,18 +220,22 @@ by ID.
 
 -   It's a full document (`<!doctype html>`), served by the service worker at
     `/sw-api/security-warning`.
+-   It sits on the brand page (`.df-page`) and follows the viewer's light/dark preference.
 -   Its CSP is `default-src 'unsafe-inline' 'self'`, so CSS and scripts must stay inline. Don't link
     external stylesheets, fonts or images.
 -   It must keep the `<script id="dappfence-config">` placeholder. `response.js` slices the page
     around it, and `src/sw/__tests__/response.test.js` checks that it's there.
 -   End-to-end tests depend on the title `Security Warning - Content Blocked`, the heading text
-    `Security Warning`, and a button named `Remove Site Lock`.
+    `Security Warning`, the advanced mode switch (`id="df-advanced"`, found through its
+    `<label for>`), and a button named `Remove Site Lock` inside the advanced mode it reveals
+    (`showAdvancedMode()` and `removeSiteLock()` in `test-app/test/sw-fixtures.ts`).
 
 ### Emergency panel (`pages/emergency-panel.html`)
 
 -   It's a **fragment** (`<head>…</head><body>…</body>`, no doctype or `<html>`), because it
     replaces `document.documentElement.innerHTML` of an already-loaded page.
--   `<body class="df-theme-dark">` switches it to the dark tokens.
+-   It sits on the brand page (`.df-page`) and follows the viewer's light/dark preference, like the
+    security warning. Don't put a theme class on its `<body>`.
 -   An end-to-end test depends on the `<h1>` text `Security Action Required`.
 -   **No `<script>` in the markup.** Scripts inserted through `innerHTML` never run, so
     `showEmergencyPanel()` in `src/client/emergency-panel.js` attaches the behaviour after inserting
@@ -315,10 +336,23 @@ Edit `styles/tokens.css`. Every component reads the token.
 1. Create `partials/<name>.html`. Use `{{key}}` for anything the including page should supply.
 2. Include it: `<!-- @include ../partials/<name>.html key="value" -->`.
 
+A placeholder can have a default, `{{key=value}}`, used when the include doesn't set `key`.
+
+An `.svg` can be included the same way (`<!-- @include ../assets/logo.svg -->`): it's inlined as
+markup, minus its `<?xml ?>` declaration and comments. Its `id`s land in the page as-is unless the
+include sets `id-prefix="p"`: then every `id` becomes `p-<id>`, and so does every `url(#…)` and
+`href="#…"` reference to it. If the same SVG is included again with the same prefix, that copy gets
+`p-2`, `p-3`, … in include order, so the output stays reproducible. A page that ends up with a
+duplicate `id` fails the build.
+
+`partials/logo.html` uses `id-prefix="{{prefix=df-logo}}"`, so it can be included any number of
+times with no arguments. Pass `prefix="…"` only if you want specific ids.
+
 ### Add a theme
 
-Add a `.df-theme-<name>` class to `themes.css` that overrides tokens only, import `themes.css` in
-the page entry, and put the class on `<body>`.
+Add a `.df-theme-<name>` class to `themes.css` that overrides tokens only. A token that only looks
+right in one theme (for example a text colour on a tinted box) needs a value in both: `tokens.css`
+for light, and both dark blocks in `themes.css`.
 
 ### Add a page
 
@@ -350,10 +384,16 @@ back on the same view, because every setting lives in the URL.
 
 | URL                                                             | View                                                                                |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `/?width=phone`                                                 | **Catalog**: every page × scenario as a live thumbnail. Click one to open it.       |
+| `/?width=phone&theme=both`                                      | **Catalog**: every page × scenario as a live thumbnail. Click one to open it.       |
 | `/frame.html?page=security-warning&scenario=signer`             | **Full page**: the page as a top-level document, exactly as a visitor sees it       |
 | `/frame.html?page=security-warning&scenario=signer&view=source` | **HTML**: the rendered HTML string as text, exactly as the service worker serves it |
 
+-   **Theme:** `auto` (the default) shows the pages as shipped, following this browser's light/dark
+    preference; `light` and `dark` force one by adding `df-theme-<theme>` to the page's `<body>`.
+    The catalog's toggle sets it for every thumbnail, and every link (full page, HTML) carries it.
+    The catalog also has `both` (`/?theme=both`): each scenario as a light and a dark thumbnail side
+    by side, each opening the full page in its own theme. Add `&theme=dark` to any full-page URL to
+    switch that view directly.
 -   **Width:** the catalog renders thumbnails at `desktop` (1280), `tablet` (768) or `phone` (390)
     width. For the full page, resize the window or use DevTools' device toolbar.
 -   **HTML:** the "HTML" link under each thumbnail shows the rendered HTML (partials expanded, CSS
@@ -371,6 +411,20 @@ sandbox (scripts allowed, dialogs not) stops any page from prompting while the c
 service worker or site (the actual unlock, the emergency panel replacing a live app) still needs
 `npm run dev` and the end-to-end tests.
 
+### Publishing the catalog
+
+`npm run build:templates` (from the repo root) builds the same preview app into static files in
+`packages/dappfence/dist-templates/` (kept out of `dist/`, which is published to npm). All paths are
+relative, so it can be served from any directory, including a GitHub Pages project sub-path
+(`/<repo>/`). Netlify picks up `netlify.toml` at the repo root, which sets the build command and
+publish directory and installs with `--ignore-scripts`: a plain install also runs the root `prepare`
+script (the full check and the library build), which the catalog doesn't need. Any other host should
+install the same way, `npm ci --ignore-scripts`, before `npm run build:templates`. The build stamps
+the package version and the current commit into the catalog's intro.
+
+A static host has no `/sw-api/site-unblock` stub, so "Remove Site Lock" reports a failure there;
+everything else behaves as in `npm run dev:templates`.
+
 ### Files
 
 | File                       | Role                                                                   |
@@ -378,8 +432,11 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 | `preview/pages.js`         | Page registry: each page's scenarios and a `render(scenario)` function |
 | `preview/scenarios.js`     | Raw block records and the security warning scenarios                   |
 | `preview/sample-messages/` | Sample integrator overrides (Spanish) for the `overrides` scenarios    |
-| `preview/preview.js`       | Catalog: thumbnails, width toggle, links to the full page and HTML     |
+| `preview/index.html`       | Catalog markup: toolbar and `<template>`s for sections, cards, thumbs  |
+| `preview/preview.js`       | Catalog logic: clones the templates and fills their `data-slot`s       |
+| `preview/frame.html`       | Full-page shell and the `?view=source` markup                          |
 | `preview/frame.js`         | Full-page view                                                         |
+| `src/templates/preview/`   | Preview-only templates: logo sheets, base dialog, elements, palette    |
 
 `preview/` is not published (the package's `files` lists only `dist`), and nothing in it reaches a
 build. `vite.config.js` defines `__FEATURES__` from `feature_flag.json` for `vite serve` only,
@@ -392,17 +449,26 @@ records, as the service worker stores them (`status`, `reason`, `assetType`, `fi
 `occurrenceCount`, `timestamp`). Don't add `view` or `formattedTimestamp`: the renderer derives
 them. Use `ts(minutesAgo)` for timestamps, so renders stay the same between runs.
 
+The **Logo variants** page (`/frame.html?page=logos`) shows the footer, `partials/logo.html` at
+several sizes, the isotype and wordmark on their own, and the resolved `--df-logo-*` palette. Its
+`default` scenario follows the theme like any page (use the toggle, or `both` in the catalog); the
+`side-by-side` scenario always shows the light and the dark sheet next to each other at full size,
+for comparing details. Both live in `src/templates/preview/` because includes can't reach outside
+`src/templates/`; only `preview/pages.js` imports them, so they never reach a bundle.
+
 ### Add a page to the preview
 
 Add an entry to `PAGES` in `preview/pages.js` with a `title`, its `scenarios` (use
 `{ default: null }` for a page without data) and a `render(scenario)` function that returns the
-complete HTML document. It appears in the catalog automatically.
+complete HTML document. It appears in the catalog automatically, in `PAGES` order. Give it a `group`
+to share a row with the pages next to it that have the same group (the logo, palette and elements
+sheets share "Design system").
 
 ## Testing
 
 | Test                                     | Covers                                                                                                                                              |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build/__tests__/html-includes.test.js`  | include expansion, placeholders, indentation, every error case                                                                                      |
+| `build/__tests__/html-includes.test.js`  | include expansion, placeholders, SVG id prefixes, indentation, every error case                                                                     |
 | `src/core/__tests__/template.test.js`    | each page fully expanded, styles marker present once, CSS bundled with `@import`s inlined, every `<template>` id and `data-slot` used by the script |
 | `src/sw/__tests__/response.test.js`      | config placeholder and the view fields the page script reads                                                                                        |
 | `packages/test-app/test/**` (Playwright) | the real pages served in the browser                                                                                                                |

@@ -1,0 +1,107 @@
+/* Logo variants sheet for the template preview (preview/pages.js). Not part of
+   any shipped page: only the preview imports it. Uses the real tokens, theme
+   and logo/footer components, so it shows exactly what the pages render. */
+
+@import '../styles/tokens.css';
+@import '../styles/themes.css';
+@import '../styles/base.css';
+@import '../styles/components/logo.css';
+@import '../styles/components/footer.css';
+
+.df-logos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+    margin: 0;
+    font-family: var(--df-font-sans);
+}
+
+.df-sheet {
+    padding: 24px 16px;
+    background: var(--df-bg);
+    color: var(--df-text);
+}
+
+.df-sheet__title {
+    margin: 0 0 20px;
+    font-size: 18px;
+    color: var(--df-text-strong);
+}
+
+.df-sheet__row {
+    margin-bottom: 24px;
+}
+
+.df-sheet__label {
+    margin: 0 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--df-text-muted);
+}
+
+.df-sheet__items {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 24px;
+    /* A lockup wider than a phone scrolls here, not the whole page. */
+    overflow-x: auto;
+}
+
+.df-sheet__item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0;
+}
+
+.df-sheet__item figcaption {
+    font-size: 11px;
+    font-family: var(--df-font-mono);
+    color: var(--df-text-subtle, var(--df-text-muted));
+}
+
+.df-sheet__mark svg {
+    display: block;
+    width: auto;
+    height: var(--df-mark-height);
+}
+
+.df-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.df-swatch {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    align-items: center;
+    font-size: 12px;
+}
+
+.df-swatch__chip {
+    grid-row: span 2;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--df-radius-xs);
+    box-shadow: inset 0 0 0 1px var(--df-divider);
+}
+
+.df-swatch code {
+    font-family: var(--df-font-mono);
+    color: var(--df-text);
+}
+
+.df-swatch__value {
+    font-family: var(--df-font-mono);
+    font-size: 11px;
+    color: var(--df-text-muted);
+}

@@ -1,0 +1,87 @@
+/* Switch: an on/off toggle drawn on a native checkbox, no JavaScript.
+
+   The checkbox comes first and is visually hidden (still focusable and
+   announced as a switch); the <label for> after it draws the row: text on
+   the left, the track on the right. Being a sibling, the checkbox can also
+   drive later siblings with :checked ~ … (see .df-card__advanced).
+   The on colour is --df-switch-on (default --df-brand), darkening to
+   --df-switch-on-hover (default --df-brand-strong) under the pointer; a
+   dialog sets both from its accent.
+
+   <input class="df-switch__input" type="checkbox" role="switch" id="x" />
+   <label class="df-switch" for="x">
+       <span>Label</span>
+       <span class="df-switch__track" aria-hidden="true"></span>
+   </label> */
+
+.df-switch__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.df-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.df-switch__track {
+    --df-switch-knob: 16px;
+    position: relative;
+    flex-shrink: 0;
+    width: 36px;
+    height: 20px;
+    border-radius: var(--df-radius-pill);
+    background: var(--df-border);
+    transition: background 0.15s ease;
+}
+
+.df-switch__track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: var(--df-switch-knob);
+    height: var(--df-switch-knob);
+    border-radius: 50%;
+    background: var(--df-on-accent);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease;
+}
+
+.df-switch__input:checked + .df-switch .df-switch__track {
+    background: var(--df-switch-on, var(--df-brand));
+}
+
+.df-switch__input:checked + .df-switch .df-switch__track::after {
+    transform: translateX(16px);
+}
+
+.df-switch__input:checked + .df-switch:hover .df-switch__track {
+    background: var(--df-switch-on-hover, var(--df-brand-strong));
+}
+
+.df-switch__input:focus-visible + .df-switch .df-switch__track {
+    outline: 2px solid var(--df-switch-on, var(--df-brand));
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .df-switch__track,
+    .df-switch__track::after {
+        transition: none;
+    }
+}
+
+@media (prefers-contrast: high) {
+    .df-switch__track {
+        outline: 1px solid currentColor;
+    }
+}

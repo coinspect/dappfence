@@ -1,0 +1,23 @@
+/* DappFence logo: isotype + wordmark, from partials/logo.html. The SVGs are
+   inlined as-is; CSS beats their width/height attributes and the viewBox
+   keeps the aspect ratio. Colours come from the --df-logo-* tokens.
+
+   Size it with --df-logo-height (default 28px). The gap between the isotype
+   and the wordmark scales with it, so the lockup holds at any size.
+
+   Include it as many times as needed. The SVG ids are prefixed at build time
+   (df-logo-, then df-logo-2-, df-logo-3-, … per copy), so copies never share
+   gradients; prefix="…" on the include picks the prefix instead. */
+
+.df-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--df-logo-height, 28px) * 0.12);
+    flex-shrink: 0;
+}
+
+.df-logo svg {
+    display: block;
+    width: auto;
+    height: var(--df-logo-height, 28px);
+}

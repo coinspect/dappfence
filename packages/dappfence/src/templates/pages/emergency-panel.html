@@ -1,15 +1,29 @@
 <head>
     <!-- @include ../partials/head.html title="{{t:emergency.pageTitle}}" -->
 </head>
-<body class="df-theme-dark">
-    <div class="df-card df-card--alert df-emergency">
-        <div class="df-emergency__icon">⚠️</div>
-        <h1 class="df-emergency__title">{{t:emergency.title}}</h1>
-        <p class="df-emergency__text">{{t:emergency.intro}}</p>
-        <div class="df-callout df-callout--danger">
-            <strong class="df-callout__title">{{t:emergency.instructionTitle}}</strong>
-            {{t:emergency.instruction}}
+<body>
+    <div class="df-page">
+        <div class="df-card df-card--raised df-card--error df-emergency">
+            <div class="df-card__header">
+                <!-- @include ../partials/logo.html -->
+            </div>
+            <div class="df-card__band">
+                <!-- @include ../partials/band-icon.html -->
+                <h1 class="df-card__title">{{t:emergency.title}}</h1>
+            </div>
+
+            <div class="df-card__body">
+                <p class="df-emergency__text">{{t:emergency.intro}}</p>
+                <div class="df-callout df-callout--danger">
+                    <strong class="df-callout__title">{{t:emergency.instructionTitle}}</strong>
+                    {{t:emergency.instruction}}
+                </div>
+                <p class="df-emergency__text">{{t:emergency.contact}}</p>
+            </div>
+
+            <div class="df-card__footer">
+                <!-- @include ../partials/footer.html -->
+            </div>
         </div>
-        <p class="df-emergency__text">{{t:emergency.contact}}</p>
     </div>
 </body>

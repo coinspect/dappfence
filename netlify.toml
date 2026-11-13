@@ -1,0 +1,14 @@
+# Netlify deploy of the template catalog (docs/templates.md, "Publishing the catalog").
+
+[build]
+    # Build from the core package; `publish` is relative to `base`. Set here so the
+    # site's UI setting can't change where the output is looked for.
+    base = "packages/dappfence"
+    command = "npm run build:templates"
+    publish = "dist-templates"
+
+[build.environment]
+    # Install like CI does (npm ci --ignore-scripts): the root `prepare` script runs the full
+    # check and the library build, which the catalog doesn't need. --include=dev keeps Vite
+    # installed even if NODE_ENV=production is set for the site.
+    NPM_FLAGS = "--ignore-scripts --include=dev"

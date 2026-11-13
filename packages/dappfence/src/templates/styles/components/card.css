@@ -1,6 +1,55 @@
-/* Card: the centred panel every DappFence page is built around.
-   .df-card--raised  white panel with a coloured header (security warning)
-   .df-card--alert   bordered, padded panel (emergency panel) */
+/* Card: the centred dialog every DappFence page is built around.
+
+   .df-card--raised          the panel: shadow and slide-in
+   .df-card--<variant>       the dialog's variant: --brand (default),
+                             --info, --warn or --error. It sets
+                             --df-card-accent and --df-card-accent-strong
+                             (hover) from the semantic tokens (tokens.css),
+                             and every coloured part of the dialog reads
+                             them: the band, the icon, the advanced mode
+                             switch. It also picks the icon:
+                             shield, info, warning, error.
+   .df-card--icon-<name>     show icon <name> instead of the variant's
+                             (the security warning: warning on --error)
+   .df-card__header          logo header on the card surface
+   .df-card__band            colour band holding the title, with the icon
+                             in a pale disc straddling its top edge.
+                             partials/band-icon.html inlines every icon
+                             (assets/icons/); CSS shows the one to use, so
+                             nothing is loaded (no data: URLs, which the
+                             warning page's CSP and a host page's would
+                             block).
+   .df-card__body / __footer content and footer
+   .df-card__advanced        optional advanced mode between body and footer:
+                             a switch (switch.css) that shows
+                             __advanced-body, which opens with a warning
+                             (__advanced-notice, a callout.css callout).
+                             Pure CSS: every dialog opens in simple mode.
+
+   <div class="df-card df-card--raised df-card--error">
+       <div class="df-card__header"><!-- @include ../partials/logo.html --></div>
+       <div class="df-card__band">
+           <!-- @include ../partials/band-icon.html -->
+           <h1 class="df-card__title">…</h1>
+       </div>
+       <div class="df-card__body">…</div>
+       <div class="df-card__advanced">
+           <input class="df-switch__input" type="checkbox" role="switch"
+                  id="df-advanced" aria-controls="df-advanced-body" />
+           <label class="df-card__advanced-toggle df-switch" for="df-advanced">
+               <span>{{t:dialog.advanced}}</span>
+               <span class="df-switch__track" aria-hidden="true"></span>
+           </label>
+           <div class="df-card__advanced-body" id="df-advanced-body">
+               <p class="df-callout df-callout--warning df-card__advanced-notice">
+                   <!-- @include ../assets/icons/warning.svg -->
+                   {{t:dialog.advancedNotice}}
+               </p>
+               …
+           </div>
+       </div>
+       <div class="df-card__footer">…</div>
+   </div> */
 
 .df-card {
     width: 100%;
@@ -10,6 +59,35 @@
     border-radius: var(--df-radius);
 }
 
+/* Variant: one accent, and its darker hover shade, for the whole dialog.
+   Inside the card the switch follows them too. */
+.df-card {
+    --df-card-accent: var(--df-brand);
+    --df-card-accent-strong: var(--df-brand-strong);
+    --df-switch-on: var(--df-card-accent);
+    --df-switch-on-hover: var(--df-card-accent-strong);
+}
+
+.df-card--brand {
+    --df-card-accent: var(--df-brand);
+    --df-card-accent-strong: var(--df-brand-strong);
+}
+
+.df-card--info {
+    --df-card-accent: var(--df-info);
+    --df-card-accent-strong: var(--df-info-strong);
+}
+
+.df-card--warn {
+    --df-card-accent: var(--df-warn);
+    --df-card-accent-strong: var(--df-warn-strong);
+}
+
+.df-card--error {
+    --df-card-accent: var(--df-error);
+    --df-card-accent-strong: var(--df-error-strong);
+}
+
 .df-card--raised {
     box-shadow:
         0 30px 80px rgba(0, 0, 0, 0.35),
@@ -17,20 +95,12 @@
     animation: df-slide-in 0.3s ease-out;
 }
 
-.df-card--alert {
-    max-width: 634px; /* 550px content + padding + border */
-    padding: 40px;
-    border: 2px solid var(--df-red-500);
-    border-radius: 12px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    text-align: center;
-}
-
 @keyframes df-slide-in {
     from {
         transform: translateY(16px);
         opacity: 0;
     }
+
     to {
         transform: translateY(0);
         opacity: 1;
@@ -38,39 +108,127 @@
 }
 
 .df-card__header {
-    position: relative;
-    padding: 26px 24px 22px;
-    text-align: center;
-    color: white;
-    background: linear-gradient(135deg, var(--df-red-600), var(--df-red-700));
+    --df-logo-height: 36px;
+    display: flex;
+    justify-content: center;
+    padding: 1rem 2rem;
+    background: var(--df-surface);
     border-radius: var(--df-radius) var(--df-radius) 0 0;
-}
-.df-card__header::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    background: rgba(0, 0, 0, 0.15);
+    border-top: 0.5px solid var(--df-card-accent-strong);
 }
 
+/* Colour band. --df-card-overlap of the disc sits above the band; the band's
+   top margin and padding leave room for it. The dialog's accent paints the
+   band and the icon; the title is --df-on-accent on the band. */
+.df-card__band {
+    --df-card-disc: 116px;
+    --df-card-overlap: 0.65;
+    position: relative;
+    margin-top: calc(32px + var(--df-card-disc) * var(--df-card-overlap));
+    padding: calc(var(--df-card-disc) * (1 - var(--df-card-overlap)) + 12px) 24px 22px;
+    text-align: center;
+    color: var(--df-on-accent);
+    background: var(--df-card-accent);
+}
+
+.df-card__band-icon {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: var(--df-card-disc);
+    height: var(--df-card-disc);
+    transform: translate(-50%, calc(var(--df-card-overlap) * -100%));
+    border-radius: 50%;
+    color: var(--df-card-accent);
+    background: var(--df-icon-disc);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* Which icon: the variant's, unless the card names one (--icon-<name>).
+   Brand is the default variant, so the shield shows without a variant.
+   Every show/hide rule below has the same specificity (two classes, the
+   brand rule kept there by :where()), so source order decides. */
 .df-card__icon {
-    font-size: 42px;
-    line-height: 1;
-    margin-bottom: 8px;
-    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+    display: none;
+}
+
+.df-card:where(:not(.df-card--info, .df-card--warn, .df-card--error)) .df-card__icon--shield,
+.df-card--info .df-card__icon--info,
+.df-card--warn .df-card__icon--warning,
+.df-card--error .df-card__icon--error {
+    display: contents;
+}
+
+/* An explicit icon wins: hide the variant's, show the named one. */
+[class*='df-card--icon-'] .df-card__icon {
+    display: none;
+}
+
+.df-card--icon-shield .df-card__icon--shield,
+.df-card--icon-info .df-card__icon--info,
+.df-card--icon-warning .df-card__icon--warning,
+.df-card--icon-error .df-card__icon--error {
+    display: contents;
+}
+
+.df-card__band-icon svg {
+    display: block;
+    width: 62%;
+    height: 62%;
 }
 
 .df-card__title {
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 32px;
+    font-weight: 500;
     letter-spacing: -0.01em;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .df-card__body {
     padding: 24px 26px 22px;
+}
+
+/* Advanced mode: a full-width switch row under the body. The checkbox is
+   the body's earlier sibling, so :checked shows it without a script. */
+.df-card__advanced {
+    border-top: 1px solid var(--df-border);
+}
+
+.df-card__advanced-toggle {
+    padding: 12px 26px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--df-text-muted);
+}
+
+.df-card__advanced-toggle:hover {
+    background: var(--df-surface-soft);
+}
+
+.df-card__advanced-body {
+    display: none;
+    padding: 4px 26px 22px;
+}
+
+.df-switch__input:checked ~ .df-card__advanced-body {
+    display: block;
+}
+
+.df-card__advanced-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.df-card__advanced-notice svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
 }
 
 .df-card__footer {
@@ -84,12 +242,7 @@
     background: var(--df-surface-soft);
     border-top: 1px solid var(--df-border);
     border-radius: 0 0 var(--df-radius) var(--df-radius);
-}
-
-.df-card__branding {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--df-text-muted);
+    border-bottom: 0.5px solid var(--df-card-accent);
 }
 
 .df-card__timestamp {
@@ -100,14 +253,33 @@
 
 @media (max-width: 576px) {
     .df-card__header {
-        padding: 22px 18px 18px;
+        padding: 1rem 1.25rem;
     }
+
+    .df-card__band {
+        --df-card-disc: 92px;
+        margin-top: calc(24px + var(--df-card-disc) * var(--df-card-overlap));
+        padding-right: 18px;
+        padding-bottom: 18px;
+        padding-left: 18px;
+    }
+
     .df-card__title {
-        font-size: 20px;
+        font-size: 24px;
     }
+
     .df-card__body {
         padding: 20px 18px 18px;
     }
+
+    .df-card__advanced-toggle {
+        padding: 12px 18px;
+    }
+
+    .df-card__advanced-body {
+        padding: 4px 18px 18px;
+    }
+
     .df-card__footer {
         flex-direction: column;
         gap: 4px;
@@ -116,10 +288,16 @@
 
 @media (prefers-contrast: high) {
     .df-card--raised {
-        border: 3px solid #ffffff;
+        border: 3px solid var(--df-hc-border);
     }
-    .df-card__header {
-        background: #cc0000;
+
+    .df-card--error {
+        --df-card-accent: var(--df-hc-danger);
+        --df-card-accent-strong: var(--df-hc-danger);
+    }
+
+    .df-card__band-icon {
+        outline: 2px solid currentColor;
     }
 }
 
