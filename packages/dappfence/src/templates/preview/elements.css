@@ -9,6 +9,14 @@
 @import '../styles/components/button.css';
 @import '../styles/components/badge.css';
 @import '../styles/components/switch.css';
+@import '../styles/components/card.css';
+@import '../styles/components/text.css';
+@import '../styles/components/callout.css';
+@import '../styles/components/disclosure.css';
+@import '../styles/components/info-row.css';
+@import '../styles/components/block.css';
+@import '../styles/components/logo.css';
+@import '../styles/components/footer.css';
 
 .df-elements {
     padding: 24px 16px;
@@ -20,16 +28,42 @@
     color: var(--df-text-strong);
 }
 
+/* A role (actions, controls, …): its items under a ruled heading. */
 .df-elements__section {
-    margin-bottom: 32px;
+    margin-bottom: 36px;
 }
 
 .df-elements__section > h3 {
-    margin-bottom: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    margin-bottom: 16px;
+    padding-bottom: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    color: var(--df-text-muted);
+    border-bottom: 1px solid var(--df-divider);
+}
+
+/* One element: what it is, the element, then its classes and stylesheet. */
+.df-elements__item {
+    margin-bottom: 24px;
+}
+
+.df-elements__item > h4 {
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--df-text);
+}
+
+.df-elements__caption {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--df-text-subtle);
+}
+
+.df-elements__caption code {
+    font-family: var(--df-font-mono);
     color: var(--df-text-muted);
 }
 
@@ -83,6 +117,33 @@
     gap: 12px;
     max-width: 200px;
     font-size: 13px;
+}
+
+/* A card-body-like panel for elements that sit on the card surface. */
+.df-elements__surface {
+    max-width: 568px;
+    padding: 20px 26px;
+    color: var(--df-text);
+    background: var(--df-surface);
+    border-radius: var(--df-radius-sm);
+}
+
+/* Elements that end a card body keep no trailing margin here either. */
+.df-elements__surface > :last-child {
+    margin-bottom: 0;
+}
+
+.df-elements__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+/* A bare card around the footer, so its accent edge has a variant. */
+.df-elements__footer {
+    max-width: 568px;
+    margin: 0;
 }
 
 @media (max-width: 420px) {
