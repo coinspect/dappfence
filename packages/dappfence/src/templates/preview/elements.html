@@ -10,7 +10,7 @@
             (assets/icons/), then the security warning's danger button.
             Pills: the severity chip (badge.css) that reads "Blocked" on the
             security warning's header, shown on each variant's fill since it
-            is translucent white.
+            is translucent white. Switch (switch.css): off and on.
         -->
         <main class="df-elements">
             <h2 class="df-elements__title">Elements</h2>
@@ -71,6 +71,33 @@
                         <span class="df-severity-chip">{{t:warning.chip}}</span>
                         <code>error</code>
                     </div>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Switch</h3>
+                <div class="df-elements__switches">
+                    <input
+                        class="df-switch__input"
+                        type="checkbox"
+                        role="switch"
+                        id="df-switch-off"
+                    />
+                    <label class="df-switch" for="df-switch-off">
+                        <span>Off</span>
+                        <span class="df-switch__track" aria-hidden="true"></span>
+                    </label>
+                    <input
+                        class="df-switch__input"
+                        type="checkbox"
+                        role="switch"
+                        id="df-switch-on"
+                        checked
+                    />
+                    <label class="df-switch" for="df-switch-on">
+                        <span>On</span>
+                        <span class="df-switch__track" aria-hidden="true"></span>
+                    </label>
                 </div>
             </section>
         </main>
