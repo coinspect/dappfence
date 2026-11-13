@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- @include ../partials/head.html title="DappFence elements" -->
+    </head>
+    <body>
+        <!--
+            Catalog of the small components, one section each. Buttons: every
+            solid variant (button.css) without and with its icon
+            (assets/icons/), then the security warning's danger button.
+        -->
+        <main class="df-elements">
+            <h2 class="df-elements__title">Elements</h2>
+
+            <section class="df-elements__section">
+                <h3>Buttons</h3>
+                <div class="df-elements__grid">
+                    <code>brand</code>
+                    <button class="df-btn df-btn--brand" type="button">Continue</button>
+                    <button class="df-btn df-btn--brand" type="button">
+                        <!-- @include ../assets/icons/shield.svg -->
+                        Continue
+                    </button>
+                    <code>info</code>
+                    <button class="df-btn df-btn--info" type="button">Learn more</button>
+                    <button class="df-btn df-btn--info" type="button">
+                        <!-- @include ../assets/icons/info.svg -->
+                        Learn more
+                    </button>
+                    <code>warn</code>
+                    <button class="df-btn df-btn--warn" type="button">Proceed anyway</button>
+                    <button class="df-btn df-btn--warn" type="button">
+                        <!-- @include ../assets/icons/warning.svg -->
+                        Proceed anyway
+                    </button>
+                    <code>error</code>
+                    <button class="df-btn df-btn--error" type="button">Block site</button>
+                    <button class="df-btn df-btn--error" type="button">
+                        <!-- @include ../assets/icons/error.svg -->
+                        Block site
+                    </button>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Danger button (security warning)</h3>
+                <div class="df-elements__wide">
+                    <button class="df-btn df-btn--danger" type="button">Unblock site</button>
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

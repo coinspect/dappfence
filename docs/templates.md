@@ -417,7 +417,7 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 | `preview/preview.js`       | Catalog logic: clones the templates and fills their `data-slot`s       |
 | `preview/frame.html`       | Full-page shell and the `?view=source` markup                          |
 | `preview/frame.js`         | Full-page view                                                         |
-| `src/templates/preview/`   | Preview-only templates: logo sheets, base dialog (`base-dialog*.html`) |
+| `src/templates/preview/`   | Preview-only templates: logo sheets, base dialog, elements sheet       |
 
 `preview/` is not published (the package's `files` lists only `dist`), and nothing in it reaches a
 build. `vite.config.js` defines `__FEATURES__` from `feature_flag.json` for `vite serve` only,

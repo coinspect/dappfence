@@ -14,6 +14,8 @@ import logosCss from '../src/templates/preview/logos.css?inline';
 import baseDialogHtml from '../src/templates/preview/base-dialog.html?template';
 import baseDialogAlertHtml from '../src/templates/preview/base-dialog-alert.html?template';
 import baseDialogCss from '../src/templates/preview/base-dialog.css?inline';
+import elementsHtml from '../src/templates/preview/elements.html?template';
+import elementsCss from '../src/templates/preview/elements.css?inline';
 import shieldIcon from '../src/templates/assets/icons/shield.svg?raw';
 import infoIcon from '../src/templates/assets/icons/info.svg?raw';
 import warningIcon from '../src/templates/assets/icons/warning.svg?raw';
@@ -93,6 +95,14 @@ export const PAGES = {
         },
         render: async (html) =>
             renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),
+    },
+    elements: {
+        title: 'Elements',
+        // Preview-only sheet (src/templates/preview/): the small components
+        // in every variant, starting with the buttons.
+        scenarios: { default: elementsHtml },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, elementsCss), resolveMessages(['en'])),
     },
     logos: {
         title: 'Logo variants',
