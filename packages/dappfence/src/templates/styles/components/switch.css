@@ -4,6 +4,8 @@
    announced as a switch); the <label for> after it draws the row: text on
    the left, the track on the right. Being a sibling, the checkbox can also
    drive later siblings with :checked ~ … (see .df-card__advanced).
+   The on colour is --df-switch-on (default --df-brand); a dialog sets it
+   to its accent.
 
    <input class="df-switch__input" type="checkbox" role="switch" id="x" />
    <label class="df-switch" for="x">
@@ -54,7 +56,7 @@
 }
 
 .df-switch__input:checked + .df-switch .df-switch__track {
-    background: var(--df-brand);
+    background: var(--df-switch-on, var(--df-brand));
 }
 
 .df-switch__input:checked + .df-switch .df-switch__track::after {
@@ -62,7 +64,7 @@
 }
 
 .df-switch__input:focus-visible + .df-switch .df-switch__track {
-    outline: 2px solid var(--df-brand);
+    outline: 2px solid var(--df-switch-on, var(--df-brand));
     outline-offset: 2px;
 }
 

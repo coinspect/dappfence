@@ -12,20 +12,18 @@
             and footer with placeholder text.
 
             The shell lives in styles/components/card.css; the pages use it
-            as-is. The band's variant class (--brand, --info, --warn or
-            --error) sets the band and the icon colour. The preview renders
-            one scenario per variant by swapping the --brand class and the
-            icon below (preview/pages.js).
+            as-is. The card's variant class (--brand, --info, --warn or
+            --error) colours the whole dialog and picks its icon. The
+            preview renders one scenario per variant by swapping the --brand
+            class (preview/pages.js).
         -->
         <div class="df-page">
-            <div class="df-card df-card--raised">
+            <div class="df-card df-card--raised df-card--brand">
                 <div class="df-card__header">
                     <!-- @include ../partials/logo.html -->
                 </div>
-                <div class="df-card__band df-card__band--brand">
-                    <span class="df-card__band-icon">
-                        <!-- @include ../assets/icons/shield.svg -->
-                    </span>
+                <div class="df-card__band">
+                    <!-- @include ../partials/band-icon.html -->
                     <h1 class="df-card__title">Dialog title</h1>
                 </div>
 

@@ -1,12 +1,23 @@
 /* Card: the centred dialog every DappFence page is built around.
 
    .df-card--raised          the panel: shadow and slide-in
+   .df-card--<variant>       the dialog's variant: --brand (default),
+                             --info, --warn or --error. It sets
+                             --df-card-accent from the semantic tokens
+                             (tokens.css), and every coloured part of the
+                             dialog reads that: the band, the icon, the
+                             advanced mode switch. It also picks the icon:
+                             shield, info, warning, error.
+   .df-card--icon-<name>     show icon <name> instead of the variant's
+                             (the security warning: warning on --error)
    .df-card__header          logo header on the card surface
-   .df-card__band--<variant> colour band holding the title, with the
-                             variant's icon (assets/icons/) in a pale disc
-                             straddling its top edge; --brand, --info,
-                             --warn or --error, painted from the semantic
-                             tokens (tokens.css)
+   .df-card__band            colour band holding the title, with the icon
+                             in a pale disc straddling its top edge.
+                             partials/band-icon.html inlines every icon
+                             (assets/icons/); CSS shows the one to use, so
+                             nothing is loaded (no data: URLs, which the
+                             warning page's CSP and a host page's would
+                             block).
    .df-card__body / __footer content and footer
    .df-card__advanced        optional advanced mode between body and footer:
                              a switch (switch.css) that shows
@@ -14,10 +25,10 @@
                              (__advanced-notice, a callout.css callout).
                              Pure CSS: every dialog opens in simple mode.
 
-   <div class="df-card df-card--raised">
+   <div class="df-card df-card--raised df-card--error">
        <div class="df-card__header"><!-- @include ../partials/logo.html --></div>
-       <div class="df-card__band df-card__band--error">
-           <span class="df-card__band-icon"><!-- @include ../assets/icons/error.svg --></span>
+       <div class="df-card__band">
+           <!-- @include ../partials/band-icon.html -->
            <h1 class="df-card__title">…</h1>
        </div>
        <div class="df-card__body">…</div>
@@ -47,6 +58,29 @@
     border-radius: var(--df-radius);
 }
 
+/* Variant: one accent for the whole dialog. Inside the card the switch
+   follows it too. */
+.df-card {
+    --df-card-accent: var(--df-brand);
+    --df-switch-on: var(--df-card-accent);
+}
+
+.df-card--brand {
+    --df-card-accent: var(--df-brand);
+}
+
+.df-card--info {
+    --df-card-accent: var(--df-info);
+}
+
+.df-card--warn {
+    --df-card-accent: var(--df-warn);
+}
+
+.df-card--error {
+    --df-card-accent: var(--df-error);
+}
+
 .df-card--raised {
     box-shadow:
         0 30px 80px rgba(0, 0, 0, 0.35),
@@ -59,6 +93,7 @@
         transform: translateY(16px);
         opacity: 0;
     }
+
     to {
         transform: translateY(0);
         opacity: 1;
@@ -75,9 +110,8 @@
 }
 
 /* Colour band. --df-card-overlap of the disc sits above the band; the band's
-   top margin and padding leave room for it. The variant points
-   --df-card-accent at its semantic token, which paints the band and the
-   icon; the title is --df-on-accent on the band. */
+   top margin and padding leave room for it. The dialog's accent paints the
+   band and the icon; the title is --df-on-accent on the band. */
 .df-card__band {
     --df-card-disc: 116px;
     --df-card-overlap: 0.65;
@@ -87,22 +121,6 @@
     text-align: center;
     color: var(--df-on-accent);
     background: var(--df-card-accent);
-}
-
-.df-card__band--brand {
-    --df-card-accent: var(--df-brand);
-}
-
-.df-card__band--info {
-    --df-card-accent: var(--df-info);
-}
-
-.df-card__band--warn {
-    --df-card-accent: var(--df-warn);
-}
-
-.df-card__band--error {
-    --df-card-accent: var(--df-error);
 }
 
 .df-card__band-icon {
@@ -118,6 +136,33 @@
     color: var(--df-card-accent);
     background: var(--df-icon-disc);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* Which icon: the variant's, unless the card names one (--icon-<name>).
+   Brand is the default variant, so the shield shows without a variant.
+   Every show/hide rule below has the same specificity (two classes, the
+   brand rule kept there by :where()), so source order decides. */
+.df-card__icon {
+    display: none;
+}
+
+.df-card:where(:not(.df-card--info, .df-card--warn, .df-card--error)) .df-card__icon--shield,
+.df-card--info .df-card__icon--info,
+.df-card--warn .df-card__icon--warning,
+.df-card--error .df-card__icon--error {
+    display: contents;
+}
+
+/* An explicit icon wins: hide the variant's, show the named one. */
+[class*='df-card--icon-'] .df-card__icon {
+    display: none;
+}
+
+.df-card--icon-shield .df-card__icon--shield,
+.df-card--icon-info .df-card__icon--info,
+.df-card--icon-warning .df-card__icon--warning,
+.df-card--icon-error .df-card__icon--error {
+    display: contents;
 }
 
 .df-card__band-icon svg {
@@ -201,6 +246,7 @@
     .df-card__header {
         padding: 1rem 1.25rem;
     }
+
     .df-card__band {
         --df-card-disc: 92px;
         margin-top: calc(24px + var(--df-card-disc) * var(--df-card-overlap));
@@ -208,18 +254,23 @@
         padding-bottom: 18px;
         padding-left: 18px;
     }
+
     .df-card__title {
         font-size: 24px;
     }
+
     .df-card__body {
         padding: 20px 18px 18px;
     }
+
     .df-card__advanced-toggle {
         padding: 12px 18px;
     }
+
     .df-card__advanced-body {
         padding: 4px 18px 18px;
     }
+
     .df-card__footer {
         flex-direction: column;
         gap: 4px;
@@ -230,9 +281,11 @@
     .df-card--raised {
         border: 3px solid var(--df-hc-border);
     }
-    .df-card__band--error {
+
+    .df-card--error {
         --df-card-accent: var(--df-hc-danger);
     }
+
     .df-card__band-icon {
         outline: 2px solid currentColor;
     }

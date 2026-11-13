@@ -18,10 +18,6 @@ import elementsCss from '../src/templates/preview/elements.css?inline';
 import paletteHtml from '../src/templates/preview/palette.html?template';
 import paletteCss from '../src/templates/preview/palette.css?inline';
 import tokensCss from '../src/templates/styles/tokens.css?raw';
-import shieldIcon from '../src/templates/assets/icons/shield.svg?raw';
-import infoIcon from '../src/templates/assets/icons/info.svg?raw';
-import warningIcon from '../src/templates/assets/icons/warning.svg?raw';
-import errorIcon from '../src/templates/assets/icons/error.svg?raw';
 import { warningScenarios } from './scenarios.js';
 import sampleEs from './sample-messages/es.json';
 
@@ -31,20 +27,9 @@ import sampleEs from './sample-messages/es.json';
 const SAMPLE_OVERRIDES = validateMessages({ es: sampleEs }).messages;
 const SAMPLE_TEXT = { languages: ['es-AR'], overrides: SAMPLE_OVERRIDES };
 
-/** The icon each base dialog variant shows in its disc. */
-const DIALOG_ICONS = { brand: shieldIcon, info: infoIcon, warn: warningIcon, error: errorIcon };
-
-/**
- * base-dialog.html with its colour band switched from --brand to `variant`
- * and the shield in its disc swapped for that variant's icon.
- */
+/** base-dialog.html with the dialog switched from --brand to `variant`. */
 function withDialogVariant(variant) {
-    return baseDialogHtml
-        .replace('df-card__band--brand', `df-card__band--${variant}`)
-        .replace(
-            /(<span class="df-card__band-icon">)[\s\S]*?(<\/span>)/,
-            (_match, open, close) => `${open}${DIALOG_ICONS[variant]}${close}`
-        );
+    return baseDialogHtml.replace('df-card--brand', `df-card--${variant}`);
 }
 
 /** A token value that is a colour, or another token (which may be one). */
@@ -142,8 +127,8 @@ export const PAGES = {
         title: 'Base dialog',
         // Preview-only (src/templates/preview/): the empty card shell the
         // pages are built on. One scenario per colour band variant of the
-        // raised card (base-dialog.html ships with --brand and the shield;
-        // the others swap the class and the icon), plus `advanced` with
+        // raised card (base-dialog.html ships with --brand; the others swap
+        // that class, which also picks the icon), plus `advanced` with
         // advanced mode switched on.
         scenarios: {
             brand: baseDialogHtml,
