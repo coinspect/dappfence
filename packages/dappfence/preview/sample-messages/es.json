@@ -5,6 +5,8 @@
     "emergency.instructionTitle": "INSTRUCCIÓN CRÍTICA:",
     "emergency.instruction": "NO recargues esta ventana, NO vuelvas a iniciar sesión y NO uses este sitio hasta que nuestro equipo te lo indique.",
     "emergency.contact": "Contactá a soporte en security@example.com desde otro dispositivo.",
+    "dialog.advanced": "Modo avanzado",
+    "dialog.advancedNotice": "Detalles técnicos para usuarios con experiencia. Actuá sobre ellos solo si entendés los riesgos.",
     "warning.title": "Advertencia de seguridad",
     "warning.chip": "Bloqueado",
     "warning.subtitle": "Se bloqueó contenido potencialmente malicioso",

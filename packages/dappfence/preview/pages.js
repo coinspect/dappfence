@@ -143,12 +143,14 @@ export const PAGES = {
         // Preview-only (src/templates/preview/): the empty card shell the
         // pages are built on. One scenario per colour band variant of the
         // raised card (base-dialog.html ships with --brand and the shield;
-        // the others swap the class and the icon).
+        // the others swap the class and the icon), plus `advanced` with
+        // advanced mode switched on.
         scenarios: {
             brand: baseDialogHtml,
             info: withDialogVariant('info'),
             warn: withDialogVariant('warn'),
             error: withDialogVariant('error'),
+            advanced: baseDialogHtml.replace('id="df-advanced"', 'id="df-advanced" checked'),
         },
         render: async (html) =>
             renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),

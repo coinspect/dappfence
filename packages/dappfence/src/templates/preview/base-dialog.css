@@ -8,5 +8,7 @@
 @import '../styles/base.css';
 @import '../styles/components/page.css';
 @import '../styles/components/card.css';
+@import '../styles/components/switch.css';
+@import '../styles/components/callout.css';
 @import '../styles/components/logo.css';
 @import '../styles/components/footer.css';

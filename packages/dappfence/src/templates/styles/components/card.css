@@ -8,6 +8,11 @@
                              --warn or --error, painted from the semantic
                              tokens (tokens.css)
    .df-card__body / __footer content and footer
+   .df-card__advanced        optional advanced mode between body and footer:
+                             a switch (switch.css) that shows
+                             __advanced-body, which opens with a warning
+                             (__advanced-notice, a callout.css callout).
+                             Pure CSS: every dialog opens in simple mode.
 
    <div class="df-card df-card--raised">
        <div class="df-card__header"><!-- @include ../partials/logo.html --></div>
@@ -16,6 +21,21 @@
            <h1 class="df-card__title">…</h1>
        </div>
        <div class="df-card__body">…</div>
+       <div class="df-card__advanced">
+           <input class="df-switch__input" type="checkbox" role="switch"
+                  id="df-advanced" aria-controls="df-advanced-body" />
+           <label class="df-card__advanced-toggle df-switch" for="df-advanced">
+               <span>{{t:dialog.advanced}}</span>
+               <span class="df-switch__track" aria-hidden="true"></span>
+           </label>
+           <div class="df-card__advanced-body" id="df-advanced-body">
+               <p class="df-callout df-callout--warning df-card__advanced-notice">
+                   <!-- @include ../assets/icons/warning.svg -->
+                   {{t:dialog.advancedNotice}}
+               </p>
+               …
+           </div>
+       </div>
        <div class="df-card__footer">…</div>
    </div> */
 
@@ -116,6 +136,48 @@
     padding: 24px 26px 22px;
 }
 
+/* Advanced mode: a full-width switch row under the body. The checkbox is
+   the body's earlier sibling, so :checked shows it without a script. */
+.df-card__advanced {
+    border-top: 1px solid var(--df-border);
+}
+
+.df-card__advanced-toggle {
+    padding: 12px 26px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--df-text-muted);
+}
+
+.df-card__advanced-toggle:hover {
+    background: var(--df-surface-soft);
+}
+
+.df-card__advanced-body {
+    display: none;
+    padding: 4px 26px 22px;
+}
+
+.df-switch__input:checked ~ .df-card__advanced-body {
+    display: block;
+}
+
+.df-card__advanced-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.df-card__advanced-notice svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+}
+
 .df-card__footer {
     display: flex;
     flex-wrap: wrap;
@@ -151,6 +213,12 @@
     }
     .df-card__body {
         padding: 20px 18px 18px;
+    }
+    .df-card__advanced-toggle {
+        padding: 12px 18px;
+    }
+    .df-card__advanced-body {
+        padding: 4px 18px 18px;
     }
     .df-card__footer {
         flex-direction: column;
