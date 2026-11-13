@@ -26,7 +26,7 @@ src/templates/
     iso.svg                   DappFence isotype; logo.html inlines it
     logo.svg                  DappFence wordmark; logo.html inlines it
   styles/
-    tokens.css                --df-* design tokens (colour, radius, font, logo palette)
+    tokens.css                --df-* design tokens (colour, semantic variants, radius, font, logo palette)
     themes.css                dark theme: OS preference, or forced with .df-theme-dark / -light
     base.css                  reset and body defaults
     components/               one file per reusable component

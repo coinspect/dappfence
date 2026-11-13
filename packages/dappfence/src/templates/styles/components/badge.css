@@ -31,9 +31,9 @@
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: white;
-    background: rgba(255, 255, 255, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: var(--df-on-accent);
+    background: var(--df-on-accent-tint);
+    border: 1px solid var(--df-on-accent-border);
     border-radius: var(--df-radius-pill);
 }
 .df-severity-chip::before {
@@ -41,8 +41,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    background: var(--df-on-accent);
+    box-shadow: 0 0 0 3px var(--df-on-accent-glow);
 }
 
 .df-chip {
@@ -62,13 +62,13 @@
 }
 
 .df-chip--service-worker {
-    color: #a35200;
-    background: #fff4e5;
-    border-color: #ffd9a8;
+    color: var(--df-chip-sw-text);
+    background: var(--df-chip-sw-bg);
+    border-color: var(--df-chip-sw-border);
 }
 
 .df-chip--manifest {
-    color: #a4193d;
-    background: #fde8ec;
-    border-color: #fbc5cf;
+    color: var(--df-chip-manifest-text);
+    background: var(--df-chip-manifest-bg);
+    border-color: var(--df-chip-manifest-border);
 }

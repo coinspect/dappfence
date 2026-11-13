@@ -41,7 +41,7 @@
     position: relative;
     padding: 1rem 2rem;
     text-align: center;
-    color: white;
+    color: var(--df-on-accent);
     background: linear-gradient(135deg, var(--df-red-600), var(--df-red-700));
     border-radius: var(--df-radius) var(--df-radius) 0 0;
 }
@@ -52,7 +52,7 @@
     right: 0;
     bottom: 0;
     height: 1px;
-    background: rgba(0, 0, 0, 0.15);
+    background: var(--df-accent-divider);
 }
 
 .df-card__icon {
@@ -110,10 +110,10 @@
 
 @media (prefers-contrast: high) {
     .df-card--raised {
-        border: 3px solid #ffffff;
+        border: 3px solid var(--df-hc-border);
     }
     .df-card__header {
-        background: #cc0000;
+        background: var(--df-hc-danger);
     }
 }
 
