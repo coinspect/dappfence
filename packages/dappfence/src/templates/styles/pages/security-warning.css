@@ -1,11 +1,13 @@
 /* Security warning page: served by the service worker when content is
-   blocked. */
+   blocked. Everything it shows is a component (styles/components/); each
+   one is in the preview's Elements page. */
 
 @import '../tokens.css';
 @import '../themes.css';
 @import '../base.css';
 @import '../components/page.css';
 @import '../components/card.css';
+@import '../components/text.css';
 @import '../components/badge.css';
 @import '../components/button.css';
 @import '../components/callout.css';
@@ -15,47 +17,3 @@
 @import '../components/info-row.css';
 @import '../components/block.css';
 @import '../components/switch.css';
-
-.df-subtitle {
-    margin-bottom: 8px;
-    font-size: 17px;
-    font-weight: 600;
-    text-align: center;
-    color: var(--df-text);
-}
-
-.df-message {
-    margin-bottom: 18px;
-    font-size: 14.5px;
-    line-height: 1.55;
-    text-align: center;
-    color: var(--df-text-muted);
-}
-
-/* The message ends the main view; advanced mode carries the rest. */
-.df-message:last-child {
-    margin-bottom: 0;
-}
-
-/* "Active blocks" section, first in advanced mode under the notice */
-.df-blocks {
-    margin-bottom: 18px;
-}
-
-.df-blocks__heading {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--df-text-subtle);
-}
-
-@media (max-width: 576px) {
-    .df-subtitle {
-        font-size: 16px;
-    }
-}
