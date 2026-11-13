@@ -39,7 +39,7 @@
 
 .df-card__header {
     position: relative;
-    padding: 26px 24px 22px;
+    padding: 1rem 2rem;
     text-align: center;
     color: white;
     background: linear-gradient(135deg, var(--df-red-600), var(--df-red-700));
