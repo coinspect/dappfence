@@ -1,14 +1,69 @@
 /* Styles for the preview UI only. The previewed pages render in iframes and
-   never see these rules. */
+   never see these rules. The brand tokens and the logo component come from
+   the templates themselves, so the catalog follows the design system. */
 
-:root {
-    --bg: #eef1f5;
+@import '../src/templates/styles/tokens.css';
+@import '../src/templates/styles/themes.css';
+@import '../src/templates/styles/components/logo.css';
+
+/* Catalog palette, light. The catalog's own chrome follows the theme control:
+   `light` / `dark` put df-theme-* on <body>; `auto` and `both` follow the OS. */
+:root,
+.df-theme-light {
+    --bg: #f3f7f9;
     --surface: #ffffff;
-    --border: #d5dbe3;
-    --text: #1e293b;
-    --muted: #64748b;
-    --accent: #2563eb;
-    --bar-height: 52px;
+    --surface-raised: #ffffff;
+    --border: #dbe5eb;
+    --border-strong: #c3d3dc;
+    --text: #0f2733;
+    --muted: #4f6672;
+    --accent: var(--df-brand);
+    --accent-text: #00698c;
+    --accent-soft: #e3f1f6;
+    --thumb-bg: #e8eff3;
+    --shadow: 0 1px 2px rgba(15, 39, 51, 0.06), 0 1px 1px rgba(15, 39, 51, 0.04);
+    --shadow-hover: 0 10px 30px -8px rgba(0, 91, 131, 0.28), 0 2px 6px rgba(15, 39, 51, 0.08);
+    --bar-bg: rgba(255, 255, 255, 0.85);
+    --hero: radial-gradient(1200px 300px at 10% -40%, #cfe6ef 0%, transparent 70%);
+}
+
+.df-theme-dark {
+    --bg: #00131b;
+    --surface: #06202b;
+    --surface-raised: #0a2834;
+    --border: #143744;
+    --border-strong: #1f4b5b;
+    --text: #e6f1f5;
+    --muted: #8eaab6;
+    --accent: #0092bf;
+    --accent-text: #66b8d4;
+    --accent-soft: #0b3343;
+    --thumb-bg: #021922;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-hover: 0 10px 30px -8px rgba(0, 146, 191, 0.35), 0 2px 6px rgba(0, 0, 0, 0.4);
+    --bar-bg: rgba(0, 19, 27, 0.85);
+    --hero: radial-gradient(1200px 300px at 10% -40%, #06384a 0%, transparent 70%);
+}
+
+/* Same values as .df-theme-dark, for the OS preference. */
+@media (prefers-color-scheme: dark) {
+    body:not(.df-theme-light) {
+        --bg: #00131b;
+        --surface: #06202b;
+        --surface-raised: #0a2834;
+        --border: #143744;
+        --border-strong: #1f4b5b;
+        --text: #e6f1f5;
+        --muted: #8eaab6;
+        --accent: #0092bf;
+        --accent-text: #66b8d4;
+        --accent-soft: #0b3343;
+        --thumb-bg: #021922;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-hover: 0 10px 30px -8px rgba(0, 146, 191, 0.35), 0 2px 6px rgba(0, 0, 0, 0.4);
+        --bar-bg: rgba(0, 19, 27, 0.85);
+        --hero: radial-gradient(1200px 300px at 10% -40%, #06384a 0%, transparent 70%);
+    }
 }
 
 * {
@@ -17,150 +72,350 @@
 
 body {
     margin: 0;
-    font:
-        14px/1.4 system-ui,
-        -apple-system,
-        'Segoe UI',
-        Roboto,
-        sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font: 14px/1.5 var(--df-font-sans);
     color: var(--text);
-    background: var(--bg);
+    background: var(--hero), var(--bg);
+    background-repeat: no-repeat;
+    -webkit-font-smoothing: antialiased;
 }
 
 a {
-    color: var(--accent);
+    color: var(--accent-text);
 }
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Header */
 
 .bar {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 16px;
-    min-height: var(--bar-height);
-    padding: 8px 16px;
-    background: var(--surface);
+    gap: 10px 24px;
+    padding: 10px 24px;
+    background: var(--bar-bg);
+    backdrop-filter: saturate(1.4) blur(10px);
+    -webkit-backdrop-filter: saturate(1.4) blur(10px);
     border-bottom: 1px solid var(--border);
 }
 
 .bar__brand {
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
     color: var(--text);
     text-decoration: none;
+    --df-logo-height: 26px;
+}
+
+.bar__product {
+    padding-left: 12px;
+    border-left: 1px solid var(--border-strong);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.01em;
 }
 
 .bar__controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    gap: 8px 20px;
+    margin-left: auto;
+}
+
+.bar__link {
+    display: inline-flex;
+    padding: 6px;
+    color: var(--muted);
+    border-radius: var(--df-radius-xs);
+}
+.bar__link:hover {
+    color: var(--text);
+    background: var(--accent-soft);
+}
+
+.control {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
 }
 
-select,
-button,
-.button {
-    height: 30px;
-    padding: 0 10px;
-    font: inherit;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
+.control__label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
 }
 
 .segmented {
     display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    background: var(--accent-soft);
+    border-radius: var(--df-radius-sm);
 }
+
 .segmented button {
-    border-radius: 0;
-    margin-left: -1px;
+    height: 28px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--df-radius-xs);
+    cursor: pointer;
+    white-space: nowrap;
 }
-.segmented button:first-child {
-    border-radius: 6px 0 0 6px;
-    margin-left: 0;
-}
-.segmented button:last-child {
-    border-radius: 0 6px 6px 0;
+.segmented button:hover {
+    color: var(--text);
 }
 .segmented button[aria-pressed='true'] {
-    color: white;
+    color: var(--df-on-accent);
     background: var(--accent);
+    box-shadow: var(--shadow);
+}
+
+/* Intro */
+
+.intro {
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 48px 24px 8px;
+}
+
+.intro h1 {
+    margin: 0 0 12px;
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.intro__lede {
+    max-width: 62ch;
+    margin: 0 0 16px;
+    font-size: 16px;
+    color: var(--muted);
+}
+
+.intro__meta {
+    margin: 0 0 24px;
+    font-family: var(--df-font-mono);
+    font-size: 12px;
+    color: var(--muted);
+}
+.intro__meta:empty {
+    display: none;
+}
+
+.intro__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--df-radius-pill);
+}
+.chip:hover {
     border-color: var(--accent);
+    color: var(--accent-text);
+}
+.chip span {
+    color: var(--muted);
+    font-size: 12px;
 }
 
 /* Catalog */
 
 .catalog {
-    padding: 16px;
+    flex: 1;
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 24px 24px 48px;
 }
 
-.catalog h2 {
-    margin: 8px 0 12px;
-    font-size: 16px;
+.section {
+    margin-bottom: 40px;
+    /* Jump links land below the sticky bar. */
+    scroll-margin-top: 80px;
+}
+
+.section__title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding-bottom: 10px;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    border-bottom: 1px solid var(--border);
+}
+
+.section__count {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
 }
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.card {
-    overflow: hidden;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-}
-.card:has(.thumb:hover) {
-    border-color: var(--accent);
-}
-
-.card__label {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 12px;
-    font-size: 12px;
-    border-top: 1px solid var(--border);
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+    gap: 20px;
 }
 
 /* `both` mode: two thumbnails per card, so the columns need more room. */
 .grid--pair {
-    grid-template-columns: repeat(auto-fill, minmax(496px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr));
+}
+
+.card {
+    overflow: hidden;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition:
+        box-shadow 0.18s ease,
+        border-color 0.18s ease,
+        transform 0.18s ease;
+}
+.card:has(.thumb:hover),
+.card:has(.thumb:focus-visible) {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+}
+
+.card__label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+}
+
+.card__open {
+    min-width: 0;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.card__open:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
+}
+
+.card__source {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    font-family: var(--df-font-mono);
+    font-size: 11px;
+    color: var(--accent-text);
+    text-decoration: none;
+    background: var(--accent-soft);
+    border-radius: var(--df-radius-xs);
+}
+.card__source:hover {
+    color: var(--df-on-accent);
+    background: var(--accent);
 }
 
 .thumbs--pair {
     display: grid;
-    /* Column width comes from PAIR_THUMB_WIDTH in preview.js. */
-    grid-template-columns: repeat(2, var(--pair-thumb-width));
+    grid-template-columns: 1fr 1fr;
 }
 .thumbs--pair .thumb + .thumb {
     border-left: 1px solid var(--border);
 }
 
+/* The iframe renders at the full viewport width; preview.js sets --scale from
+   the thumbnail's width, so it fills the card at any size. */
 .thumb {
     display: block;
     position: relative;
     overflow: hidden;
-    background: var(--bg);
+    background: var(--thumb-bg);
 }
 .thumb iframe {
     position: absolute;
     top: 0;
     left: 0;
     border: 0;
+    transform: scale(var(--scale, 0.25));
     transform-origin: 0 0;
     pointer-events: none;
 }
 
-.hint {
+/* Footer */
+
+.site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 10px;
+    padding: 24px;
+    font-size: 13px;
     color: var(--muted);
-    font-size: 12px;
+    border-top: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+    /* Two rows of controls are too tall to pin on a phone. */
+    .bar {
+        position: static;
+        padding: 10px 16px;
+    }
+    .bar__controls {
+        order: 3;
+        width: 100%;
+        margin-left: 0;
+    }
+    .bar__link {
+        margin-left: auto;
+    }
+    .intro {
+        padding: 32px 16px 8px;
+    }
+    .catalog {
+        padding: 16px 16px 40px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card {
+        transition: none;
+    }
+    .card:has(.thumb:hover) {
+        transform: none;
+    }
 }
