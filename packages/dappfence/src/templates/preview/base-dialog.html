@@ -7,8 +7,9 @@
         <!--
             The bare .df-card--raised shell: a brand band with the logo, a
             colour band holding the title, with the variant's icon in a disc
-            straddling its top edge, then body and footer with placeholder
-            text.
+            straddling its top edge, then body, the optional advanced mode
+            (a switch that shows a warning and the details, off by default)
+            and footer with placeholder text.
 
             The shell lives in styles/components/card.css; the pages use it
             as-is. The band's variant class (--brand, --info, --warn or
@@ -30,6 +31,27 @@
 
                 <div class="df-card__body">
                     <p>Body content goes here.</p>
+                </div>
+
+                <div class="df-card__advanced">
+                    <input
+                        class="df-switch__input"
+                        type="checkbox"
+                        role="switch"
+                        id="df-advanced"
+                        aria-controls="df-advanced-body"
+                    />
+                    <label class="df-card__advanced-toggle df-switch" for="df-advanced">
+                        <span>{{t:dialog.advanced}}</span>
+                        <span class="df-switch__track" aria-hidden="true"></span>
+                    </label>
+                    <div class="df-card__advanced-body" id="df-advanced-body">
+                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            {{t:dialog.advancedNotice}}
+                        </p>
+                        <p>Advanced content goes here.</p>
+                    </div>
                 </div>
 
                 <div class="df-card__footer">
