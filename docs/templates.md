@@ -441,7 +441,9 @@ for comparing details. Both live in `src/templates/preview/` because includes ca
 
 Add an entry to `PAGES` in `preview/pages.js` with a `title`, its `scenarios` (use
 `{ default: null }` for a page without data) and a `render(scenario)` function that returns the
-complete HTML document. It appears in the catalog automatically.
+complete HTML document. It appears in the catalog automatically, in `PAGES` order. Give it a `group`
+to share a row with the pages next to it that have the same group (the logo, palette and elements
+sheets share "Design system").
 
 ## Testing
 

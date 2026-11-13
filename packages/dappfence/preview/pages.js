@@ -101,6 +101,8 @@ function paletteMarkup() {
 /**
  * @typedef {object} PreviewPage
  * @property {string} title
+ * @property {string} [group] - consecutive pages with the same group share
+ *   one catalog row, titled by the group, each card naming its page
  * @property {Record<string, unknown>} scenarios - scenario name -> data passed to render
  * @property {(scenario: unknown) => Promise<string>} render - full HTML document
  */
@@ -109,6 +111,7 @@ function paletteMarkup() {
 export const PAGES = {
     logos: {
         title: 'Logo variants',
+        group: 'Design system',
         // Preview-only sheets (src/templates/preview/): every logo variant
         // through the real partials and tokens. `default` follows the theme
         // like any page; `side-by-side` always shows light and dark at full
@@ -119,6 +122,7 @@ export const PAGES = {
     },
     palette: {
         title: 'Palette',
+        group: 'Design system',
         // Preview-only sheet (src/templates/preview/): every colour token,
         // generated from tokens.css, in light and dark side by side.
         scenarios: { default: paletteHtml },
@@ -127,6 +131,7 @@ export const PAGES = {
     },
     elements: {
         title: 'Elements',
+        group: 'Design system',
         // Preview-only sheet (src/templates/preview/): the small components
         // in every variant, starting with the buttons.
         scenarios: { default: elementsHtml },

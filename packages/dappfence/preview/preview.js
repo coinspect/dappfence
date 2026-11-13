@@ -38,11 +38,38 @@ function slot(node, name) {
 }
 
 function scenarioLabel(pageName, scenario) {
-    const data = PAGES[pageName].scenarios[scenario];
-    if (!Array.isArray(data)) {
-        return scenario;
+    const page = PAGES[pageName];
+    const data = page.scenarios[scenario];
+    const label = Array.isArray(data)
+        ? `${scenario} (${data.length} block${data.length === 1 ? '' : 's'})`
+        : scenario;
+    if (!page.group) {
+        return label;
     }
-    return `${scenario} (${data.length} block${data.length === 1 ? '' : 's'})`;
+    // In a shared row the card names its page; a lone `default` adds nothing.
+    return Object.keys(page.scenarios).length === 1 ? page.title : `${page.title} · ${label}`;
+}
+
+/**
+ * The catalog's rows: consecutive pages with the same `group` share one
+ * section titled by the group; any other page gets its own.
+ * @returns {{ title: string, pageNames: string[] }[]}
+ */
+function catalogRows() {
+    const rows = [];
+    for (const [pageName, page] of Object.entries(PAGES)) {
+        const last = rows[rows.length - 1];
+        if (page.group && last?.group === page.group) {
+            last.pageNames.push(pageName);
+        } else {
+            rows.push({
+                title: page.group ?? page.title,
+                group: page.group,
+                pageNames: [pageName],
+            });
+        }
+    }
+    return rows;
 }
 
 /** Fill a segmented control with one button per [value, label] option. */
@@ -130,14 +157,16 @@ async function renderCatalog(width, theme) {
     );
 
     const renders = [];
-    const sections = Object.entries(PAGES).map(([pageName, page]) => {
+    const sections = catalogRows().map((row) => {
         const section = fromTemplate('page-section');
-        slot(section, 'title').textContent = page.title;
+        slot(section, 'title').textContent = row.title;
         const grid = slot(section, 'cards');
         grid.classList.toggle('grid--pair', theme === 'both');
         grid.append(
-            ...Object.keys(page.scenarios).map((scenario) =>
-                scenarioCard(pageName, scenario, theme, viewport, renders)
+            ...row.pageNames.flatMap((pageName) =>
+                Object.keys(PAGES[pageName].scenarios).map((scenario) =>
+                    scenarioCard(pageName, scenario, theme, viewport, renders)
+                )
             )
         );
         return section;
