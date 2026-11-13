@@ -3,10 +3,11 @@
    .df-card--raised          the panel: shadow and slide-in
    .df-card--<variant>       the dialog's variant: --brand (default),
                              --info, --warn or --error. It sets
-                             --df-card-accent from the semantic tokens
-                             (tokens.css), and every coloured part of the
-                             dialog reads that: the band, the icon, the
-                             advanced mode switch. It also picks the icon:
+                             --df-card-accent and --df-card-accent-strong
+                             (hover) from the semantic tokens (tokens.css),
+                             and every coloured part of the dialog reads
+                             them: the band, the icon, the advanced mode
+                             switch. It also picks the icon:
                              shield, info, warning, error.
    .df-card--icon-<name>     show icon <name> instead of the variant's
                              (the security warning: warning on --error)
@@ -58,27 +59,33 @@
     border-radius: var(--df-radius);
 }
 
-/* Variant: one accent for the whole dialog. Inside the card the switch
-   follows it too. */
+/* Variant: one accent, and its darker hover shade, for the whole dialog.
+   Inside the card the switch follows them too. */
 .df-card {
     --df-card-accent: var(--df-brand);
+    --df-card-accent-strong: var(--df-brand-strong);
     --df-switch-on: var(--df-card-accent);
+    --df-switch-on-hover: var(--df-card-accent-strong);
 }
 
 .df-card--brand {
     --df-card-accent: var(--df-brand);
+    --df-card-accent-strong: var(--df-brand-strong);
 }
 
 .df-card--info {
     --df-card-accent: var(--df-info);
+    --df-card-accent-strong: var(--df-info-strong);
 }
 
 .df-card--warn {
     --df-card-accent: var(--df-warn);
+    --df-card-accent-strong: var(--df-warn-strong);
 }
 
 .df-card--error {
     --df-card-accent: var(--df-error);
+    --df-card-accent-strong: var(--df-error-strong);
 }
 
 .df-card--raised {
@@ -284,6 +291,7 @@
 
     .df-card--error {
         --df-card-accent: var(--df-hc-danger);
+        --df-card-accent-strong: var(--df-hc-danger);
     }
 
     .df-card__band-icon {
