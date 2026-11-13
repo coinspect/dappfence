@@ -8,6 +8,9 @@
             Catalog of the small components, one section each. Buttons: every
             solid variant (button.css) without and with its icon
             (assets/icons/), then the security warning's danger button.
+            Pills: the severity chip (badge.css) that reads "Blocked" on the
+            security warning's header, shown on each variant's fill since it
+            is translucent white.
         -->
         <main class="df-elements">
             <h2 class="df-elements__title">Elements</h2>
@@ -46,6 +49,28 @@
                 <h3>Danger button (security warning)</h3>
                 <div class="df-elements__wide">
                     <button class="df-btn df-btn--danger" type="button">Unblock site</button>
+                </div>
+            </section>
+
+            <section class="df-elements__section">
+                <h3>Severity chip (security warning header)</h3>
+                <div class="df-elements__fills">
+                    <div class="df-elements__fill" style="--df-elements-fill: var(--df-brand)">
+                        <span class="df-severity-chip">{{t:warning.chip}}</span>
+                        <code>brand</code>
+                    </div>
+                    <div class="df-elements__fill" style="--df-elements-fill: var(--df-info)">
+                        <span class="df-severity-chip">{{t:warning.chip}}</span>
+                        <code>info</code>
+                    </div>
+                    <div class="df-elements__fill" style="--df-elements-fill: var(--df-warn)">
+                        <span class="df-severity-chip">{{t:warning.chip}}</span>
+                        <code>warn</code>
+                    </div>
+                    <div class="df-elements__fill" style="--df-elements-fill: var(--df-error)">
+                        <span class="df-severity-chip">{{t:warning.chip}}</span>
+                        <code>error</code>
+                    </div>
                 </div>
             </section>
         </main>

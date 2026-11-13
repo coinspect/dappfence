@@ -7,6 +7,7 @@
 @import '../styles/themes.css';
 @import '../styles/base.css';
 @import '../styles/components/button.css';
+@import '../styles/components/badge.css';
 
 .df-elements {
     padding: 24px 16px;
@@ -47,6 +48,33 @@
 
 .df-elements__wide {
     max-width: 320px;
+}
+
+/* Coloured tiles for elements made to sit on a variant fill. */
+.df-elements__fills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.df-elements__fill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 20px 10px;
+    border-radius: var(--df-radius-sm);
+    background: var(--df-elements-fill);
+}
+
+.df-elements__fill .df-severity-chip {
+    margin-bottom: 0;
+}
+
+.df-elements__fill code {
+    font-family: var(--df-font-mono);
+    font-size: 11px;
+    color: var(--df-on-accent);
 }
 
 @media (max-width: 420px) {
