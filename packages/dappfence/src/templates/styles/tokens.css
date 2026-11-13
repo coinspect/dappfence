@@ -37,7 +37,6 @@
     --df-on-accent-tint: rgba(255, 255, 255, 0.18); /* translucent pill on a fill */
     --df-on-accent-border: rgba(255, 255, 255, 0.35); /* its border */
     --df-on-accent-glow: rgba(255, 255, 255, 0.2); /* halo around a dot on a fill */
-    --df-accent-divider: rgba(0, 0, 0, 0.15); /* hairline under a coloured header */
     --df-icon-disc: #f4f3fa; /* pale disc behind a variant-coloured icon */
     --df-danger-tint: rgba(239, 68, 68, 0.1); /* red-500 wash, danger callout */
 

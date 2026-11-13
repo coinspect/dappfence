@@ -1,6 +1,23 @@
-/* Card: the centred panel every DappFence page is built around.
-   .df-card--raised  white panel with a coloured header (security warning)
-   .df-card--alert   bordered, padded panel (emergency panel) */
+/* Card: the centred dialog every DappFence page is built around.
+
+   .df-card--raised          the panel: shadow and slide-in
+   .df-card__header          logo header on the card surface
+   .df-card__band--<variant> colour band holding the title, with the
+                             variant's icon (assets/icons/) in a pale disc
+                             straddling its top edge; --brand, --info,
+                             --warn or --error, painted from the semantic
+                             tokens (tokens.css)
+   .df-card__body / __footer content and footer
+
+   <div class="df-card df-card--raised">
+       <div class="df-card__header"><!-- @include ../partials/logo.html --></div>
+       <div class="df-card__band df-card__band--error">
+           <span class="df-card__band-icon"><!-- @include ../assets/icons/error.svg --></span>
+           <h1 class="df-card__title">…</h1>
+       </div>
+       <div class="df-card__body">…</div>
+       <div class="df-card__footer">…</div>
+   </div> */
 
 .df-card {
     width: 100%;
@@ -17,15 +34,6 @@
     animation: df-slide-in 0.3s ease-out;
 }
 
-.df-card--alert {
-    max-width: 634px; /* 550px content + padding + border */
-    padding: 40px;
-    border: 2px solid var(--df-red-500);
-    border-radius: 12px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    text-align: center;
-}
-
 @keyframes df-slide-in {
     from {
         transform: translateY(16px);
@@ -38,35 +46,70 @@
 }
 
 .df-card__header {
-    position: relative;
+    --df-logo-height: 36px;
+    display: flex;
+    justify-content: center;
     padding: 1rem 2rem;
-    text-align: center;
-    color: var(--df-on-accent);
-    background: linear-gradient(135deg, var(--df-red-600), var(--df-red-700));
+    background: var(--df-surface);
     border-radius: var(--df-radius) var(--df-radius) 0 0;
 }
-.df-card__header::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    background: var(--df-accent-divider);
+
+/* Colour band. --df-card-overlap of the disc sits above the band; the band's
+   top margin and padding leave room for it. The variant points
+   --df-card-accent at its semantic token, which paints the band and the
+   icon; the title is --df-on-accent on the band. */
+.df-card__band {
+    --df-card-disc: 116px;
+    --df-card-overlap: 0.65;
+    position: relative;
+    margin-top: calc(32px + var(--df-card-disc) * var(--df-card-overlap));
+    padding: calc(var(--df-card-disc) * (1 - var(--df-card-overlap)) + 12px) 24px 22px;
+    text-align: center;
+    color: var(--df-on-accent);
+    background: var(--df-card-accent);
 }
 
-.df-card__icon {
-    font-size: 42px;
-    line-height: 1;
-    margin-bottom: 8px;
-    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+.df-card__band--brand {
+    --df-card-accent: var(--df-brand);
+}
+
+.df-card__band--info {
+    --df-card-accent: var(--df-info);
+}
+
+.df-card__band--warn {
+    --df-card-accent: var(--df-warn);
+}
+
+.df-card__band--error {
+    --df-card-accent: var(--df-error);
+}
+
+.df-card__band-icon {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: var(--df-card-disc);
+    height: var(--df-card-disc);
+    transform: translate(-50%, calc(var(--df-card-overlap) * -100%));
+    border-radius: 50%;
+    color: var(--df-card-accent);
+    background: var(--df-icon-disc);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.df-card__band-icon svg {
+    display: block;
+    width: 62%;
+    height: 62%;
 }
 
 .df-card__title {
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 32px;
+    font-weight: 500;
     letter-spacing: -0.01em;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .df-card__body {
@@ -94,10 +137,17 @@
 
 @media (max-width: 576px) {
     .df-card__header {
-        padding: 22px 18px 18px;
+        padding: 1rem 1.25rem;
+    }
+    .df-card__band {
+        --df-card-disc: 92px;
+        margin-top: calc(24px + var(--df-card-disc) * var(--df-card-overlap));
+        padding-right: 18px;
+        padding-bottom: 18px;
+        padding-left: 18px;
     }
     .df-card__title {
-        font-size: 20px;
+        font-size: 24px;
     }
     .df-card__body {
         padding: 20px 18px 18px;
@@ -112,8 +162,11 @@
     .df-card--raised {
         border: 3px solid var(--df-hc-border);
     }
-    .df-card__header {
-        background: var(--df-hc-danger);
+    .df-card__band--error {
+        --df-card-accent: var(--df-hc-danger);
+    }
+    .df-card__band-icon {
+        outline: 2px solid currentColor;
     }
 }
 
