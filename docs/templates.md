@@ -416,10 +416,11 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 `npm run build:templates` (from the repo root) builds the same preview app into static files in
 `packages/dappfence/dist-templates/` (kept out of `dist/`, which is published to npm). All paths are
 relative, so it can be served from any directory, including a GitHub Pages project sub-path
-(`/<repo>/`). For Netlify, set the base directory to the repo root, the build command to
-`npm ci && npm run build:templates` and the publish directory to
-`packages/dappfence/dist-templates`. The build stamps the package version and the current commit into
-the catalog's intro.
+(`/<repo>/`). Netlify picks up `netlify.toml` at the repo root, which sets the build command and
+publish directory and installs with `--ignore-scripts`: a plain install also runs the root `prepare`
+script (the full check and the library build), which the catalog doesn't need. Any other host should
+install the same way, `npm ci --ignore-scripts`, before `npm run build:templates`. The build stamps
+the package version and the current commit into the catalog's intro.
 
 A static host has no `/sw-api/site-unblock` stub, so "Remove Site Lock" reports a failure there;
 everything else behaves as in `npm run dev:templates`.
