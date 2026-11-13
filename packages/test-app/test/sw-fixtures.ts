@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+import { expect, test as base } from '@playwright/test';
 import type {
     APIRequestContext,
     Browser,
@@ -113,6 +113,26 @@ export type SWHelper = {
 
 // Define the type for your new fixture
 export type SWFixtures = { swHelper: SWHelper; swNoRoute: SWHelper };
+
+/**
+ * Switch on the security warning's advanced mode, which holds the block
+ * details and the unlock zone. The switch's checkbox is visually hidden
+ * under its label, so click the label as a user would; it is found by its
+ * `for`, not its text, so this works whatever the page's language.
+ */
+export async function showAdvancedMode(page: Page) {
+    await page.locator('label[for="df-advanced"]').click();
+    await expect(page.getByRole('switch')).toBeChecked();
+}
+
+/**
+ * Remove the site lock from the security warning (in advanced mode). Accept
+ * the confirm() dialog yourself (page.on('dialog', …)) before calling this.
+ */
+export async function removeSiteLock(page: Page) {
+    await showAdvancedMode(page);
+    await page.getByRole('button', { name: 'Remove Site Lock' }).click();
+}
 
 export function formatRequestLogMessage(r: Request) {
     const redirected = r.redirectedFrom();

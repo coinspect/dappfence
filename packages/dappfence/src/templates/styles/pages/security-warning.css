@@ -14,6 +14,7 @@
 @import '../components/disclosure.css';
 @import '../components/info-row.css';
 @import '../components/block.css';
+@import '../components/switch.css';
 
 .df-subtitle {
     margin-bottom: 8px;
@@ -31,11 +32,14 @@
     color: var(--df-text-muted);
 }
 
-/* "Active blocks" section */
+/* The message ends the main view; advanced mode carries the rest. */
+.df-message:last-child {
+    margin-bottom: 0;
+}
+
+/* "Active blocks" section, first in advanced mode under the notice */
 .df-blocks {
     margin-bottom: 18px;
-    padding-top: 18px;
-    border-top: 1px solid var(--df-border);
 }
 
 .df-blocks__heading {
