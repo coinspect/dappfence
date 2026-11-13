@@ -1,6 +1,6 @@
 /* Small inline labels.
    .df-badge          red counter pill ("3×", block count)
-   .df-severity-chip  translucent pill on the red card header
+   .df-severity-chip  translucent pill on a card colour band
    .df-chip           asset-type tag, coloured by its --<asset-type> modifier */
 
 .df-badge {

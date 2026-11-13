@@ -3,16 +3,29 @@
 </head>
 <body>
     <div class="df-page">
-        <div class="df-card df-card--alert df-emergency">
-            <div class="df-emergency__icon">⚠️</div>
-            <h1 class="df-emergency__title">{{t:emergency.title}}</h1>
-            <p class="df-emergency__text">{{t:emergency.intro}}</p>
-            <div class="df-callout df-callout--danger">
-                <strong class="df-callout__title">{{t:emergency.instructionTitle}}</strong>
-                {{t:emergency.instruction}}
+        <div class="df-card df-card--raised df-emergency">
+            <div class="df-card__header">
+                <!-- @include ../partials/logo.html -->
             </div>
-            <p class="df-emergency__text">{{t:emergency.contact}}</p>
-            <!-- @include ../partials/footer.html -->
+            <div class="df-card__band df-card__band--error">
+                <span class="df-card__band-icon">
+                    <!-- @include ../assets/icons/error.svg -->
+                </span>
+                <h1 class="df-card__title">{{t:emergency.title}}</h1>
+            </div>
+
+            <div class="df-card__body">
+                <p class="df-emergency__text">{{t:emergency.intro}}</p>
+                <div class="df-callout df-callout--danger">
+                    <strong class="df-callout__title">{{t:emergency.instructionTitle}}</strong>
+                    {{t:emergency.instruction}}
+                </div>
+                <p class="df-emergency__text">{{t:emergency.contact}}</p>
+            </div>
+
+            <div class="df-card__footer">
+                <!-- @include ../partials/footer.html -->
+            </div>
         </div>
     </div>
 </body>
