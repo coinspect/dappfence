@@ -208,6 +208,7 @@ by ID.
 | `footer.css`     | `.df-footer`, `__label`                                                                                                                  |
 | `logo.css`       | `.df-logo`, `__iso`, `__wordmark` (height via `--df-logo-height`, default 28px)                                                          |
 | `disclosure.css` | `.df-disclosure`: put on a `<summary>` to get the rotating ▸ marker                                                                      |
+| `switch.css`     | `.df-switch`, `__input`, `__track`: CSS-only on/off switch on a checkbox                                                                 |
 | `info-row.css`   | `.df-info-row`, `__label`, `__value`, `__value--hash`                                                                                    |
 | `block.css`      | `.df-block-list`, `.df-block` (`--group`), `.df-file-list`, `.df-file`                                                                   |
 
