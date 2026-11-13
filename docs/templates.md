@@ -418,7 +418,8 @@ service worker or site (the actual unlock, the emergency panel replacing a live 
 relative, so it can be served from any directory, including a GitHub Pages project sub-path
 (`/<repo>/`). For Netlify, set the base directory to the repo root, the build command to
 `npm ci && npm run build:templates` and the publish directory to
-`packages/dappfence/dist-templates`.
+`packages/dappfence/dist-templates`. The build stamps the package version and the current commit into
+the catalog's intro.
 
 A static host has no `/sw-api/site-unblock` stub, so "Remove Site Lock" reports a failure there;
 everything else behaves as in `npm run dev:templates`.

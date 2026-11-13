@@ -6,10 +6,8 @@
 // The markup lives in index.html as <template> elements; this file only clones
 // them and fills their data-slot elements.
 import { PAGES, THEMES, WIDTHS, readSelection, renderScenario, viewQuery } from './pages.js';
+import logoHtml from '../src/templates/partials/logo.html?template';
 
-const THUMB_WIDTH = 320;
-// In `both` mode a card holds a light and a dark thumbnail side by side.
-const PAIR_THUMB_WIDTH = 240;
 const THUMB_VIEWPORT_HEIGHT = 900;
 
 // The catalog adds `both` to the page themes: every scenario in light and dark.
@@ -26,6 +24,24 @@ function catalogSelection(search) {
 const app = document.getElementById('app');
 const widthControl = document.getElementById('width-control');
 const themeControl = document.getElementById('theme-control');
+const sectionNav = document.getElementById('section-nav');
+
+document.getElementById('brand-logo').innerHTML = logoHtml;
+
+// Version and commit, substituted by Vite (`define` in vite.config.js). A local
+// build has no commit; build:templates passes it in.
+const version = `v${__VERSION__}`;
+document.getElementById('footer-version').textContent = `DappFence ${version}`;
+document.getElementById('build-meta').textContent =
+    __COMMIT__ === 'not-for-release' ? version : `${version} · ${__COMMIT__}`;
+
+// Thumbnails render the page at full viewport width and scale it down to the
+// thumbnail's width, whatever the card's size: the CSS reads --scale.
+const thumbSizer = new ResizeObserver((entries) => {
+    for (const { target, contentRect } of entries) {
+        target.style.setProperty('--scale', contentRect.width / target.dataset.viewport);
+    }
+});
 
 /** A fresh copy of the <template id="…"> element's root. */
 function fromTemplate(id) {
@@ -93,22 +109,27 @@ function pick(change) {
     renderCatalog(next.width, next.theme);
 }
 
+/** The id of a catalog row's <section>, for the intro's jump links. */
+function sectionId(title) {
+    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
 /**
- * One live thumbnail: the page rendered in `theme`, scaled down, linking to
- * the full page in that theme. Returns the link and the pending render.
+ * One live thumbnail: the page rendered in `theme`, scaled down to fit, linking
+ * to the full page in that theme. Returns the link and the pending render.
  */
-function thumbnail(pageName, scenario, theme, viewport, thumbWidth) {
-    const scale = thumbWidth / viewport;
+function thumbnail(pageName, scenario, theme, viewport) {
     const link = fromTemplate('thumbnail');
     link.href = 'frame.html?' + viewQuery({ page: pageName, scenario, theme });
     link.title = `Open in ${theme} theme`;
-    link.style.height = `${THUMB_VIEWPORT_HEIGHT * scale}px`;
+    link.dataset.viewport = viewport;
+    link.style.aspectRatio = `${viewport} / ${THUMB_VIEWPORT_HEIGHT}`;
+    thumbSizer.observe(link);
 
     const frame = link.querySelector('iframe');
     frame.title = `${pageName} / ${scenario} / ${theme}`;
     frame.style.width = `${viewport}px`;
     frame.style.height = `${THUMB_VIEWPORT_HEIGHT}px`;
-    frame.style.transform = `scale(${scale})`;
 
     const render = renderScenario(pageName, scenario, theme).then((html) => (frame.srcdoc = html));
     return { link, render };
@@ -120,15 +141,12 @@ function scenarioCard(pageName, scenario, theme, viewport, renders) {
     const card = fromTemplate('scenario-card');
 
     const thumbs = (pair ? PAIR_THEMES : [theme]).map((t) =>
-        thumbnail(pageName, scenario, t, viewport, pair ? PAIR_THUMB_WIDTH : THUMB_WIDTH)
+        thumbnail(pageName, scenario, t, viewport)
     );
     renders.push(...thumbs.map((t) => t.render));
     const box = slot(card, 'thumbs');
     box.append(...thumbs.map((t) => t.link));
-    if (pair) {
-        box.classList.add('thumbs--pair');
-        box.style.setProperty('--pair-thumb-width', `${PAIR_THUMB_WIDTH}px`);
-    }
+    box.classList.toggle('thumbs--pair', pair);
 
     // In `both` mode the label links open the page as shipped (auto).
     const fullPage =
@@ -143,6 +161,10 @@ function scenarioCard(pageName, scenario, theme, viewport, renders) {
 
 async function renderCatalog(width, theme) {
     const viewport = WIDTHS[width];
+    // The catalog's own chrome follows a forced theme; auto and both follow the OS.
+    document.body.classList.toggle('df-theme-light', theme === 'light');
+    document.body.classList.toggle('df-theme-dark', theme === 'dark');
+
     fillSegmented(
         widthControl,
         Object.entries(WIDTHS).map(([name, px]) => [name, `${name} ${px}`]),
@@ -156,23 +178,41 @@ async function renderCatalog(width, theme) {
         (value) => pick({ theme: value })
     );
 
+    thumbSizer.disconnect();
     const renders = [];
-    const sections = catalogRows().map((row) => {
-        const section = fromTemplate('page-section');
-        slot(section, 'title').textContent = row.title;
-        const grid = slot(section, 'cards');
-        grid.classList.toggle('grid--pair', theme === 'both');
-        grid.append(
-            ...row.pageNames.flatMap((pageName) =>
-                Object.keys(PAGES[pageName].scenarios).map((scenario) =>
-                    scenarioCard(pageName, scenario, theme, viewport, renders)
-                )
+    const rows = catalogRows();
+    const sections = rows.map((row) => {
+        const cards = row.pageNames.flatMap((pageName) =>
+            Object.keys(PAGES[pageName].scenarios).map((scenario) =>
+                scenarioCard(pageName, scenario, theme, viewport, renders)
             )
         );
+        const section = fromTemplate('page-section');
+        section.id = sectionId(row.title);
+        slot(section, 'title').textContent = row.title;
+        slot(section, 'count').textContent = cardCount(cards.length);
+        const grid = slot(section, 'cards');
+        grid.classList.toggle('grid--pair', theme === 'both');
+        grid.append(...cards);
         return section;
     });
     app.replaceChildren(...sections);
+    sectionNav.replaceChildren(
+        ...rows.map((row, i) => {
+            const link = fromTemplate('section-link');
+            link.href = '#' + sections[i].id;
+            link.textContent = row.title + ' ';
+            const count = document.createElement('span');
+            count.textContent = sections[i].querySelectorAll('.card').length;
+            link.append(count);
+            return link;
+        })
+    );
     await Promise.all(renders);
+}
+
+function cardCount(n) {
+    return `${n} ${n === 1 ? 'view' : 'views'}`;
 }
 
 const initial = catalogSelection(location.search);
