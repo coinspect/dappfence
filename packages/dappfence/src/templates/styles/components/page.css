@@ -28,6 +28,6 @@
 
 @media (prefers-contrast: high) {
     .df-page {
-        background: #000000;
+        background: var(--df-hc-bg);
     }
 }

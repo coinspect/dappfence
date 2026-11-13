@@ -18,6 +18,42 @@
     --df-amber-border: #fcd34d;
     --df-amber-text: #92400e;
 
+    /* Semantic variants: brand, info, warn, error. Solid fills that carry
+       white text (--df-on-accent) or sit behind an icon: dialog bands,
+       buttons, icons. --df-<variant> is the fill, --df-<variant>-strong the
+       darker shade for hover: same hue and saturation, about 1.3-1.6:1
+       darker. Fixed in both themes, so no dark override. Brand and error
+       keep white text at 4.5:1 or more; info (2.6:1) and warn (2.1:1) do
+       not. */
+    --df-brand: #007da5;
+    --df-brand-strong: #005b83;
+    --df-info: #21b587;
+    --df-info-strong: #1c9b74;
+    --df-warn: #eda43a;
+    --df-warn-strong: #d68714;
+    --df-error: var(--df-red-600);
+    --df-error-strong: var(--df-red-700);
+    --df-on-accent: #ffffff; /* text and icons on a variant fill */
+    --df-on-accent-tint: rgba(255, 255, 255, 0.18); /* translucent pill on a fill */
+    --df-on-accent-border: rgba(255, 255, 255, 0.35); /* its border */
+    --df-on-accent-glow: rgba(255, 255, 255, 0.2); /* halo around a dot on a fill */
+    --df-accent-divider: rgba(0, 0, 0, 0.15); /* hairline under a coloured header */
+    --df-icon-disc: #f4f3fa; /* pale disc behind a variant-coloured icon */
+    --df-danger-tint: rgba(239, 68, 68, 0.1); /* red-500 wash, danger callout */
+
+    /* Asset-type chips (security warning block list). Fixed in both themes. */
+    --df-chip-sw-text: #a35200;
+    --df-chip-sw-bg: #fff4e5;
+    --df-chip-sw-border: #ffd9a8;
+    --df-chip-manifest-text: #a4193d;
+    --df-chip-manifest-bg: #fde8ec;
+    --df-chip-manifest-border: #fbc5cf;
+
+    /* prefers-contrast: high. Forced, maximum-contrast values; not themed. */
+    --df-hc-bg: #000000;
+    --df-hc-border: #ffffff;
+    --df-hc-danger: #cc0000;
+
     /* Surfaces and text */
     --df-bg: #d1e1e9; /* brand page background; dark: themes.css */
     --df-surface: #ffffff;
