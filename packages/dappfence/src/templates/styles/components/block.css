@@ -1,8 +1,26 @@
 /* Block cards on the security warning page. Markup lives in
    partials/block-templates.html.
+   .df-blocks         the "Active blocks" section: __heading (with a
+                      .df-badge count) over a .df-block-list
    .df-block          one blocked file, or a group of files sharing a reason
    .df-block--group   the group variant
    .df-file           one file row inside a group */
+
+.df-blocks {
+    margin-bottom: 18px;
+}
+
+.df-blocks__heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--df-text-subtle);
+}
 
 .df-block-list {
     display: flex;
