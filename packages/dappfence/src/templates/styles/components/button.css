@@ -1,5 +1,10 @@
-/* Buttons. Only the danger variant is in use today; add new variants as
-   .df-btn--<name> next to it. */
+/* Buttons.
+   .df-btn--danger                       full-width red action (security warning)
+   .df-btn--brand / --info / --warn / --error
+                                         solid buttons in the semantic variant
+                                         colours (--df-<variant>, tokens.css)
+   Put an inline SVG icon (assets/icons/) before the label for an icon button;
+   it takes the text colour and sizes itself. */
 
 .df-btn {
     display: inline-flex;
@@ -12,7 +17,7 @@
     font: inherit;
     font-size: 14px;
     font-weight: 500;
-    color: white;
+    color: var(--df-on-accent);
     text-decoration: none;
     cursor: pointer;
     transition:
@@ -21,8 +26,54 @@
         box-shadow 0.15s ease;
 }
 .df-btn:focus-visible {
-    outline: 2px solid var(--df-red-600);
+    outline: 2px solid var(--df-btn-bg, var(--df-red-600));
     outline-offset: 2px;
+}
+
+.df-btn svg {
+    display: block;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+}
+
+/* Solid variants: each points --df-btn-bg(-hover) at its semantic tokens
+   (tokens.css), the rules below paint them. */
+.df-btn--brand {
+    --df-btn-bg: var(--df-brand);
+    --df-btn-bg-hover: var(--df-brand-strong);
+}
+.df-btn--info {
+    --df-btn-bg: var(--df-info);
+    --df-btn-bg-hover: var(--df-info-strong);
+}
+.df-btn--warn {
+    --df-btn-bg: var(--df-warn);
+    --df-btn-bg-hover: var(--df-warn-strong);
+}
+.df-btn--error {
+    --df-btn-bg: var(--df-error);
+    --df-btn-bg-hover: var(--df-error-strong);
+}
+.df-btn--brand,
+.df-btn--info,
+.df-btn--warn,
+.df-btn--error {
+    background: var(--df-btn-bg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.df-btn--brand:hover,
+.df-btn--info:hover,
+.df-btn--warn:hover,
+.df-btn--error:hover {
+    background: var(--df-btn-bg-hover);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+.df-btn--brand:active,
+.df-btn--info:active,
+.df-btn--warn:active,
+.df-btn--error:active {
+    transform: translateY(1px);
 }
 
 .df-btn--danger {
