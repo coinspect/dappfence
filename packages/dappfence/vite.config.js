@@ -21,30 +21,55 @@ function readFeatureFlags(mode) {
 // Vitest also reports command 'serve', so it is excluded explicitly.
 const isTemplatePreview = (command) => command === 'serve' && !process.env.VITEST;
 
-export default defineConfig(({ mode, command }) => ({
-    // Build configuration for single file output
-    build: {
-        // Output to src/ so the existing dev server can serve it
-        outDir: resolve(__dirname, 'dist'),
+// `npm run build:templates` builds the same preview app into static files (dist-templates/)
+// that any static host can serve, e.g. GitHub Pages or Netlify. Not under dist/: that ships to npm.
+const isTemplateBuild = process.env.TEMPLATES_BUILD === '1';
 
-        // Don't clean the src directory (has other files)
-        emptyOutDir: false,
-
-        // Library mode for single file output
-        lib: {
-            entry: resolve(__dirname, 'src/main.js'),
-            name: 'DappFence',
-            fileName: () => (mode === 'development' ? 'dappfence.dev.js' : 'dappfence.js'),
-            formats: ['iife'], // Single IIFE format
+// Static build of the preview: the catalog and the full-page shell as a multi-page app. A
+// relative base lets it be served from any sub-path (GitHub Pages serves at /<repo>/).
+const templateBuild = {
+    outDir: resolve(__dirname, 'dist-templates'),
+    emptyOutDir: true,
+    rollupOptions: {
+        input: {
+            index: resolve(__dirname, 'preview/index.html'),
+            frame: resolve(__dirname, 'preview/frame.html'),
         },
+    },
+    // frame.js uses top-level await.
+    target: 'es2022',
+    // pages.js inlines every template, logo sheet included; one big chunk is expected.
+    chunkSizeWarningLimit: 1024,
+};
 
-        // Rollup options
-        rollupOptions: {
-            external: [],
+export default defineConfig(({ mode, command }) => ({
+    base: isTemplateBuild ? './' : '/',
 
-            output: {
-                // Banner comment
-                banner: `/**
+    // Build configuration for single file output
+    build: isTemplateBuild
+        ? templateBuild
+        : {
+              // Output to src/ so the existing dev server can serve it
+              outDir: resolve(__dirname, 'dist'),
+
+              // Don't clean the src directory (has other files)
+              emptyOutDir: false,
+
+              // Library mode for single file output
+              lib: {
+                  entry: resolve(__dirname, 'src/main.js'),
+                  name: 'DappFence',
+                  fileName: () => (mode === 'development' ? 'dappfence.dev.js' : 'dappfence.js'),
+                  formats: ['iife'], // Single IIFE format
+              },
+
+              // Rollup options
+              rollupOptions: {
+                  external: [],
+
+                  output: {
+                      // Banner comment
+                      banner: `/**
  * DappFence Security Framework v${process.env.npm_package_version || '0.1.0'}
  * A unified client/service worker security layer for web applications
  *
@@ -52,31 +77,32 @@ export default defineConfig(({ mode, command }) => ({
  * Built with Vite from modular source
  */`,
 
-                // Single file output
-                inlineDynamicImports: true,
-            },
-        },
+                      // Single file output
+                      inlineDynamicImports: true,
+                  },
+              },
 
-        // Source maps for development only
-        sourcemap: mode === 'development',
+              // Source maps for development only
+              sourcemap: mode === 'development',
 
-        // Minification and console removal
-        minify: mode === 'production' ? 'terser' : false,
+              // Minification and console removal
+              minify: mode === 'production' ? 'terser' : false,
 
-        terserOptions:
-            mode === 'production'
-                ? {
-                      compress: {
-                          pure_funcs: mode === 'production' ? ['logger.log', 'logger.warn'] : [],
-                          drop_console: false, // we want to log some things even in prod
-                          drop_debugger: true,
-                      },
-                  }
-                : undefined,
+              terserOptions:
+                  mode === 'production'
+                      ? {
+                            compress: {
+                                pure_funcs:
+                                    mode === 'production' ? ['logger.log', 'logger.warn'] : [],
+                                drop_console: false, // we want to log some things even in prod
+                                drop_debugger: true,
+                            },
+                        }
+                      : undefined,
 
-        // Target modern browsers
-        target: 'es2020',
-    },
+              // Target modern browsers
+              target: 'es2020',
+          },
 
     // Build-time substitutions. Every value here must be derived from the source, never from
     // the machine doing the building -- the released bundle has to be reproducible by anyone
