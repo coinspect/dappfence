@@ -11,4 +11,5 @@ Thumbs.db
 .env.*.local
 
 dist/
+dist-templates/
 coverage/
