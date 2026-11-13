@@ -107,6 +107,47 @@ function paletteMarkup() {
 
 /** @type {Record<string, PreviewPage>} */
 export const PAGES = {
+    logos: {
+        title: 'Logo variants',
+        // Preview-only sheets (src/templates/preview/): every logo variant
+        // through the real partials and tokens. `default` follows the theme
+        // like any page; `side-by-side` always shows light and dark at full
+        // size, for comparing details.
+        scenarios: { default: logosHtml, 'side-by-side': logosSideBySideHtml },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, logosCss), resolveMessages(['en'])),
+    },
+    palette: {
+        title: 'Palette',
+        // Preview-only sheet (src/templates/preview/): every colour token,
+        // generated from tokens.css, in light and dark side by side.
+        scenarios: { default: paletteHtml },
+        render: async (html) =>
+            renderTemplate(html.replaceAll('<div data-palette></div>', paletteMarkup), paletteCss),
+    },
+    elements: {
+        title: 'Elements',
+        // Preview-only sheet (src/templates/preview/): the small components
+        // in every variant, starting with the buttons.
+        scenarios: { default: elementsHtml },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, elementsCss), resolveMessages(['en'])),
+    },
+    'base-dialog': {
+        title: 'Base dialog',
+        // Preview-only (src/templates/preview/): the empty card shell the
+        // pages are built on. One scenario per colour band variant of the
+        // raised card (base-dialog.html ships with --brand and the shield;
+        // the others swap the class and the icon).
+        scenarios: {
+            brand: baseDialogHtml,
+            info: withDialogVariant('info'),
+            warn: withDialogVariant('warn'),
+            error: withDialogVariant('error'),
+        },
+        render: async (html) =>
+            renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),
+    },
     'security-warning': {
         title: 'Security warning',
         scenarios: {
@@ -131,47 +172,6 @@ export const PAGES = {
             const messages = text ? resolveMessages(text.languages, text.overrides) : undefined;
             return `<!doctype html><html lang="en">${createEmergencyPanel(messages)}</html>`;
         },
-    },
-    'base-dialog': {
-        title: 'Base dialog',
-        // Preview-only (src/templates/preview/): the empty card shell the
-        // pages are built on. One scenario per colour band variant of the
-        // raised card (base-dialog.html ships with --brand and the shield;
-        // the others swap the class and the icon).
-        scenarios: {
-            brand: baseDialogHtml,
-            info: withDialogVariant('info'),
-            warn: withDialogVariant('warn'),
-            error: withDialogVariant('error'),
-        },
-        render: async (html) =>
-            renderMessages(renderTemplate(html, baseDialogCss), resolveMessages(['en'])),
-    },
-    elements: {
-        title: 'Elements',
-        // Preview-only sheet (src/templates/preview/): the small components
-        // in every variant, starting with the buttons.
-        scenarios: { default: elementsHtml },
-        render: async (html) =>
-            renderMessages(renderTemplate(html, elementsCss), resolveMessages(['en'])),
-    },
-    palette: {
-        title: 'Palette',
-        // Preview-only sheet (src/templates/preview/): every colour token,
-        // generated from tokens.css, in light and dark side by side.
-        scenarios: { default: paletteHtml },
-        render: async (html) =>
-            renderTemplate(html.replaceAll('<div data-palette></div>', paletteMarkup), paletteCss),
-    },
-    logos: {
-        title: 'Logo variants',
-        // Preview-only sheets (src/templates/preview/): every logo variant
-        // through the real partials and tokens. `default` follows the theme
-        // like any page; `side-by-side` always shows light and dark at full
-        // size, for comparing details.
-        scenarios: { default: logosHtml, 'side-by-side': logosSideBySideHtml },
-        render: async (html) =>
-            renderMessages(renderTemplate(html, logosCss), resolveMessages(['en'])),
     },
 };
 
