@@ -8,6 +8,7 @@
 @import '../styles/base.css';
 @import '../styles/components/button.css';
 @import '../styles/components/badge.css';
+@import '../styles/components/switch.css';
 
 .df-elements {
     padding: 24px 16px;
@@ -75,6 +76,13 @@
     font-family: var(--df-font-mono);
     font-size: 11px;
     color: var(--df-on-accent);
+}
+
+.df-elements__switches {
+    display: grid;
+    gap: 12px;
+    max-width: 200px;
+    font-size: 13px;
 }
 
 @media (max-width: 420px) {
