@@ -16,7 +16,7 @@
  * Chromium takes that from LANGUAGE (it ignores --lang), so setting it makes
  * the whole browser Spanish, as for a real Spanish-speaking user.
  */
-import { expect, test } from '../sw-fixtures';
+import { expect, showAdvancedMode, test } from '../sw-fixtures';
 
 test.use({
     locale: 'es-AR',
@@ -80,6 +80,7 @@ test.describe('signed text overrides', () => {
         await page.waitForURL(/.*\/sw-api/);
 
         await expect(page.locator('h1')).toHaveText('Advertencia de seguridad');
+        await showAdvancedMode(page);
         await expect(page.getByText('Contenido del archivo alterado')).toBeVisible();
         await expect(page).toHaveTitle('Security Warning - Content Blocked');
     });
