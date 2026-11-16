@@ -4,6 +4,10 @@
                       .df-badge count) over a .df-block-list
    .df-block          one blocked file, or a group of files sharing a reason
    .df-block--group   the group variant
+   .df-block--brand / --info / --warn / --error
+                      left-edge colour in the semantic variant (--df-<variant>,
+                      tokens.css). Error is the default; blocks carry no
+                      severity yet, so the page sets none.
    .df-file           one file row inside a group */
 
 .df-blocks {
@@ -32,8 +36,21 @@
     overflow: hidden;
     background: var(--df-surface);
     border: 1px solid var(--df-border);
-    border-left: 3px solid var(--df-red-600);
+    border-left: 3px solid var(--df-block-edge, var(--df-error));
     border-radius: var(--df-card-border-radius);
+}
+
+.df-block--brand {
+    --df-block-edge: var(--df-brand);
+}
+.df-block--info {
+    --df-block-edge: var(--df-info);
+}
+.df-block--warn {
+    --df-block-edge: var(--df-warn);
+}
+.df-block--error {
+    --df-block-edge: var(--df-error);
 }
 
 .df-block__summary {
@@ -43,11 +60,11 @@
     padding: 10px 12px;
 }
 
-.df-block[open]>.df-block__summary {
+.df-block[open] > .df-block__summary {
     border-bottom: 1px solid var(--df-border);
 }
 
-.df-block--group>.df-block__summary {
+.df-block--group > .df-block__summary {
     background: var(--df-surface-soft);
 }
 
