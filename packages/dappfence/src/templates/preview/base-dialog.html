@@ -44,10 +44,14 @@
                         <span class="df-switch__track" aria-hidden="true"></span>
                     </label>
                     <div class="df-card__advanced-body" id="df-advanced-body">
-                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                        <div
+                            class="df-callout df-callout--warn df-callout--icon df-card__advanced-notice"
+                        >
                             <!-- @include ../assets/icons/warning.svg -->
-                            {{t:dialog.advancedNotice}}
-                        </p>
+                            <div class="df-callout__body">
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
                         <p>Advanced content goes here.</p>
                     </div>
                 </div>

@@ -133,6 +133,14 @@
     margin-bottom: 0;
 }
 
+.df-elements__stack {
+    display: grid;
+    gap: 12px;
+}
+.df-elements__stack .df-callout__text {
+    margin-bottom: 0;
+}
+
 .df-elements__row {
     display: flex;
     flex-wrap: wrap;

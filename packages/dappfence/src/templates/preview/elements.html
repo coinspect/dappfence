@@ -51,11 +51,18 @@
                     </p>
                 </div>
                 <div class="df-elements__item">
-                    <h4>Danger button</h4>
-                    <div class="df-elements__wide">
-                        <button class="df-btn df-btn--danger" type="button">Unblock site</button>
+                    <h4>Full-width button</h4>
+                    <div class="df-elements__wide df-elements__stack">
+                        <button class="df-btn df-btn--error df-btn--block" type="button">
+                            Unblock site
+                        </button>
+                        <button class="df-btn df-btn--brand df-btn--block" type="button">
+                            Continue
+                        </button>
                     </div>
-                    <p class="df-elements__caption"><code>.df-btn--danger</code> · button.css</p>
+                    <p class="df-elements__caption">
+                        <code>.df-btn--block</code> + a variant · button.css
+                    </p>
                 </div>
             </section>
 
@@ -136,13 +143,9 @@
                 <div class="df-elements__item">
                     <h4>Asset-type chips</h4>
                     <div class="df-elements__row">
-                        <span class="df-chip"
-                            >{{t:warning.chip.serviceWorker}}</span
-                        >
+                        <span class="df-chip">{{t:warning.chip.serviceWorker}}</span>
                         <span class="df-chip">{{t:warning.chip.manifest}}</span>
-                        <span class="df-chip df-contrast"
-                            >{{t:warning.chip.serviceWorker}}</span
-                        >
+                        <span class="df-chip df-contrast">{{t:warning.chip.serviceWorker}}</span>
                         <span class="df-chip df-contrast">{{t:warning.chip.manifest}}</span>
                     </div>
                     <div class="df-elements__row">
@@ -175,31 +178,63 @@
             <section class="df-elements__section">
                 <h3>Notices</h3>
                 <div class="df-elements__item">
-                    <h4>Caution note (advanced mode)</h4>
-                    <div class="df-elements__surface">
-                        <p class="df-callout df-callout--warning df-card__advanced-notice">
-                            <!-- @include ../assets/icons/warning.svg -->
-                            {{t:dialog.advancedNotice}}
-                        </p>
-                    </div>
-                    <p class="df-elements__caption">
-                        <code>.df-callout--warning .df-card__advanced-notice</code> · callout.css,
-                        card.css
-                    </p>
-                </div>
-                <div class="df-elements__item">
-                    <h4>Danger zone (Remove Site Lock)</h4>
-                    <div class="df-elements__surface">
-                        <div class="df-callout df-callout--warning">
-                            <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
-                            <p class="df-callout__text">{{t:warning.unlockText}}</p>
-                            <button class="df-btn df-btn--danger" type="button">
-                                🔓 {{t:warning.unlockButton}}
-                            </button>
+                    <h4>Callout</h4>
+                    <div class="df-elements__surface df-elements__stack">
+                        <div class="df-callout df-callout--brand">
+                            <strong class="df-callout__title">Brand</strong>
+                            <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                        </div>
+                        <div class="df-callout df-callout--info">
+                            <strong class="df-callout__title">Info</strong>
+                            <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                        </div>
+                        <div class="df-callout df-callout--warn">
+                            <strong class="df-callout__title">Warn</strong>
+                            <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                        </div>
+                        <div class="df-callout df-callout--error">
+                            <strong class="df-callout__title">Error</strong>
+                            <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
                         </div>
                     </div>
                     <p class="df-elements__caption">
-                        <code>.df-callout--warning, .df-btn--danger</code> · callout.css, button.css
+                        <code>.df-callout--brand / --info / --warn / --error</code> · callout.css
+                    </p>
+                </div>
+                <div class="df-elements__item">
+                    <h4>Callout with icon</h4>
+                    <div class="df-elements__surface df-elements__stack">
+                        <div class="df-callout df-callout--brand df-callout--icon">
+                            <!-- @include ../assets/icons/shield.svg -->
+                            <div class="df-callout__body">
+                                <strong class="df-callout__title">Brand</strong>
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
+                        <div class="df-callout df-callout--info df-callout--icon">
+                            <!-- @include ../assets/icons/info.svg -->
+                            <div class="df-callout__body">
+                                <strong class="df-callout__title">Info</strong>
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
+                        <div class="df-callout df-callout--warn df-callout--icon">
+                            <!-- @include ../assets/icons/warning.svg -->
+                            <div class="df-callout__body">
+                                <strong class="df-callout__title">Warn</strong>
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
+                        <div class="df-callout df-callout--error df-callout--icon">
+                            <!-- @include ../assets/icons/error.svg -->
+                            <div class="df-callout__body">
+                                <strong class="df-callout__title">Error</strong>
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="df-elements__caption">
+                        <code>.df-callout--icon, .df-callout__body</code> · callout.css
                     </p>
                 </div>
             </section>
@@ -229,9 +264,7 @@
                                                 >/integrity-manifest.json</span
                                             >
                                         </div>
-                                        <span class="df-chip"
-                                            >{{t:warning.chip.manifest}}</span
-                                        >
+                                        <span class="df-chip">{{t:warning.chip.manifest}}</span>
                                         <span class="df-badge">1×</span>
                                     </summary>
                                     <div class="df-block__body">
