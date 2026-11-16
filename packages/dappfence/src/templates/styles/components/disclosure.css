@@ -13,7 +13,7 @@
 .df-disclosure::before {
     content: '▸';
     flex-shrink: 0;
-    font-size: var(--df-disclosure-size, 12px);
+    font-size: var(--df-disclosure-size, 1.5rem);
     line-height: 1;
     color: var(--df-text-subtle);
     transition: transform 0.15s ease;
