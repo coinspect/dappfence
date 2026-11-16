@@ -27,7 +27,7 @@
         box-shadow 0.15s ease;
 }
 .df-btn:focus-visible {
-    outline: 2px solid var(--df-btn-bg, var(--df-red-600));
+    outline: 2px solid var(--df-btn-bg, var(--df-error));
     outline-offset: 2px;
 }
 

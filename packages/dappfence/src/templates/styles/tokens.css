@@ -5,14 +5,6 @@
 
 :root,
 .df-theme-light {
-    /* Brand / severity */
-    --df-red-900: #7f1d1d;
-    --df-red-700: #b91c1c;
-    --df-red-600: #dc2626;
-    --df-red-500: #ef4444;
-    --df-red-300: #fca5a5;
-    --df-red-soft: #fee2e2;
-
     /* Semantic variants: brand, info, warn, error. Solid fills that carry
        white text (--df-on-accent) or sit behind an icon: dialog bands,
        buttons, icons. --df-<variant> is the fill, --df-<variant>-strong the
@@ -26,8 +18,8 @@
     --df-info-strong: #1c9b74;
     --df-warn: #eda43a;
     --df-warn-strong: #d68714;
-    --df-error: var(--df-red-600);
-    --df-error-strong: var(--df-red-700);
+    --df-error: #dc2626;
+    --df-error-strong: #b91c1c;
     --df-on-accent: #ffffff; /* text and icons on a variant fill */
     --df-on-accent-dark: #0f172a; /* text on the light fills: info (6.8:1), warn (8.5:1) */
     --df-on-accent-tint: rgba(255, 255, 255, 0.18); /* translucent pill on a fill */

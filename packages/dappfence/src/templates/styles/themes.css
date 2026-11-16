@@ -14,7 +14,6 @@
     --df-surface-soft: #1f2937;
     --df-border: #374151;
     --df-divider: rgba(255, 255, 255, 0.08);
-    --df-red-soft: rgba(239, 68, 68, 0.15);
 
     /* Tinted variants (see tokens.css). */
     --df-brand-soft: rgba(0, 125, 165, 0.15);
@@ -55,7 +54,6 @@
         --df-surface-soft: #1f2937;
         --df-border: #374151;
         --df-divider: rgba(255, 255, 255, 0.08);
-        --df-red-soft: rgba(239, 68, 68, 0.15);
 
         /* Tinted variants (see tokens.css). */
         --df-brand-soft: rgba(0, 125, 165, 0.15);
