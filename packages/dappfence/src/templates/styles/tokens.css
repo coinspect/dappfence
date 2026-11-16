@@ -12,11 +12,6 @@
     --df-red-500: #ef4444;
     --df-red-300: #fca5a5;
     --df-red-soft: #fee2e2;
-    --df-danger-text: #b91c1c; /* red text on a tinted box; dark: themes.css */
-    --df-amber-600: #d97706;
-    --df-amber-soft: #fef3c7;
-    --df-amber-border: #fcd34d;
-    --df-amber-text: #92400e;
 
     /* Semantic variants: brand, info, warn, error. Solid fills that carry
        white text (--df-on-accent) or sit behind an icon: dialog bands,
@@ -39,7 +34,23 @@
     --df-on-accent-border: rgba(255, 255, 255, 0.35); /* its border */
     --df-on-accent-glow: rgba(255, 255, 255, 0.2); /* halo around a dot on a fill */
     --df-icon-disc: #f4f3fa; /* pale disc behind a variant-coloured icon */
-    --df-danger-tint: rgba(239, 68, 68, 0.1); /* red-500 wash, danger callout */
+
+    /* Tinted variants: a pale wash of each variant for boxes that carry
+       body text (callout.css). --df-<variant>-soft is the fill,
+       -soft-border its border, -text the text on it (5.3:1 or more on the
+       fill). Dark: themes.css. */
+    --df-brand-soft: #e0f2f8;
+    --df-brand-soft-border: #9fd3e4;
+    --df-brand-text: #005b83;
+    --df-info-soft: #dcf5ec;
+    --df-info-soft-border: #94dcc2;
+    --df-info-text: #0b6b4f;
+    --df-warn-soft: #fef3c7;
+    --df-warn-soft-border: #fcd34d;
+    --df-warn-text: #92400e;
+    --df-error-soft: #fee2e2;
+    --df-error-soft-border: #fca5a5;
+    --df-error-text: #b91c1c;
 
     /* High contrast (prefers-contrast: high). Forced, maximum-contrast values;
        not themed. */

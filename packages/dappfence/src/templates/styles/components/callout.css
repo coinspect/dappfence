@@ -1,10 +1,35 @@
-/* Callout: a highlighted box with a coloured left edge.
-   .df-callout--warning  amber, used for the "Remove Site Lock" zone
-   .df-callout--danger   translucent red, used on the emergency panel */
+/* Callout: a tinted box with a coloured left edge, for notes that sit in
+   the flow of a card body (advanced-mode caution, Remove Site Lock,
+   emergency instructions).
+   .df-callout--brand / --info / --warn / --error
+                         the semantic variant (--df-<variant>, tokens.css):
+                         solid left edge, --df-<variant>-soft fill and border,
+                         --df-<variant>-text text. Brand is the default.
+   .df-callout--icon     an icon (assets/icons/, inlined) to the left of the
+                         content. The icon takes the text colour; the content
+                         is either bare text or a .df-callout__body wrapping
+                         __title and __text:
+
+   <div class="df-callout df-callout--warn df-callout--icon">
+       <!-- @include ../assets/icons/warning.svg -->
+       <div class="df-callout__body">
+           <strong class="df-callout__title">…</strong>
+           <p class="df-callout__text">…</p>
+       </div>
+   </div> */
 
 .df-callout {
+    --df-callout-edge: var(--df-brand);
+    --df-callout-bg: var(--df-brand-soft);
+    --df-callout-border: var(--df-brand-soft-border);
+    --df-callout-text: var(--df-brand-text);
+
     padding: 14px 16px;
     text-align: left;
+    color: var(--df-callout-text);
+    background: var(--df-callout-bg);
+    border: 1px solid var(--df-callout-border);
+    border-left: 4px solid var(--df-callout-edge);
     border-radius: var(--df-radius-sm);
 }
 
@@ -22,21 +47,40 @@
     line-height: 1.5;
 }
 
-.df-callout--warning {
-    color: var(--df-amber-text);
-    background: var(--df-amber-soft);
-    border: 1px solid var(--df-amber-border);
-    border-left: 4px solid var(--df-amber-600);
+.df-callout--info {
+    --df-callout-edge: var(--df-info);
+    --df-callout-bg: var(--df-info-soft);
+    --df-callout-border: var(--df-info-soft-border);
+    --df-callout-text: var(--df-info-text);
+}
+.df-callout--warn {
+    --df-callout-edge: var(--df-warn);
+    --df-callout-bg: var(--df-warn-soft);
+    --df-callout-border: var(--df-warn-soft-border);
+    --df-callout-text: var(--df-warn-text);
+}
+.df-callout--error {
+    --df-callout-edge: var(--df-error);
+    --df-callout-bg: var(--df-error-soft);
+    --df-callout-border: var(--df-error-soft-border);
+    --df-callout-text: var(--df-error-text);
 }
 
-.df-callout--danger {
-    padding: 15px;
-    background: var(--df-danger-tint);
-    border-left: 4px solid var(--df-red-500);
-    border-radius: 4px;
+.df-callout--icon {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
 }
-.df-callout--danger .df-callout__title {
-    margin-bottom: 5px;
-    font-size: inherit;
-    color: var(--df-danger-text);
+.df-callout--icon > svg {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+}
+.df-callout__body {
+    flex: 1;
+    min-width: 0;
+}
+.df-callout__body > :last-child {
+    margin-bottom: 0;
 }
