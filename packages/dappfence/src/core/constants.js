@@ -122,6 +122,16 @@ export const VERIFICATION_STATUS = Object.freeze({
  *         } ManifestLoadReason
  */
 
+/**
+ * @typedef {'UNSUPPORTED_METHOD'
+ *         | 'NO_DESTINATION'
+ *         | 'NETWORK_ERROR'
+ *         | 'NON_EXECUTABLE_OPAQUE'
+ *         | 'NON_EXECUTABLE_BAD_STATUS'
+ *         | 'ALLOW_RULE'
+ *         } SkippedReason
+ */
+
 export const ASSET_TYPE = Object.freeze({
     ASSET: 'asset',
     SERVICE_WORKER: 'service-worker',
