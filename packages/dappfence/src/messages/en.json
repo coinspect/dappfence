@@ -7,6 +7,9 @@
     "emergency.contact": "Please contact our verified support channel immediately using an alternative device or secure connection network.",
     "emergency.leaveWarning": "Security event occurred. Are you sure you want to reload?",
 
+    "dialog.advanced": "Advanced mode",
+    "dialog.advancedNotice": "Technical details for experienced users. Only act on them if you understand the risks.",
+
     "footer.protectedBy": "Protected by",
     "footer.blockedAt": "Blocked at {time}",
 

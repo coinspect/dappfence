@@ -1,7 +1,14 @@
 /* Small inline labels.
    .df-badge          red counter pill ("3×", block count)
-   .df-severity-chip  translucent pill on the red card header
-   .df-chip           asset-type tag, coloured by its --<asset-type> modifier */
+   .df-severity-chip  translucent pill on a card colour band
+   .df-chip           asset-type tag ("Service worker", "Manifest")
+   .df-contrast       modifier for .df-badge or .df-chip: darker fill, strong
+                      text (about 15:1 light, 10:1 dark)
+   .df-badge--brand / --info / --warn / --error
+   .df-chip--brand / --info / --warn / --error
+                      solid fill in the semantic variant colour (--df-<variant>,
+                      tokens.css). Brand and error take white text, info and
+                      warn dark text, since white fails on them. */
 
 .df-badge {
     display: inline-flex;
@@ -11,8 +18,8 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
-    color: var(--df-red-700);
-    background: var(--df-red-soft);
+    color: var(--df-text-subtle);
+    background: var(--df-surface-soft);
     border-radius: var(--df-radius-pill);
 }
 
@@ -31,9 +38,9 @@
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: white;
-    background: rgba(255, 255, 255, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: var(--df-on-accent);
+    background: var(--df-on-accent-tint);
+    border: 1px solid var(--df-on-accent-border);
     border-radius: var(--df-radius-pill);
 }
 .df-severity-chip::before {
@@ -41,8 +48,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    background: var(--df-on-accent);
+    box-shadow: 0 0 0 3px var(--df-on-accent-glow);
 }
 
 .df-chip {
@@ -61,14 +68,46 @@
     border-radius: 3px;
 }
 
-.df-chip--service-worker {
-    color: #a35200;
-    background: #fff4e5;
-    border-color: #ffd9a8;
+.df-badge.df-contrast,
+.df-chip.df-contrast {
+    color: var(--df-text-strong);
+    background: var(--df-border);
+    border-color: var(--df-border);
 }
 
-.df-chip--manifest {
-    color: #a4193d;
-    background: #fde8ec;
-    border-color: #fbc5cf;
+/* Semantic variants: each sets the fill and text colour, the shared rule
+   below paints them. Fixed in both themes, like the tokens they read. */
+.df-badge--brand,
+.df-chip--brand {
+    --df-tag-bg: var(--df-brand);
+    --df-tag-text: var(--df-on-accent);
+}
+.df-badge--info,
+.df-chip--info {
+    --df-tag-bg: var(--df-info);
+    --df-tag-text: var(--df-on-accent-dark);
+}
+.df-badge--warn,
+.df-chip--warn {
+    --df-tag-bg: var(--df-warn);
+    --df-tag-text: var(--df-on-accent-dark);
+}
+.df-badge--error,
+.df-chip--error {
+    --df-tag-bg: var(--df-error);
+    --df-tag-text: var(--df-on-accent);
+}
+:is(.df-badge, .df-chip):is(
+        .df-badge--brand,
+        .df-badge--info,
+        .df-badge--warn,
+        .df-badge--error,
+        .df-chip--brand,
+        .df-chip--info,
+        .df-chip--warn,
+        .df-chip--error
+    ) {
+    color: var(--df-tag-text);
+    background: var(--df-tag-bg);
+    border-color: var(--df-tag-bg);
 }

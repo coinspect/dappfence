@@ -1,0 +1,8 @@
+<script>
+    // Print each swatch's resolved colour, so the sheet always shows the
+    // values tokens.css / themes.css currently define for its theme.
+    for (const swatch of document.querySelectorAll('.df-swatch')) {
+        const value = getComputedStyle(swatch).getPropertyValue(swatch.dataset.token).trim();
+        swatch.querySelector('.df-swatch__value').textContent = value;
+    }
+</script>

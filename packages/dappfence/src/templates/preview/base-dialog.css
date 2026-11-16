@@ -1,0 +1,14 @@
+/* Base dialog for the template preview (preview/pages.js). Not part of any
+   shipped page: only the preview imports it. The dialog itself is the real
+   card component (styles/components/card.css), so this only pulls in what
+   the shell needs. */
+
+@import '../styles/tokens.css';
+@import '../styles/themes.css';
+@import '../styles/base.css';
+@import '../styles/components/page.css';
+@import '../styles/components/card.css';
+@import '../styles/components/switch.css';
+@import '../styles/components/callout.css';
+@import '../styles/components/logo.css';
+@import '../styles/components/footer.css';

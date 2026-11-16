@@ -3,15 +3,140 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>DappFence template preview</title>
+        <title>DappFence templates</title>
+        <meta
+            name="description"
+            content="Every page DappFence shows a visitor, rendered live from the templates the service worker ships."
+        />
+        <link rel="icon" type="image/svg+xml" href="../src/templates/assets/iso.svg" />
         <link rel="stylesheet" href="./preview.css" />
         <script type="module" src="./preview.js"></script>
     </head>
     <body>
         <header class="bar">
-            <a class="bar__brand" href="./">DappFence templates</a>
-            <div class="bar__controls" id="controls"></div>
+            <a class="bar__brand" href="./" aria-label="DappFence templates, back to the catalog">
+                <span id="brand-logo"></span>
+                <span class="bar__product">Templates</span>
+            </a>
+            <div class="bar__controls">
+                <!-- Buttons come from WIDTHS / THEMES in pages.js (segment-button template). -->
+                <div class="control">
+                    <span class="control__label" id="width-label">Width</span>
+                    <div
+                        class="segmented"
+                        id="width-control"
+                        role="group"
+                        aria-labelledby="width-label"
+                        title="Thumbnail viewport width"
+                    ></div>
+                </div>
+                <div class="control">
+                    <span class="control__label" id="theme-label">Theme</span>
+                    <div
+                        class="segmented"
+                        id="theme-control"
+                        role="group"
+                        aria-labelledby="theme-label"
+                        title="Theme: auto follows this browser; light / dark force it; both shows each side by side"
+                    ></div>
+                </div>
+            </div>
+            <a
+                class="bar__link"
+                href="https://github.com/coinspect/dappfence"
+                target="_blank"
+                rel="noopener"
+                aria-label="DappFence on GitHub"
+                title="DappFence on GitHub"
+            >
+                <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">
+                    <path
+                        fill="currentColor"
+                        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                    />
+                </svg>
+            </a>
         </header>
-        <main id="app"></main>
+
+        <section class="intro">
+            <h1>Template catalog</h1>
+            <p class="intro__lede">
+                Every page DappFence can show a visitor, rendered live in your browser by the same
+                templates and renderers the service worker ships. Open any page full size, or read
+                the exact HTML it serves.
+            </p>
+            <p class="intro__meta" id="build-meta"></p>
+            <nav class="intro__nav" id="section-nav" aria-label="Sections"></nav>
+        </section>
+
+        <main class="catalog" id="app"></main>
+
+        <footer class="site-footer">
+            <span id="footer-version">DappFence</span>
+            <span aria-hidden="true">·</span>
+            <span>MIT licensed</span>
+            <span aria-hidden="true">·</span>
+            <a href="https://github.com/coinspect/dappfence" target="_blank" rel="noopener"
+                >Source on GitHub</a
+            >
+        </footer>
+
+        <!--
+            Markup for the catalog. preview.js clones these and fills the
+            elements marked data-slot; everything else is used as written.
+        -->
+
+        <!-- One toolbar option. Text and aria-pressed are set per option. -->
+        <template id="segment-button">
+            <button type="button"></button>
+        </template>
+
+        <!-- One page in PAGES: its title and a card per scenario. -->
+        <template id="page-section">
+            <section class="section">
+                <h2 class="section__title">
+                    <span data-slot="title"></span>
+                    <span class="section__count" data-slot="count"></span>
+                </h2>
+                <div class="grid" data-slot="cards"></div>
+            </section>
+        </template>
+
+        <!-- One link in the intro's section list. -->
+        <template id="section-link">
+            <a class="chip"></a>
+        </template>
+
+        <!-- One scenario: its thumbnail(s) and links to the full page. -->
+        <template id="scenario-card">
+            <article class="card">
+                <div class="thumbs" data-slot="thumbs"></div>
+                <div class="card__label">
+                    <a class="card__open" data-slot="open"></a>
+                    <a
+                        class="card__source"
+                        data-slot="source"
+                        title="Show the rendered HTML as text"
+                        >HTML</a
+                    >
+                </div>
+            </article>
+        </template>
+
+        <!--
+            One live thumbnail: the rendered page in a scaled-down iframe.
+            Sandboxed without allow-modals: the pages' scripts still run, but
+            they can't open dialogs (a beforeunload prompt in a thumbnail would
+            otherwise fire whenever this page navigates).
+        -->
+        <template id="thumbnail">
+            <a class="thumb">
+                <iframe
+                    tabindex="-1"
+                    loading="lazy"
+                    sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+            </a>
+        </template>
     </body>
 </html>
