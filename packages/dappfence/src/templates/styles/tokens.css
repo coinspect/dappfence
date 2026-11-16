@@ -34,19 +34,12 @@
     --df-error: var(--df-red-600);
     --df-error-strong: var(--df-red-700);
     --df-on-accent: #ffffff; /* text and icons on a variant fill */
+    --df-on-accent-dark: #0f172a; /* text on the light fills: info (6.8:1), warn (8.5:1) */
     --df-on-accent-tint: rgba(255, 255, 255, 0.18); /* translucent pill on a fill */
     --df-on-accent-border: rgba(255, 255, 255, 0.35); /* its border */
     --df-on-accent-glow: rgba(255, 255, 255, 0.2); /* halo around a dot on a fill */
     --df-icon-disc: #f4f3fa; /* pale disc behind a variant-coloured icon */
     --df-danger-tint: rgba(239, 68, 68, 0.1); /* red-500 wash, danger callout */
-
-    /* Asset-type chips (security warning block list). Fixed in both themes. */
-    --df-chip-sw-text: #a35200;
-    --df-chip-sw-bg: #fff4e5;
-    --df-chip-sw-border: #ffd9a8;
-    --df-chip-manifest-text: #a4193d;
-    --df-chip-manifest-bg: #fde8ec;
-    --df-chip-manifest-border: #fbc5cf;
 
     /* High contrast (prefers-contrast: high). Forced, maximum-contrast values;
        not themed. */
