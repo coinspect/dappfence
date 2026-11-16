@@ -92,4 +92,5 @@
     --df-radius-pill: 999px;
     --df-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     --df-font-mono: ui-monospace, 'SF Mono', Monaco, Menlo, Consolas, monospace;
+    --df-card-border-radius: 0 var(--df-radius-xs) var(--df-radius-xs) 0;
 }
