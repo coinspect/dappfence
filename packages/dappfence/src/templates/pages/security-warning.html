@@ -34,10 +34,14 @@
                         <span class="df-switch__track" aria-hidden="true"></span>
                     </label>
                     <div class="df-card__advanced-body" id="df-advanced-body">
-                        <p class="df-callout df-callout--warning df-card__advanced-notice">
+                        <div
+                            class="df-callout df-callout--warn df-callout--icon df-card__advanced-notice"
+                        >
                             <!-- @include ../assets/icons/warning.svg -->
-                            {{t:dialog.advancedNotice}}
-                        </p>
+                            <div class="df-callout__body">
+                                <p class="df-callout__text">{{t:dialog.advancedNotice}}</p>
+                            </div>
+                        </div>
                         <div class="df-blocks" id="security-advanced-success" style="display: none">
                             <h3 class="df-blocks__heading">
                                 {{t:warning.activeBlocks}}<span
@@ -48,10 +52,10 @@
                             </h3>
                             <div class="df-block-list" id="block-list"></div>
                         </div>
-                        <div class="df-callout df-callout--warning">
+                        <div class="df-callout df-callout--warn">
                             <strong class="df-callout__title">🔓 {{t:warning.unlockTitle}}</strong>
                             <p class="df-callout__text">{{t:warning.unlockText}}</p>
-                            <button class="df-btn df-btn--danger" id="site-unblock">
+                            <button class="df-btn df-btn--error df-btn--block" id="site-unblock">
                                 🔓 {{t:warning.unlockButton}}
                             </button>
                         </div>

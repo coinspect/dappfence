@@ -15,10 +15,20 @@
     --df-border: #374151;
     --df-divider: rgba(255, 255, 255, 0.08);
     --df-red-soft: rgba(239, 68, 68, 0.15);
-    --df-danger-text: #fca5a5;
-    --df-amber-soft: rgba(217, 119, 6, 0.12);
-    --df-amber-border: rgba(252, 211, 77, 0.35);
-    --df-amber-text: #fcd34d;
+
+    /* Tinted variants (see tokens.css). */
+    --df-brand-soft: rgba(0, 125, 165, 0.15);
+    --df-brand-soft-border: rgba(124, 198, 223, 0.35);
+    --df-brand-text: #7cc6df;
+    --df-info-soft: rgba(33, 181, 135, 0.12);
+    --df-info-soft-border: rgba(110, 231, 183, 0.35);
+    --df-info-text: #6ee7b7;
+    --df-warn-soft: rgba(217, 119, 6, 0.12);
+    --df-warn-soft-border: rgba(252, 211, 77, 0.35);
+    --df-warn-text: #fcd34d;
+    --df-error-soft: rgba(239, 68, 68, 0.15);
+    --df-error-soft-border: rgba(252, 165, 165, 0.35);
+    --df-error-text: #fca5a5;
 
     /* Logo palette: the designer's original colours (see tokens.css). */
     --df-logo-wordmark: #3da9cd;
@@ -46,10 +56,20 @@
         --df-border: #374151;
         --df-divider: rgba(255, 255, 255, 0.08);
         --df-red-soft: rgba(239, 68, 68, 0.15);
-        --df-danger-text: #fca5a5;
-        --df-amber-soft: rgba(217, 119, 6, 0.12);
-        --df-amber-border: rgba(252, 211, 77, 0.35);
-        --df-amber-text: #fcd34d;
+
+        /* Tinted variants (see tokens.css). */
+        --df-brand-soft: rgba(0, 125, 165, 0.15);
+        --df-brand-soft-border: rgba(124, 198, 223, 0.35);
+        --df-brand-text: #7cc6df;
+        --df-info-soft: rgba(33, 181, 135, 0.12);
+        --df-info-soft-border: rgba(110, 231, 183, 0.35);
+        --df-info-text: #6ee7b7;
+        --df-warn-soft: rgba(217, 119, 6, 0.12);
+        --df-warn-soft-border: rgba(252, 211, 77, 0.35);
+        --df-warn-text: #fcd34d;
+        --df-error-soft: rgba(239, 68, 68, 0.15);
+        --df-error-soft-border: rgba(252, 165, 165, 0.35);
+        --df-error-text: #fca5a5;
 
         /* Logo palette: the designer's original colours (see tokens.css). */
         --df-logo-wordmark: #3da9cd;

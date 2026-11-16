@@ -1,8 +1,9 @@
 /* Buttons.
-   .df-btn--danger                       full-width red action (security warning)
    .df-btn--brand / --info / --warn / --error
                                          solid buttons in the semantic variant
                                          colours (--df-<variant>, tokens.css)
+   .df-btn--block                        full width of its container; combine
+                                         with a variant
    Put an inline SVG icon (assets/icons/) before the label for an icon button;
    it takes the text colour and sizes itself. */
 
@@ -76,19 +77,8 @@
     transform: translateY(1px);
 }
 
-.df-btn--danger {
+.df-btn--block {
     width: 100%;
-    padding: 11px 18px;
-    font-weight: 600;
-    background: var(--df-red-600);
-    box-shadow: 0 1px 2px rgba(127, 29, 29, 0.15);
-}
-.df-btn--danger:hover {
-    background: var(--df-red-700);
-    box-shadow: 0 4px 10px rgba(127, 29, 29, 0.25);
-}
-.df-btn--danger:active {
-    transform: translateY(1px);
 }
 
 @media (prefers-reduced-motion: reduce) {
