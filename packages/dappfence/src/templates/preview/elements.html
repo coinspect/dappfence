@@ -119,21 +119,41 @@
                     <div class="df-elements__row">
                         <span class="df-badge">3×</span>
                         <span class="df-badge df-badge--strong">17</span>
+                        <span class="df-badge df-contrast">3×</span>
+                        <span class="df-badge df-badge--strong df-contrast">17</span>
+                    </div>
+                    <div class="df-elements__row">
+                        <span class="df-badge df-badge--brand">3×</span>
+                        <span class="df-badge df-badge--info">3×</span>
+                        <span class="df-badge df-badge--warn">3×</span>
+                        <span class="df-badge df-badge--error">3×</span>
                     </div>
                     <p class="df-elements__caption">
-                        <code>.df-badge, .df-badge--strong</code> · badge.css
+                        <code>.df-badge, .df-badge--strong, .df-contrast</code>,
+                        <code>.df-badge--brand / --info / --warn / --error</code> · badge.css
                     </p>
                 </div>
                 <div class="df-elements__item">
                     <h4>Asset-type chips</h4>
                     <div class="df-elements__row">
-                        <span class="df-chip df-chip--service-worker"
+                        <span class="df-chip"
                             >{{t:warning.chip.serviceWorker}}</span
                         >
-                        <span class="df-chip df-chip--manifest">{{t:warning.chip.manifest}}</span>
+                        <span class="df-chip">{{t:warning.chip.manifest}}</span>
+                        <span class="df-chip df-contrast"
+                            >{{t:warning.chip.serviceWorker}}</span
+                        >
+                        <span class="df-chip df-contrast">{{t:warning.chip.manifest}}</span>
+                    </div>
+                    <div class="df-elements__row">
+                        <span class="df-chip df-chip--brand">brand</span>
+                        <span class="df-chip df-chip--info">info</span>
+                        <span class="df-chip df-chip--warn">warn</span>
+                        <span class="df-chip df-chip--error">error</span>
                     </div>
                     <p class="df-elements__caption">
-                        <code>.df-chip--service-worker, .df-chip--manifest</code> · badge.css
+                        <code>.df-chip, .df-contrast</code>,
+                        <code>.df-chip--brand / --info / --warn / --error</code> · badge.css
                     </p>
                 </div>
             </section>
@@ -209,7 +229,7 @@
                                                 >/integrity-manifest.json</span
                                             >
                                         </div>
-                                        <span class="df-chip df-chip--manifest"
+                                        <span class="df-chip"
                                             >{{t:warning.chip.manifest}}</span
                                         >
                                         <span class="df-badge">1×</span>
@@ -293,7 +313,7 @@
                                                     <span class="df-file__hash"
                                                         >0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d</span
                                                     >
-                                                    <span class="df-chip df-chip--service-worker"
+                                                    <span class="df-chip"
                                                         >{{t:warning.chip.serviceWorker}}</span
                                                     >
                                                     <span class="df-badge">1×</span>
