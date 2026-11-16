@@ -33,7 +33,7 @@
     background: var(--df-surface);
     border: 1px solid var(--df-border);
     border-left: 3px solid var(--df-red-600);
-    border-radius: var(--df-radius-sm);
+    border-radius: var(--df-card-border-radius);
 }
 
 .df-block__summary {
@@ -42,10 +42,12 @@
     gap: 10px;
     padding: 10px 12px;
 }
-.df-block[open] > .df-block__summary {
+
+.df-block[open]>.df-block__summary {
     border-bottom: 1px solid var(--df-border);
 }
-.df-block--group > .df-block__summary {
+
+.df-block--group>.df-block__summary {
     background: var(--df-surface-soft);
 }
 
@@ -92,6 +94,7 @@
 .df-file {
     border-bottom: 1px solid var(--df-divider);
 }
+
 .df-file:last-child {
     border-bottom: none;
 }

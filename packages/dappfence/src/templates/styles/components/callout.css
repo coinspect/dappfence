@@ -29,8 +29,7 @@
     color: var(--df-callout-text);
     background: var(--df-callout-bg);
     border: 1px solid var(--df-callout-border);
-    border-left: 4px solid var(--df-callout-edge);
-    border-radius: var(--df-radius-sm);
+    border-radius: var(--df-radius-xs);
 }
 
 .df-callout__title {
