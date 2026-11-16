@@ -44,7 +44,7 @@ describe.each(Object.entries(PAGES))('%s template', (_name, [html, css]) => {
 
     it('bundles its stylesheet with @imports inlined', () => {
         expect(css).not.toMatch(/@import/);
-        expect(css).toMatch(/--df-red-600/);
+        expect(css).toMatch(/--df-error:/);
     });
 
     it('follows the viewer theme: no hard-coded theme class, dark tokens bundled', () => {
