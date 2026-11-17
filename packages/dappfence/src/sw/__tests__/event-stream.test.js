@@ -1,13 +1,14 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createTelemetryExecutor } from '../telemetry/telemetry-executor.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createEventStream } from '../telemetry/event-stream.js';
+import { createSecurityProcessor } from '../security-processor.js';
 import { createSecurityStore } from '../storage/security-store.js';
 import { createSettingsStore } from '../storage/settings-store.js';
 import { createTelemetryBatchesStore } from '../storage/telemetry-batches-store.js';
 import { createVerificationResultsStore } from '../storage/verification-results-store.js';
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { SYNC_TAG_TELEMETRY, VERIFICATION_STATUS } from '../../core/constants.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
 
-// Executor cycles use real timers (TICK_MS = 500), so each cycle takes ~1s.
+// Stream cycles use real timers (TICK_MS = 500), so each cycle takes ~1s.
 const CYCLE_TIMEOUT_MS = 10_000;
 const EVENTS_ENDPOINT = 'https://telemetry.test/events';
 // Fetch spec: in-flight keepalive request bodies are capped at 64 KiB.
@@ -36,13 +37,14 @@ function createHarness({ fetch, registerSync = vi.fn(async () => {}) }) {
         }),
     };
     const taskManager = { attach: () => {}, run: async (fn) => fn() };
-    const telemetryExecutor = createTelemetryExecutor({
+    const eventStream = createEventStream({
         swContext,
         appStore,
         manifestService,
         taskManager,
     });
-    return { appStore, swContext, telemetryExecutor };
+    const securityProcessor = createSecurityProcessor({ appStore, taskManager }, [eventStream]);
+    return { appStore, swContext, eventStream, securityProcessor };
 }
 
 const violation = (extras = {}) => ({
@@ -52,13 +54,56 @@ const violation = (extras = {}) => ({
     ...extras,
 });
 
-// Drive a full send cycle and report its delivery outcome.
-async function drive(telemetryExecutor) {
-    const stillPending = await telemetryExecutor.scheduleSyncSend();
-    return !stillPending;
-}
+describe('event stream: Background Sync retry', () => {
+    beforeEach(() => {
+        // Deterministic backoff: first retry lands exactly BACKOFF_BASE_MS out.
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+    });
 
-describe('telemetry executor: keepalive body quota', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it(
+        'a sync event after a failed POST either delivers the batch or rejects for a retry',
+        async () => {
+            let calls = 0;
+            const { appStore, swContext, eventStream, securityProcessor } = createHarness({
+                fetch: async () => {
+                    calls += 1;
+                    if (calls === 1) {
+                        throw new TypeError('Failed to fetch');
+                    }
+                    return okResponse();
+                },
+            });
+            await appStore.verificationResultsStore.add(violation());
+
+            expect(await eventStream.scheduleSyncSend()).toBe(true);
+            expect(swContext.registerSync).toHaveBeenCalledWith(SYNC_TAG_TELEMETRY);
+
+            // Chromium fires the registered sync as soon as it sees connectivity,
+            // typically well inside the first backoff window.
+            const outcome = await securityProcessor
+                .reportOnSync({ tag: SYNC_TAG_TELEMETRY, lastChance: false })
+                .then(
+                    () => 'resolved',
+                    () => 'rejected'
+                );
+            const unsent = (await appStore.telemetryBatchesStore.getPending()).length;
+
+            // Resolving tells the browser the sync succeeded and drops the
+            // registration — only valid once nothing is left to send.
+            expect(
+                outcome === 'rejected' || unsent === 0,
+                `sync ${outcome} with ${unsent} unsent batch(es) and ${calls} POST(s)`
+            ).toBe(true);
+        },
+        CYCLE_TIMEOUT_MS
+    );
+});
+
+describe('event stream: keepalive body quota', () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
@@ -67,7 +112,7 @@ describe('telemetry executor: keepalive body quota', () => {
         'delivers a full 50-event batch whose JSON body exceeds 64 KiB',
         async () => {
             const posted = [];
-            const { appStore, telemetryExecutor } = createHarness({
+            const { appStore, eventStream } = createHarness({
                 // Emulate the browser: keepalive requests over the quota reject
                 // with a TypeError before hitting the network.
                 fetch: async (_url, init) => {
@@ -96,9 +141,9 @@ describe('telemetry executor: keepalive body quota', () => {
                 );
             }
 
-            const delivered = await drive(telemetryExecutor);
+            const stillPending = await eventStream.scheduleSyncSend();
 
-            expect(delivered).toBe(true);
+            expect(stillPending).toBe(false);
             expect(posted.flatMap((envelope) => envelope.events)).toHaveLength(50);
             expect(await appStore.telemetryBatchesStore.getPending()).toHaveLength(0);
         },

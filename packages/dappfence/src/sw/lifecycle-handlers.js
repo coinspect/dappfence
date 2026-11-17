@@ -1,4 +1,4 @@
-import { SYNC_TAG_REPORT_EVENTS } from '../core/constants.js';
+import { SYNC_TAG_TELEMETRY } from '../core/constants.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger();
@@ -117,10 +117,13 @@ export function createActivateHandler({ swContext, onSecurityViolation, appStore
  * @returns {(event: SyncEvent) => Promise<void>}
  */
 export function createSyncHandler({ securityProcessor }) {
-    return async (event) => {
+    return async (event, callChildHandlers) => {
         logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
-        if (event.tag === SYNC_TAG_REPORT_EVENTS) {
+        if (event.tag === SYNC_TAG_TELEMETRY) {
             await securityProcessor.reportOnSync(event);
+        } else {
+            logger.log('Received sync event:', event.tag);
+            callChildHandlers(event);
         }
     };
 }

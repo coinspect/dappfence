@@ -19,7 +19,8 @@ import { createLogger } from '../core/logger.js';
 import { createApiHandler } from './api-handler.js';
 import { createSecurityProcessor } from './security-processor.js';
 import { createTaskManager } from './telemetry/task-manager.js';
-import { createTelemetryExecutor } from './telemetry/telemetry-executor.js';
+import { createLogStream } from './telemetry/log-stream.js';
+import { createEventStream } from './telemetry/event-stream.js';
 
 const logger = createLogger();
 
@@ -51,18 +52,11 @@ export function createServices(swGlobal) {
         getMessageOverrides: async () =>
             (await appStore.trustedManifestStore.getLatest())?.manifest?.messages,
     });
+
     const taskManager = createTaskManager();
-    const telemetryExecutor = createTelemetryExecutor({
-        swContext,
-        appStore,
-        manifestService,
-        taskManager,
-    });
-    const securityProcessor = createSecurityProcessor({
-        appStore,
-        telemetryExecutor,
-        taskManager,
-    });
+    const streamDeps = { swContext, appStore, manifestService, taskManager };
+    const streams = [createEventStream(streamDeps), createLogStream(streamDeps)];
+    const securityProcessor = createSecurityProcessor(streamDeps, streams);
 
     const core = {
         swContext,
