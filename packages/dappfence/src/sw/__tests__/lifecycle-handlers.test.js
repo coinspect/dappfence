@@ -4,7 +4,7 @@ import {
     createActivateHandler,
     createSyncHandler,
 } from '../lifecycle-handlers.js';
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { SYNC_TAG_TELEMETRY, VERIFICATION_STATUS } from '../../core/constants.js';
 
 beforeEach(() => {
     globalThis.importScripts = vi.fn();
@@ -174,15 +174,17 @@ describe('createSyncHandler', () => {
     it('awaits reportOnSync when the tag matches', async () => {
         const reportOnSync = vi.fn(() => Promise.resolve());
         const handler = createSyncHandler({ securityProcessor: { reportOnSync } });
-        await handler({ tag: 'dappfence-report-events', lastChance: false });
+        await handler({ tag: SYNC_TAG_TELEMETRY, lastChance: false }, vi.fn());
         expect(reportOnSync).toHaveBeenCalled();
     });
 
     it('ignores unknown tags', async () => {
         const reportOnSync = vi.fn(() => Promise.resolve());
         const handler = createSyncHandler({ securityProcessor: { reportOnSync } });
-        await handler({ tag: 'something-else', lastChance: false });
+        const callChildHandlers = vi.fn();
+        await handler({ tag: 'something-else', lastChance: false }, callChildHandlers);
         expect(reportOnSync).not.toHaveBeenCalled();
+        expect(callChildHandlers).toHaveBeenCalled();
     });
 });
 

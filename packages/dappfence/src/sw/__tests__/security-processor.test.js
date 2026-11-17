@@ -14,7 +14,8 @@ function createProcessor({ db = createInMemoryDb() } = {}) {
         settingsStore: createSettingsStore(db),
         verificationResultsStore: createVerificationResultsStore(db),
     };
-    const telemetryExecutor = {
+    const streamStub = {
+        name: 'events',
         scheduleSend: () => {},
         scheduleSyncSend: async () => false,
     };
@@ -22,11 +23,7 @@ function createProcessor({ db = createInMemoryDb() } = {}) {
         attach: () => {},
         run: async (fn) => fn(),
     };
-    const securityProcessor = createSecurityProcessor({
-        appStore,
-        telemetryExecutor,
-        taskManager,
-    });
+    const securityProcessor = createSecurityProcessor({ appStore, taskManager }, [streamStub]);
     return { appStore, securityProcessor };
 }
 

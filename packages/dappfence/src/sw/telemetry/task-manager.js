@@ -1,21 +1,20 @@
 import { createLogger } from '../../core/logger.js';
 
-const defaultLogger = createLogger();
+const logger = createLogger();
 
 /**
  * SW keepalive via waitUntil hopping.
  *
- * Minimal work-tracker: callers signal "I am working" via `hold()`, `run()`,
- * or `schedule()`. While any work is pending, each incoming event's
- * `waitUntil` slot is chained to a shared keepalive promise, and the previous
- * event's slot is resolved so the SW is released cleanly from older events.
- * When the counter hits zero, a short grace timer runs before the final
- * keepalive is resolved.
+ * Minimal work-tracker: callers signal "I am working" via `hold()` or `run()`.
+ * While any work is pending, each incoming event's `waitUntil` slot is chained
+ * to a shared keepalive promise, and the previous event's slot is resolved so
+ * the SW is released cleanly from older events. When the counter hits zero, a
+ * short grace timer runs before the final keepalive is resolved.
  *
- * No policy here (no debounce, no backoff, no priorities). Those live in the
- * consumers that call into the manager.
+ * No higher-level policy here (no debounce, no backoff, no priorities, no
+ * sync-tag upscale). Those live in the consumers that call into the manager.
  */
-export function createTaskManager({ graceMs = 3000, logger = defaultLogger } = {}) {
+export function createTaskManager({ graceMs = 3000 } = {}) {
     let workCount = 0;
     let keepaliveResolve = null;
     let graceTimer = null;

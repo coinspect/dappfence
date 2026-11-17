@@ -65,20 +65,19 @@ const STATUS_LOG = {
 /**
  * Security Processor
  *
- * Facade over verdict ingestion + telemetry executor. Outside modules
+ * Facade over verdict ingestion + telemetry streams. Outside modules
  * (main, lifecycle, message-broker) talk only to this surface:
  *   - processSecurityEvent: logs, records violation, returns mustBlock
  *   - reportAfter* / reportOn*: flush pending + hop keepalive + schedule telemetry send
  *
- * The telemetry executor (batch send cycle, task-manager keepalive) is an
- * implementation detail injected by services.js and never exposed externally.
+ * The telemetry streams (per-stream send cycle, task-manager keepalive) are
+ * implementation details injected by services.js and never exposed externally.
  *
  * @param {object} deps
- * @param {object} deps.appStore
- * @param {object} deps.telemetryExecutor
- * @param {object} deps.taskManager
+ * @param streams
  */
-export function createSecurityProcessor({ appStore, telemetryExecutor, taskManager }) {
+export function createSecurityProcessor(deps, streams) {
+    const { appStore, taskManager } = deps;
     const { securityStore, verificationResultsStore } = appStore;
 
     function createPendingBuffer() {
@@ -161,7 +160,7 @@ export function createSecurityProcessor({ appStore, telemetryExecutor, taskManag
             if (event) {
                 taskManager.attach(event);
             }
-            telemetryExecutor.scheduleSend();
+            streams.forEach((s) => s.scheduleSend());
         } catch (err) {
             logger.error('handleReport failed:', err);
         }
@@ -198,7 +197,15 @@ export function createSecurityProcessor({ appStore, telemetryExecutor, taskManag
         logger.log(`reportOnSync lastChance=${event?.lastChance}`);
         await safely(flushPending, (e) => logger.error('flushPending failed:', e));
         taskManager.attach(event, true);
-        if (await telemetryExecutor.scheduleSyncSend()) {
+        const results = await Promise.all(
+            streams.map((s) =>
+                s.scheduleSyncSend().catch((err) => {
+                    logger.error(`stream scheduleSyncSend ${s.name} threw:`, err);
+                    return false;
+                })
+            )
+        );
+        if (results.some((stillPending) => stillPending === true)) {
             throw new Error(
                 'sync drain: ship failed; rejecting waitUntil to schedule backoff + lastChance'
             );

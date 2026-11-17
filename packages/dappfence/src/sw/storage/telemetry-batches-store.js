@@ -34,15 +34,17 @@ import { createLogger } from '../../core/logger.js';
 const logger = createLogger();
 
 const PURGE_RATE_LIMIT_MS = 60_000;
-const EVENTS_RETRY_STATE_KEY = 'EVENTS_RETRY_STATE_KEY';
-const EVENTS_RETRY_DEFAULT = { attemptNumber: 0, nextAttemptAt: 0 };
+
+function retryKeyForStream(stream) {
+    return `${stream.toUpperCase()}_RETRY_STATE_KEY`;
+}
 
 /**
  * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createTelemetryBatchesStore(db) {
     let lastPurgeAt = 0;
-    let cachedRetryState = null;
+    const retryCache = new Map();
 
     return {
         /** @param {BatchRecord} batch */
@@ -122,73 +124,74 @@ export function createTelemetryBatchesStore(db) {
         },
 
         /**
-         * Flip all `ids` to sent AND reset retry state in a single tx — "we
-         * succeeded" is the atomic unit. Array signature is required: a merged
-         * POST must flip every contributing batch together.
-         * @param {string[]} ids
+         * Per-stream read of retry state. Cached — first read hits IDB,
+         * subsequent reads hit the in-memory cache. Cache is refreshed by
+         * `withRetryTxForStream` after a successful tx commit.
+         * @param {string} stream
+         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number} | null>}
          */
-        async markSent(ids) {
-            if (ids.length === 0) {
-                logger.log('telemetryBatchesStore.markSent: empty id list; skipping');
-                return;
+        async getRetryStateForStream(stream) {
+            try {
+                if (retryCache.has(stream)) {
+                    return retryCache.get(stream);
+                }
+                const val = await db.read(['settings'], ({ settings }) =>
+                    settings.get(retryKeyForStream(stream))
+                );
+                retryCache.set(stream, val);
+                return val;
+            } catch (error) {
+                logger.error(`Error reading retry key for stream: ${stream}`, error);
             }
-            await db.write(
+            return null;
+        },
+
+        /**
+         * Per-stream atomic tx across `telemetryBatches` + the stream's retry
+         * row. The `retry` helper is bound to
+         * `settings[retryKeyForStream(stream)]`, so each stream's backoff
+         * state is isolated by name without the store having to enumerate
+         * streams.
+         * @template T
+         * @param {string} stream
+         * @param {(helpers: {
+         *   telemetryBatches: {
+         *     get: (id: string) => Promise<BatchRecord | undefined>,
+         *     put: (batch: BatchRecord) => Promise<any>,
+         *   },
+         *   retry: {
+         *     get: () => Promise<{ attemptNumber: number, nextAttemptAt: number } | undefined>,
+         *     put: (val: { attemptNumber: number, nextAttemptAt: number }) => Promise<any>,
+         *   },
+         * }) => Promise<T>} fn
+         * @returns {Promise<T>}
+         */
+        async withRetryTxForStream(stream, fn) {
+            const key = retryKeyForStream(stream);
+            let latestRetry = null;
+            const result = await db.write(
                 ['telemetryBatches', 'settings'],
                 async ({ telemetryBatches, settings }) => {
-                    const now = Date.now();
-                    for (const id of ids) {
-                        const batch = await telemetryBatches.get(id);
-                        if (!batch) {
-                            logger.log(
-                                `telemetryBatchesStore.markSent: no batch for id ${id}; skipping`
-                            );
-                            continue;
-                        }
-                        batch.sentAt = now;
-                        await telemetryBatches.put(batch);
-                    }
-                    cachedRetryState = EVENTS_RETRY_DEFAULT;
-                    await settings.put(EVENTS_RETRY_DEFAULT, EVENTS_RETRY_STATE_KEY);
+                    const helpers = {
+                        telemetryBatches: {
+                            get: async (id) => telemetryBatches.get(id),
+                            put: async (batch) => telemetryBatches.put(batch),
+                        },
+                        retry: {
+                            get: async () => settings.get(key),
+                            put: async (val) => {
+                                latestRetry = val;
+                                return settings.put(val, key);
+                            },
+                        },
+                    };
+                    return await fn(helpers);
                 }
             );
-        },
-
-        /**
-         * Executor-level retry state for the events channel. Stored in the
-         * `settings` object store but owned by this module since it tracks
-         * batch-send progress, not per-install singletons.
-         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number}>}
-         */
-        async getRetryState() {
-            if (cachedRetryState === null) {
-                cachedRetryState = await db.read(['settings'], async ({ settings }) => {
-                    const state = await settings.get(EVENTS_RETRY_STATE_KEY);
-                    return state ?? EVENTS_RETRY_DEFAULT;
-                });
+            if (latestRetry !== null) {
+                retryCache.set(stream, latestRetry);
             }
-            return cachedRetryState;
-        },
-
-        /**
-         * Bump attemptNumber + compute next backoff with jitter in one tx.
-         * Caller supplies the policy (base/cap). Returns the new state.
-         * @param {{baseMs: number, capMs: number}} policy
-         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number}>}
-         */
-        async bumpRetryState({ baseMs, capMs }) {
-            return db.write(['settings'], async ({ settings }) => {
-                const prev = (await settings.get(EVENTS_RETRY_STATE_KEY)) ?? EVENTS_RETRY_DEFAULT;
-                const nextAttempt = prev.attemptNumber + 1;
-                const base = Math.min(capMs, baseMs * 2 ** (nextAttempt - 1));
-                const jitter = Math.random() * base * 0.5;
-                const next = {
-                    attemptNumber: nextAttempt,
-                    nextAttemptAt: Date.now() + base + jitter,
-                };
-                cachedRetryState = next;
-                await settings.put(next, EVENTS_RETRY_STATE_KEY);
-                return next;
-            });
+            return result;
         },
 
         /**

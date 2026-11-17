@@ -33,7 +33,7 @@ export const MSG = {
     MESSAGES: 'DAPPFENCE_MESSAGES',
 };
 
-export const SYNC_TAG_REPORT_EVENTS = 'dappfence-report-events';
+export const SYNC_TAG_TELEMETRY = 'dappfence-sync-tag-telemetry';
 
 export const MODE = {
     REPORTING: 'reporting', // log to console and indexeddb
