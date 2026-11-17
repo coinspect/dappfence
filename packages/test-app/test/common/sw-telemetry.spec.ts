@@ -18,8 +18,26 @@
  * activity and with the tab navigated away. No tight assertions on duration.
  */
 import { expect, test } from '../sw-fixtures';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page, Worker } from '@playwright/test';
 import type { SWHelper, ServiceWorkerWithClose } from '../sw-fixtures';
+
+type SwConsoleLine = { type: string; text: string; swUrl: string };
+
+// Attach console listeners to every SW in `ctx` (current + future). Returns a
+// mutable array populated as each SW emits — install it BEFORE the first goto
+// so install-time logs land in the buffer. `swUrl` tags which SW emitted the
+// line: in capture tests two SWs coexist briefly and one dies, so callers
+// must filter to the surviving SW before comparing against the wire.
+function captureSwConsole(ctx: BrowserContext): SwConsoleLine[] {
+    const lines: SwConsoleLine[] = [];
+    const attach = (sw: Worker) =>
+        sw.on('console', (msg) =>
+            lines.push({ type: msg.type(), text: msg.text(), swUrl: sw.url() })
+        );
+    ctx.serviceWorkers().forEach(attach);
+    ctx.on('serviceworker', attach);
+    return lines;
+}
 
 const IDENTITY_FIELDS = [
     'assetType',
@@ -81,6 +99,50 @@ async function readStore(page: Page, storeName, predicate = null, { timeout = 5_
     return rows;
 }
 
+// Settings uses out-of-line keys, so getAll() can't distinguish
+// EVENTS_RETRY_STATE_KEY from LOGS_RETRY_STATE_KEY (same value shape).
+async function readSettingsKey(
+    page: Page,
+    key: string,
+    predicate: ((val: unknown) => boolean) | null = null,
+    { timeout = 5_000 } = {}
+) {
+    const doRead = () =>
+        page.evaluate(
+            ({ k }) => {
+                return new Promise((resolve, reject) => {
+                    const open = indexedDB.open('AppSecurity');
+                    open.onsuccess = () => {
+                        const db = open.result;
+                        const req = db
+                            .transaction('settings', 'readonly')
+                            .objectStore('settings')
+                            .get(k);
+                        req.onsuccess = () => resolve(req.result ?? null);
+                        req.onerror = () => reject(req.error);
+                    };
+                    open.onerror = () => reject(open.error);
+                });
+            },
+            { k: key }
+        );
+
+    if (!predicate) {
+        return doRead();
+    }
+    let val = null;
+    await expect
+        .poll(
+            async () => {
+                val = await doRead();
+                return predicate(val);
+            },
+            { timeout }
+        )
+        .toBe(true);
+    return val;
+}
+
 function expectValidShape(telemetryPost) {
     expect(typeof telemetryPost.appVersion).toBe('string');
     expect(telemetryPost.appVersion.length).toBeGreaterThan(0);
@@ -130,7 +192,10 @@ async function listCapturesAt(swHelper: SWHelper, endpointPath) {
 }
 
 test.describe('telemetry pipeline', () => {
-    test.beforeEach(async ({ page, swHelper }) => {
+    let swConsole: SwConsoleLine[];
+
+    test.beforeEach(async ({ page, context, swHelper }) => {
+        swConsole = captureSwConsole(context);
         await swHelper.setServerTestParameters({ saveResponses: true });
         await page.goto('/telemetry.html');
         await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
@@ -209,6 +274,75 @@ test.describe('telemetry pipeline', () => {
         // CEILING_MS=3000. Generous for CI load — well under 10s is enough to
         // confirm we aren't hitting the ceiling path.
         expect(elapsed).toBeLessThan(10_000);
+    });
+
+    test('every SW console line ships to logsEndpoint', async ({ swHelper }, testInfo) => {
+        // Past the sender's drain tick + in-flight POST, short of the 3s grace release.
+        await new Promise((r) => setTimeout(r, 5_000));
+
+        // Capture tests install two SWs and the earlier one dies first; we check the second one
+        const isCaptureVariant = testInfo.project.name.startsWith('simple-app-sw-capture');
+        const swLines = isCaptureVariant
+            ? swConsole.filter((m) => m.swUrl.includes('appSW='))
+            : swConsole;
+
+        // Strip the [ts] [context] prefix so the console body is the raw first arg.
+        const LOGGER_PREFIX = /^(?:%c)?\[\d{2}:\d{2}:\d{2}\.\d{3}] \[DappFence SW] /;
+        const consoleBodies = swLines
+            .filter((m) => LOGGER_PREFIX.test(m.text))
+            .map((m) => ({ type: m.type, body: m.text.replace(LOGGER_PREFIX, '') }));
+
+        // Wire side — expand dedup counts so one wire entry per console line.
+        const envelopes = await listCapturesAt(swHelper, '/capture/logs');
+        const wireBodies = envelopes
+            .flatMap((e) => e.logs)
+            .filter(({ args }) => typeof args[0] === 'string' && args[0].length > 0)
+            .flatMap(({ level, args, count = 1 }) =>
+                Array(count).fill({
+                    type: level === 'warn' ? 'warning' : level,
+                    body: args[0].replace(/^%c/, ''),
+                })
+            );
+
+        // With withDebugLog plugging the log-stream's own feedback loop, a quiet
+        // SW produces no new entries after the final flush — so console and
+        // wire must be a 1:1 match (modulo the format transformation: wire body
+        // is args[0] alone, console body is the full space-joined args list).
+        expect(consoleBodies).toHaveLength(wireBodies.length);
+        const consoleAlignedToWire = consoleBodies.map((m, i) => ({
+            type: m.type,
+            body: m.body.slice(0, wireBodies[i].body.length),
+        }));
+        expect(consoleAlignedToWire).toEqual(wireBodies);
+        expect(envelopes.length).toBeGreaterThan(0);
+        envelopes.forEach(expectValidShape);
+        expect(wireBodies.length).toBeGreaterThan(0);
+    });
+
+    test('logs stream ships when the events stream is 500ing (per-stream backoff)', async ({
+        page,
+        swHelper,
+    }) => {
+        // Tamper a subresource so there's a real event verdict to batch, then
+        // force /capture/events to 500 — the logs stream must ship anyway.
+        await swHelper.setServerTestParameters({
+            saveResponses: true,
+            intercept: [
+                { pattern: '**/dappfence.js', formula: 'default' },
+                { pattern: '/capture/events', formula: 'unchanged', statusCode: 500 },
+            ],
+        });
+        await page.goto('/telemetry.html');
+        await page.waitForURL(/.*\/sw-api/);
+
+        await waitForCaptures(swHelper, '/capture/events', (ps) =>
+            ps.some((p) => p.statusCode === 500)
+        );
+
+        const logPosts = await waitForCaptures(swHelper, '/capture/logs');
+        logPosts.forEach(expectValidShape);
+        expect(logPosts[0].logs.length).toBeGreaterThan(0);
+        expect(logPosts.every((p) => p.statusCode === 200)).toBe(true);
     });
 });
 
@@ -305,6 +439,15 @@ test('events ship to config URL when no manifest is cached', async ({ page, swHe
 
     const manifestHits = await listCapturesAt(swHelper, '/capture/events');
     expect(manifestHits).toEqual([]);
+
+    // The bootstrap script tag has `data-events-endpoint` but no
+    // `data-logs-endpoint`, so with no cached manifest the logs stream has
+    // no endpoint at all and must stay silent on both the manifest URL and
+    // any config fallback URL.
+    const logsManifestHits = await listCapturesAt(swHelper, '/capture/logs');
+    expect(logsManifestHits).toEqual([]);
+    const logsConfigHits = await listCapturesAt(swHelper, '/capture/logs-config');
+    expect(logsConfigHits).toEqual([]);
 });
 
 /*
@@ -500,9 +643,6 @@ test.describe('batching mechanics', () => {
      * exponentially; once the endpoint recovers, the next heartbeat merges every
      * previously-unsent batch into one POST and resets retry state. Takes ~60-90 s.
      */
-    const isRetryState = (v) =>
-        !!v && typeof v === 'object' && 'attemptNumber' in v && 'nextAttemptAt' in v;
-
     test('exponential backoff accumulates and ships everything on recovery', async ({
         page,
         swHelper,
@@ -520,13 +660,11 @@ test.describe('batching mechanics', () => {
         await swHelper.waitForServiceWorkerActivation();
 
         // Wait for the heartbeat to drive several failed attempts.
-        await readStore(
+        await readSettingsKey(
             page,
-            'settings',
-            (rows) => {
-                const state = rows.find(isRetryState);
-                return !!state && state.attemptNumber >= 2;
-            },
+            'EVENTS_RETRY_STATE_KEY',
+            (state: { attemptNumber?: number } | null) =>
+                !!state && (state.attemptNumber ?? 0) >= 2,
             { timeout: 60_000 }
         );
 
@@ -549,13 +687,11 @@ test.describe('batching mechanics', () => {
         // the signal that a POST succeeded. Can't use waitForCaptures matching
         // on event keys here because FAILED POSTs also carry those keys (SW is
         // trying to ship them, server captures the body before responding 500).
-        await readStore(
+        await readSettingsKey(
             page,
-            'settings',
-            (rows) => {
-                const state = rows.find(isRetryState);
-                return !!state && state.attemptNumber === 0;
-            },
+            'EVENTS_RETRY_STATE_KEY',
+            (state: { attemptNumber?: number } | null) =>
+                !!state && (state.attemptNumber ?? -1) === 0,
             { timeout: 90_000 }
         );
 
@@ -566,9 +702,11 @@ test.describe('batching mechanics', () => {
             { timeout: 15_000 }
         );
 
-        const finalSettings = await readStore(page, 'settings');
-        const finalState = finalSettings.find(isRetryState);
-        expect(finalState).toBeDefined();
+        const finalState = (await readSettingsKey(page, 'EVENTS_RETRY_STATE_KEY')) as {
+            attemptNumber: number;
+            nextAttemptAt: number;
+        } | null;
+        expect(finalState).not.toBeNull();
         expect(finalState.attemptNumber).toBe(0);
         expect(finalState.nextAttemptAt).toBe(0);
 
