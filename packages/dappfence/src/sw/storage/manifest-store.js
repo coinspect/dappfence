@@ -6,8 +6,6 @@
  * { db } interface, making it testable with in-memory backends.
  */
 
-import { calculateHash } from '../../core/crypto.js';
-
 // Trusted Manifest System constants
 const TRUSTED_MANIFEST_KEY = 'trusted-manifest';
 
@@ -18,34 +16,14 @@ const MAX_MANIFESTS = 20;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Synthesize a deterministic appVersion from manifest content. Strips the
- * `sha256-` encoding prefix before truncating, so the 16-char tail is pure
- * entropy (~96 bits of base64) rather than 9 payload chars after a fixed
- * prefix. Same content -> same key, which is how to addLatest dedups.
- */
-const createSyntheticAppVersion = async (manifestData) => {
-    const manifestStr = JSON.stringify(manifestData);
-    const manifestHash = await calculateHash(new TextEncoder().encode(manifestStr));
-    const rawHash = manifestHash.replace(/^sha256-/, '');
-    return `manifest-${rawHash.substring(0, 16)}`;
-};
-
-/**
  * Create all manifest database operations with an injected database backend.
  * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createManifestStore(db) {
     /**
-     * Trusted Manifest database Operations
-     *
-     * Stored as a flat array `[{appVersion, manifest, storedAt}]`, newest first.
-     * The full manifest object is retained so consumers can read `mode`,
-     * `metadata`, and any future top-level fields. Callers pass in
-     * already-normalized manifests (see manifest-loader.normalizeManifestData);
-     * the store does not reshape input.
-     *
-     * `cachedList` mirrors the persisted array and is populated lazily on the
-     * first read, kept in sync by addLatest after its tx commits.
+     * Flat array `[{appVersion, signedEnvelope, manifest, storedAt}]`, newest
+     * first. `cachedList` mirrors the persisted array, populated lazily and
+     * kept in sync by addLatest after its tx commits.
      */
     let cachedList = null;
 
@@ -60,8 +38,15 @@ export function createManifestStore(db) {
     };
 
     return {
-        async addLatest(manifest) {
-            const appVersion = await createSyntheticAppVersion(manifest);
+        /**
+         * @param {object} entry
+         * @param {string} entry.appVersion - Deterministic identity derived
+         *   from the signed envelope by the caller.
+         * @param {object} entry.signedEnvelope - Raw `{pay, sig}` as received
+         *   on the wire; retained for re-POST on server request.
+         * @param {object} entry.manifest - Normalized manifest for SW use.
+         */
+        async addLatest({ appVersion, signedEnvelope, manifest }) {
             // Read-modify-write under a single transaction so concurrent
             // addLatest calls can't clobber each other's updates.
             let newList;
@@ -69,13 +54,12 @@ export function createManifestStore(db) {
                 const list = (await manifests.get(TRUSTED_MANIFEST_KEY)) || [];
                 const now = Date.now();
                 const deduped = list.filter((m) => m.appVersion !== appVersion);
-                deduped.unshift({ appVersion, manifest, storedAt: now });
+                deduped.unshift({ appVersion, signedEnvelope, manifest, storedAt: now });
                 const pruned = deduped.filter((m) => now - m.storedAt < MAX_AGE_MS);
                 newList = pruned.slice(0, MAX_MANIFESTS);
                 await manifests.put(newList, TRUSTED_MANIFEST_KEY);
             });
             cachedList = newList;
-            return { appVersion, manifest };
         },
 
         async getLatest() {
@@ -90,6 +74,18 @@ export function createManifestStore(db) {
             const list = await readList();
             const entry = list.find((m) => m.appVersion === appVersion);
             return entry?.manifest;
+        },
+
+        /**
+         * Returns the raw `{pay, sig}` envelope for the given appVersion, or
+         * undefined if we don't have it (never seen or aged out).
+         * @param {string} appVersion
+         * @returns {Promise<object | undefined>}
+         */
+        async getSignedEnvelope(appVersion) {
+            const list = await readList();
+            const entry = list.find((m) => m.appVersion === appVersion);
+            return entry?.signedEnvelope;
         },
 
         async getAll() {

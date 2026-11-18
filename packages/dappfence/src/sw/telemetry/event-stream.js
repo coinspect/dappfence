@@ -1,5 +1,5 @@
 import { createStreamDriver } from './stream-driver.js';
-import { VERIFICATION_STATUS_BY_NAME } from '../../core/constants.js';
+import { HEADER_REQUEST_MANIFEST, VERIFICATION_STATUS_BY_NAME } from '../../core/constants.js';
 import { createLogger } from '../../core/logger.js';
 
 /** @typedef {import('./stream-driver.js').TryToSendResult} TryToSendResult */
@@ -34,7 +34,8 @@ export function createEventStream({ swContext, appStore, manifestService, taskMa
         'actualHash',
     ];
 
-    const { telemetryBatchesStore, verificationResultsStore, settingsStore } = appStore;
+    const { telemetryBatchesStore, trustedManifestStore, verificationResultsStore, settingsStore } =
+        appStore;
     const name = 'events';
     let maxEventsBytes;
     let selectVerdicts;
@@ -95,6 +96,9 @@ export function createEventStream({ swContext, appStore, manifestService, taskMa
                 body: JSON.stringify(envelope),
                 signal: AbortSignal.timeout(POST_TIMEOUT_MS),
             });
+
+            await uploadManifestIfRequested(response);
+
             if (!response?.ok) {
                 logger.error(`telemetry POST failed status=${response?.status ?? 0}`);
                 return false;
@@ -103,6 +107,44 @@ export function createEventStream({ swContext, appStore, manifestService, taskMa
         } catch (err) {
             logger.error('telemetry POST threw:', err);
             return false;
+        }
+    }
+
+    /**
+     * Honor an `x-dappfence-request-manifest: <appVersion>` response header
+     * by re-POSTing the matching stored `{pay, sig}` envelope to the same
+     * endpoint. Best-effort: any error (missing header, unknown appVersion,
+     * fetch failure) is swallowed — the primary POST's success is the only
+     * signal that matters to the caller.
+     * @param {Response | undefined} response
+     */
+    async function uploadManifestIfRequested(response) {
+        try {
+            const appVersion = response?.headers?.get(HEADER_REQUEST_MANIFEST);
+            if (!appVersion) {
+                return;
+            }
+            const signedEnvelope = await trustedManifestStore.getSignedEnvelope(appVersion);
+            if (!signedEnvelope) {
+                logger.log(
+                    `[${name}] server requested manifest ${appVersion}; not in store, skipping upload`
+                );
+                return;
+            }
+            logger.log(`[${name}] server requested manifest ${appVersion}; uploading`);
+            await swContext.fetch(currentManifest.telemetryEndpoints?.events, {
+                method: 'POST',
+                keepalive: true,
+                mode: 'cors',
+                credentials: 'omit',
+                priority: 'low',
+                referrerPolicy: 'no-referrer',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(signedEnvelope),
+                signal: AbortSignal.timeout(POST_TIMEOUT_MS),
+            });
+        } catch (err) {
+            logger.log(`[${name}] manifest upload threw (ignored):`, err);
         }
     }
 

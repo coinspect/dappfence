@@ -11,7 +11,6 @@ import { verifyManifestSignature } from '../manifest/verification.js';
 
 const MANIFEST_URL = 'https://example.com/manifest.json';
 const VALID_PAYLOAD = { files: { '/app.js': 'sha256-abc' }, mode: 'protected' };
-const MANIFEST_INFO = { appVersion: 'v1', manifest: normalizeManifestData(VALID_PAYLOAD) };
 
 function makeConfig(overrides = {}) {
     return {
@@ -37,10 +36,10 @@ function makeSwContext({
     };
 }
 
-function makeAppStore({ addLatestResult = MANIFEST_INFO } = {}) {
+function makeAppStore() {
     return {
         trustedManifestStore: {
-            addLatest: vi.fn(() => Promise.resolve(addLatestResult)),
+            addLatest: vi.fn(() => Promise.resolve()),
             getLatest: vi.fn(() => Promise.resolve(undefined)),
             getAll: vi.fn(() => Promise.resolve([])),
         },
@@ -157,23 +156,20 @@ describe('fetchAndStoreManifest', () => {
             expect(result.fileKey).toBe('/manifest.json');
         });
 
-        it('normalizes the payload before handing it to the store', async () => {
+        it('derives appVersion from the signed payload and hands the triple to the store', async () => {
             verifyManifestSignature.mockReturnValue({
                 status: VERIFICATION_STATUS.MATCH,
                 payload: VALID_PAYLOAD,
             });
-            const appStore = makeAppStore({
-                addLatestResult: {
-                    appVersion: 'v-ok',
-                    manifest: normalizeManifestData(VALID_PAYLOAD),
-                },
-            });
+            const appStore = makeAppStore();
             const result = await makeLoader({ appStore }).fetchAndStoreManifest();
             expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-            expect(result.appVersion).toBe('v-ok');
-            expect(appStore.trustedManifestStore.addLatest).toHaveBeenCalledWith(
-                normalizeManifestData(VALID_PAYLOAD)
-            );
+            expect(result.appVersion).toMatch(/^manifest-[A-Za-z0-9+/]{16}$/);
+            expect(appStore.trustedManifestStore.addLatest).toHaveBeenCalledWith({
+                appVersion: result.appVersion,
+                signedEnvelope: { pay: VALID_PAYLOAD, sig: 'sig' },
+                manifest: normalizeManifestData(VALID_PAYLOAD),
+            });
         });
     });
 
