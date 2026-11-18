@@ -92,8 +92,8 @@ const matchCspPageEntry = (pages, fileKey) => {
  * attempts from attacker-controlled page JS.
  *
  * @param {string} fileKey - resolved manifest key for the requested page
- * @param {Response} response - origin response; its headers are copied, origin CSP
- *   headers are stripped, and the manifest-derived policy is set
+ * @param {{ headers: Headers }} response - origin response; its headers are copied,
+ *   origin CSP headers are stripped, and the manifest-derived policy is set
  * @param {object|null|undefined} manifest
  * @param {string} nonce - SW-generated per-response nonce, emitted in `script-src-elem`
  *   alongside the build-time-stable hashes and `*`

@@ -47,8 +47,8 @@ function makeSubResource(path = '/app.js') {
 
 function makeLeafResponse(bytes = new Uint8Array([1, 2, 3])) {
     return {
-        getBodyBytes: vi.fn(() => Promise.resolve({ value: bytes })),
-        calculateBodyHash: vi.fn(async () => ({ value: await calculateHash(bytes) })),
+        bytes: vi.fn(() => Promise.resolve(bytes)),
+        calculateBodyHash: vi.fn(() => calculateHash(bytes)),
     };
 }
 
@@ -161,7 +161,7 @@ describe('securityVerifyAgainstManifest — action pipeline', () => {
             response
         );
         expect(result.status).toBe(VERIFICATION_STATUS.DENIED_BY_RULE);
-        expect(response.getBodyBytes).not.toHaveBeenCalled();
+        expect(response.bytes).not.toHaveBeenCalled();
     });
 
     it('allow action returns SKIPPED', async () => {

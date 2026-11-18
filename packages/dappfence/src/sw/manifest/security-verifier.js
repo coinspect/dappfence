@@ -18,6 +18,7 @@
  */
 
 import {
+    ASSET_MAX_BYTES,
     ASSET_TYPE,
     enforcesCsp,
     isExecutableDestination,
@@ -28,8 +29,8 @@ import { isFeatureEnabled } from '../../core/utils.js';
 import { toPathname } from './verification.js';
 import { buildCspHeader } from './csp.js';
 import { createLogger } from '../../core/logger.js';
-import { makeResponseWrapper } from './html/response-wrapper.js';
 import { handleTransform } from './html/transforms.js';
+import { BodyTooLargeError } from '../context.js';
 
 const logger = createLogger();
 
@@ -44,6 +45,26 @@ const manifestDecidedAbout = (result) => result !== null && !ESCALATE_STATUSES.h
 // but not redirects — they fall through to the normal verification pipeline.
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const isRedirectStatus = (status) => REDIRECT_STATUSES.has(status);
+
+/**
+ * Translate the response wrapper's throwing `calculateBodyHash` into the
+ * discriminated-union verdict shape the action handlers expect: `{value}` on
+ * success, or `{status: ERROR, reason}` on body-read failure (cap exceeded or
+ * stream error).
+ * @param {{ calculateBodyHash(maxBytes: number): Promise<string> }} response
+ * @param {number} maxBytes
+ * @returns {Promise<{value: string} | {status: object, reason: string}>}
+ */
+async function calculateBodyHash(response, maxBytes) {
+    try {
+        return { value: await response.calculateBodyHash(maxBytes) };
+    } catch (err) {
+        return {
+            status: VERIFICATION_STATUS.ERROR,
+            reason: err instanceof BodyTooLargeError ? 'ASSET_TOO_LARGE' : 'BODY_UNREADABLE',
+        };
+    }
+}
 
 const ACTION_HANDLERS = {
     allow: async (fileKey) => {
@@ -64,8 +85,8 @@ const ACTION_HANDLERS = {
         return { status: VERIFICATION_STATUS.CSP_PROTECTED };
     },
     verify: async (fileKey, response, manifestInfo) => {
-        const hash = await response.calculateBodyHash();
-        if (hash.status) {
+        const hash = await calculateBodyHash(response, ASSET_MAX_BYTES);
+        if ('status' in hash) {
             return hash;
         }
         const actualHash = hash.value;
@@ -286,15 +307,14 @@ export const createVerifier = (
         }
 
         if (fileKey === manifestFileKey) {
-            return await storeManifestFromResponse(response.clone());
+            return await storeManifestFromResponse(response);
         }
 
         if (isAllowed(req, locationHref, latestManifest?.manifest)) {
             logger.log(`⏭️  Skipping (allow rule): ${req.url}`);
             return result({ status: VERIFICATION_STATUS.SKIPPED, reason: 'ALLOW_RULE' });
         }
-        const wrappedResponse = makeResponseWrapper(response);
-        const skipResult = shouldSkipVerification(req, wrappedResponse);
+        const skipResult = shouldSkipVerification(req, response);
         if (skipResult?.status === VERIFICATION_STATUS.REDIRECT) {
             return result(dispatchRedirect(latestManifest?.manifest, fileKey));
         }
@@ -306,9 +326,7 @@ export const createVerifier = (
         logger.log(
             `[verifyResponse] req.method=${req.method} clientId=${clientId} isNavigation=${req.mode === 'navigate'}`
         );
-        return result(
-            await verifyWithManifestSearch(req, wrappedResponse, clientId, latestManifest)
-        );
+        return result(await verifyWithManifestSearch(req, response, clientId, latestManifest));
     };
 
     // ── prepareRequest ────────────────────────────────────────────────────────
@@ -401,13 +419,13 @@ export const createVerifier = (
 };
 
 export const basicVerifyAgainstManifest = async (req, response, manifestInfo, locationHref) => {
-    const hash = await response.calculateBodyHash();
-    if (hash.status) {
-        return { status: hash.status, fileKey: toPathname(req.url, locationHref) };
-    }
-    const actualHash = hash.value;
     const { manifest, appVersion } = manifestInfo;
     const fileKey = resolveManifestKey(req, locationHref, manifest, response);
+    const hash = await calculateBodyHash(response, ASSET_MAX_BYTES);
+    if ('status' in hash) {
+        return { ...hash, fileKey };
+    }
+    const actualHash = hash.value;
     const expectedHashes = manifest.files[fileKey] ?? [];
     logger.log(
         `Using manifest ${appVersion} for ${fileKey} hash ${actualHash} expected: ${expectedHashes.join(', ')}`

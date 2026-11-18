@@ -36,40 +36,40 @@ export function createSecurityFetchHandler({
     const locationHref = swContext.getLocationHref();
 
     /**
-     * Handle app service worker fetch event delegation
+     * Fetch the response for a request: prefer the app SW's installed handler;
+     * fall back to a direct fetch when no handler responds, when the app
+     * handler's promise rejects, or when a child handler throws synchronously.
+     * The returned WrappedResponse carries lazy, capped body-read methods;
+     * callers that need the native Response (e.g. `event.respondWith`) call
+     * `.toResponse()`.
      */
     async function handleAppServiceWorkerFetch(event, callChildHandlers, request) {
-        let appResponse = null;
-        let appRespondedWith = false;
-
-        // Store what the app's handler responds with
-        const originalRespondWith = event.respondWith.bind(event);
-
-        // Temporarily replace event.respondWith to intercept calls
-        event.respondWith = function (responsePromise) {
-            appRespondedWith = true;
-            appResponse = responsePromise;
-            // Don't actually call the original yet
-        };
-
-        // Let other handlers run with the REAL event object
-        callChildHandlers(event);
-
-        // Restore original respondWith
-        event.respondWith = originalRespondWith;
-
-        // Check if any handler called respondWith
-        if (!appRespondedWith) {
-            logger.log('No handler responded, fetching directly:', request.url);
-            return await swContext.fetch(request);
-        }
-
         try {
-            return await appResponse;
+            let appResponse = null;
+            let appRespondedWith = false;
+            const originalRespondWith = event.respondWith.bind(event);
+            event.respondWith = function (responsePromise) {
+                appRespondedWith = true;
+                appResponse = responsePromise;
+            };
+            callChildHandlers(event);
+            event.respondWith = originalRespondWith;
+
+            if (!appRespondedWith) {
+                logger.log('No handler responded, fetching directly:', request.url);
+                return swContext.fetchWrapped(request);
+            }
+            try {
+                return swContext.wrapResponse(await appResponse);
+            } catch (error) {
+                logger.warn('App handler promise rejected, falling back to fetch:', error);
+            }
+            // appResponse rejected; direct fetch fallback (fetch returns wrapped).
+            return swContext.fetchWrapped(request);
         } catch (error) {
-            logger.warn('App handler promise rejected, falling back to fetch:', error);
+            logger.warn('Child SW handler threw, retrying direct:', request.url, error);
+            return swContext.fetchWrapped(request);
         }
-        return await swContext.fetch(request);
     }
 
     async function applyIntegrityPolicy(ctx, request, response, clientId) {
@@ -82,7 +82,7 @@ export function createSecurityFetchHandler({
         });
 
         if (verificationResult.status === VERIFICATION_STATUS.REWRITE) {
-            return createRewriteResponse(response);
+            return createRewriteResponse(response.unwrap());
         }
         if (verificationResult.status === VERIFICATION_STATUS.REDIRECT) {
             return createRedirectResponse(
@@ -99,9 +99,9 @@ export function createSecurityFetchHandler({
             return createBlockResponse(request, locationHref);
         }
         if (verificationResult.headers) {
-            return injectResponseHeaders(response, verificationResult.headers);
+            return injectResponseHeaders(response.unwrap(), verificationResult.headers);
         }
-        return response;
+        return response.unwrap();
     }
 
     async function handleRequest(event, callChildHandlers) {
@@ -152,20 +152,18 @@ export function createSecurityFetchHandler({
             });
         }
 
-        // Try the child SW first; if its delegation or internal fetch fails,
-        // fall back to a direct fetch so applyIntegrityPolicy still runs.
-        let response;
-        try {
-            response = await handleAppServiceWorkerFetch(event, callChildHandlers, preparedRequest);
-        } catch (error) {
-            logger.warn('Child SW fetch failed, retrying direct:', request.url, error);
-            response = await swContext.fetch(preparedRequest);
-        }
+        // handleAppServiceWorkerFetch owns its own fetch + fallback flow; it
+        // returns a WrappedResponse so body reads downstream are capped.
+        const wrappedResponse = await handleAppServiceWorkerFetch(
+            event,
+            callChildHandlers,
+            preparedRequest
+        );
         logger.log(
-            `%cResponse ${request.url} ${response?.url} status:${response?.status} type:${response?.type ?? 'empty'} ${response?.redirected ? 'redirected' : ''}`,
+            `%cResponse ${request.url} ${wrappedResponse?.url} status:${wrappedResponse?.status} type:${wrappedResponse?.type ?? 'empty'} ${wrappedResponse?.redirected ? 'redirected' : ''}`,
             'color:cyan'
         );
-        return await applyIntegrityPolicy(ctx, preparedRequest, response, clientId);
+        return await applyIntegrityPolicy(ctx, preparedRequest, wrappedResponse, clientId);
     }
 
     return async (event, callChildHandlers) => {

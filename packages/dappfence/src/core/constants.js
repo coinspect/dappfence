@@ -99,6 +99,7 @@ export const VERIFICATION_STATUS = Object.freeze({
 /**
  * @typedef {'NULL_RESPONSE'
  *         | 'BODY_UNREADABLE'
+ *         | 'ASSET_TOO_LARGE'
  *         | 'FETCH_BAD_STATUS'
  *         | 'FETCH_EXCEPTION'
  *         | 'NO_MANIFEST_AVAILABLE'
@@ -120,9 +121,16 @@ export const VERIFICATION_STATUS = Object.freeze({
  *         | 'MANIFEST_PARSE_ERROR'
  *         | 'MANIFEST_FETCH_BAD_STATUS'
  *         | 'MANIFEST_FETCH_EXCEPTION'
+ *         | 'MANIFEST_TOO_LARGE'
  *         | 'CONFIG_ERROR'
  *         } ManifestLoadReason
  */
+
+// Per-call body-read caps. The manifest is small by design; executable assets
+// (scripts, HTML documents) are capped generously — large enough for any
+// realistic bundle, small enough to bound hash-verification memory per fetch.
+export const MANIFEST_MAX_BYTES = 256 * 1024;
+export const ASSET_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * @typedef {'UNSUPPORTED_METHOD'

@@ -23,7 +23,12 @@ function makeConfig(overrides = {}) {
 }
 
 function makeOkResponse(json) {
-    return { ok: true, status: 200, json: () => Promise.resolve(json) };
+    return {
+        ok: true,
+        status: 200,
+        // wrapped surface: `.json(maxBytes)` throws on error, returns parsed value
+        json: () => Promise.resolve(json),
+    };
 }
 
 function makeSwContext({
@@ -32,7 +37,7 @@ function makeSwContext({
 } = {}) {
     return {
         getLocationHref: () => 'https://example.com/sw.js',
-        fetch: vi.fn(() => Promise.resolve(fetchResult)),
+        fetchWrapped: vi.fn(() => Promise.resolve(fetchResult)),
         matchAllClients: vi.fn(() => Promise.resolve(clients)),
     };
 }
@@ -106,7 +111,7 @@ describe('fetchAndStoreManifest', () => {
 
         it('returns MANIFEST_UNTRUSTED with MANIFEST_FETCH_EXCEPTION reason when fetch throws', async () => {
             const swContext = makeSwContext();
-            swContext.fetch.mockRejectedValue(new Error('network error'));
+            swContext.fetchWrapped.mockRejectedValue(new Error('network error'));
             const result = await makeLoader({ swContext }).fetchAndStoreManifest();
             expect(result.status).toBe(VERIFICATION_STATUS.MANIFEST_UNTRUSTED);
             expect(result.reason).toBe('MANIFEST_FETCH_EXCEPTION');
@@ -120,7 +125,7 @@ describe('fetchAndStoreManifest', () => {
             });
             const swContext = makeSwContext();
             await makeLoader({ swContext }).fetchAndStoreManifest();
-            expect(swContext.fetch).toHaveBeenCalledWith(
+            expect(swContext.fetchWrapped).toHaveBeenCalledWith(
                 MANIFEST_URL,
                 expect.objectContaining({
                     cache: 'no-cache',
@@ -186,7 +191,7 @@ describe('fetchAndStoreManifest', () => {
             const swContext = makeSwContext();
             const loader = makeLoader({ swContext });
             await Promise.all([loader.fetchAndStoreManifest(), loader.fetchAndStoreManifest()]);
-            expect(swContext.fetch).toHaveBeenCalledTimes(1);
+            expect(swContext.fetchWrapped).toHaveBeenCalledTimes(1);
         });
 
         it('issues a new fetch after the previous in-flight call settles', async () => {
@@ -198,7 +203,7 @@ describe('fetchAndStoreManifest', () => {
             const loader = makeLoader({ swContext });
             await loader.fetchAndStoreManifest();
             await loader.fetchAndStoreManifest();
-            expect(swContext.fetch).toHaveBeenCalledTimes(2);
+            expect(swContext.fetchWrapped).toHaveBeenCalledTimes(2);
         });
     });
 });
@@ -213,7 +218,7 @@ describe('resolveLatest', () => {
         const swContext = makeSwContext();
         const result = await makeLoader({ appStore, swContext }).resolveLatest();
         expect(result).toBe(cached);
-        expect(swContext.fetch).not.toHaveBeenCalled();
+        expect(swContext.fetchWrapped).not.toHaveBeenCalled();
     });
 
     it('falls back to fetch when store is empty', async () => {
@@ -223,7 +228,7 @@ describe('resolveLatest', () => {
         });
         const swContext = makeSwContext();
         const result = await makeLoader({ swContext }).resolveLatest();
-        expect(swContext.fetch).toHaveBeenCalledTimes(1);
+        expect(swContext.fetchWrapped).toHaveBeenCalledTimes(1);
         expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
     });
 });

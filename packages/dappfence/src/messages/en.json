@@ -53,11 +53,13 @@
     "block.MANIFEST_UNTRUSTED.MANIFEST_PARSE_ERROR": "Manifest could not be parsed",
     "block.MANIFEST_UNTRUSTED.MANIFEST_FETCH_BAD_STATUS": "Manifest fetch returned a non-OK status",
     "block.MANIFEST_UNTRUSTED.MANIFEST_FETCH_EXCEPTION": "Manifest fetch threw an exception",
+    "block.MANIFEST_UNTRUSTED.MANIFEST_TOO_LARGE": "Manifest body exceeded the per-fetch size limit",
     "block.MANIFEST_UNTRUSTED.CONFIG_ERROR": "DappFence manifest is misconfigured",
     "block.MANIFEST_UNTRUSTED.fallback": "Manifest cannot be trusted ({reason})",
 
     "block.ERROR.NULL_RESPONSE": "Verification failed: no response received",
     "block.ERROR.BODY_UNREADABLE": "Verification failed: response body unreadable",
+    "block.ERROR.ASSET_TOO_LARGE": "Verification failed: response body exceeded the per-fetch size limit",
     "block.ERROR.FETCH_BAD_STATUS": "Verification failed: non-OK HTTP status",
     "block.ERROR.FETCH_EXCEPTION": "Verification failed: fetch threw",
     "block.ERROR.NO_MANIFEST_AVAILABLE": "Verification failed: no trusted manifest available",
