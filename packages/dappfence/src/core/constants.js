@@ -35,6 +35,13 @@ export const MSG = {
 
 export const SYNC_TAG_TELEMETRY = 'dappfence-sync-tag-telemetry';
 
+/**
+ * Response header on a telemetry POST. Value is the appVersion the server
+ * wants a copy of; the SW uploads the matching stored signed envelope back
+ * to the same endpoint URL, best-effort (errors swallowed).
+ */
+export const HEADER_REQUEST_MANIFEST = 'x-dappfence-request-manifest';
+
 export const MODE = {
     REPORTING: 'reporting', // log to console and indexeddb
     PROTECTED: 'protected', // stop requests that are invalid

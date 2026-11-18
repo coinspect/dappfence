@@ -2,6 +2,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createManifestStore } from '../storage/manifest-store.js';
 import { createInMemoryDb } from './helpers/in-memory-db.js';
 
+/**
+ * @param {string} appVersion
+ * @param {object} manifest
+ * @param {object} [signedEnvelope]
+ */
+const entry = (
+    appVersion,
+    manifest,
+    signedEnvelope = { pay: manifest, sig: `sig-${appVersion}` }
+) => ({
+    appVersion,
+    manifest,
+    signedEnvelope,
+});
+
 describe('createManifestStore', () => {
     let storage;
 
@@ -11,93 +26,78 @@ describe('createManifestStore', () => {
 
     describe('trustedManifest', () => {
         it('returns undefined for unknown version', async () => {
-            const manifest = await storage.get('unknown');
-            expect(manifest).toBeUndefined();
+            expect(await storage.get('unknown')).toBeUndefined();
         });
 
         it('returns undefined from getLatest when nothing is stored', async () => {
-            const latest = await storage.getLatest();
-            expect(latest).toBeUndefined();
-        });
-
-        it('addLatest synthesizes a deterministic appVersion from manifest content', async () => {
-            const { appVersion } = await storage.addLatest({
-                files: { '/a.js': 'h' },
-            });
-            expect(appVersion).toMatch(/^manifest-[A-Za-z0-9+/]{16}$/);
-            const dup = await storage.addLatest({
-                files: { '/a.js': 'h' },
-            });
-            expect(dup.appVersion).toBe(appVersion);
-            const other = await storage.addLatest({
-                files: { '/b.js': 'h2' },
-            });
-            expect(other.appVersion).not.toBe(appVersion);
+            expect(await storage.getLatest()).toBeUndefined();
         });
 
         it('addLatest stores a manifest retrievable by appVersion and via getLatest', async () => {
-            const manifestData = { files: { '/app.js': 'abc123', '/style.css': 'def456' } };
-            const { appVersion } = await storage.addLatest(manifestData);
+            const manifest = { files: { '/app.js': 'abc123', '/style.css': 'def456' } };
+            await storage.addLatest(entry('v-1', manifest));
 
-            expect(await storage.get(appVersion)).toEqual(manifestData);
+            expect(await storage.get('v-1')).toEqual(manifest);
             expect(await storage.getLatest()).toEqual(
                 expect.objectContaining({
-                    appVersion,
-                    manifest: manifestData,
+                    appVersion: 'v-1',
+                    manifest,
                 })
             );
         });
 
         it('preserves mode, metadata, and other top-level manifest fields', async () => {
-            const manifestData = {
+            const manifest = {
                 files: { '/app.js': 'abc' },
                 mode: 'reporting',
                 metadata: { extensions: ['.js', '.wasm'] },
                 customField: { future: true },
             };
-            const { appVersion } = await storage.addLatest(manifestData);
+            await storage.addLatest(entry('v-1', manifest));
 
-            expect(await storage.get(appVersion)).toEqual(manifestData);
-            expect((await storage.getLatest()).manifest).toEqual(manifestData);
+            expect(await storage.get('v-1')).toEqual(manifest);
+            expect((await storage.getLatest()).manifest).toEqual(manifest);
         });
 
         it('getLatest returns the most recently added manifest', async () => {
-            await storage.addLatest({ files: { '/a.js': 'x' } });
-            const second = await storage.addLatest({
-                files: { '/b.js': 'y' },
-            });
+            await storage.addLatest(entry('v-1', { files: { '/a.js': 'x' } }));
+            await storage.addLatest(entry('v-2', { files: { '/b.js': 'y' } }));
 
             const latest = await storage.getLatest();
-            expect(latest.appVersion).toBe(second.appVersion);
+            expect(latest.appVersion).toBe('v-2');
             expect(latest.manifest).toEqual({ files: { '/b.js': 'y' } });
         });
 
         it('addLatest caps entries at 20 (safety bound)', async () => {
             const versions = [];
             for (let i = 1; i <= 25; i++) {
-                const { appVersion } = await storage.addLatest({
-                    files: { [`/f${i}.js`]: `h${i}` },
-                });
-                versions.push(appVersion);
+                const v = `v-${i}`;
+                await storage.addLatest(entry(v, { files: { [`/f${i}.js`]: `h${i}` } }));
+                versions.push(v);
             }
-            const all = await storage.getAll();
-            expect(all).toHaveLength(20);
+
+            expect(await storage.getAll()).toHaveLength(20);
             expect((await storage.getLatest()).appVersion).toBe(versions[24]);
-            // The five earliest additions should have been dropped by the cap.
             for (let i = 0; i < 5; i++) {
                 expect(await storage.get(versions[i])).toBeUndefined();
             }
         });
 
-        it('re-adding an existing manifest dedups and promotes it to the front', async () => {
-            const a = await storage.addLatest({ files: { '/a.js': 'x' } });
-            await storage.addLatest({ files: { '/b.js': 'y' } });
-            const aAgain = await storage.addLatest({
-                files: { '/a.js': 'x' },
-            });
+        it('re-adding an existing appVersion dedups and promotes it to the front', async () => {
+            await storage.addLatest(entry('v-a', { files: { '/a.js': 'x' } }));
+            await storage.addLatest(entry('v-b', { files: { '/b.js': 'y' } }));
+            await storage.addLatest(entry('v-a', { files: { '/a.js': 'x' } }));
 
-            expect(aAgain.appVersion).toBe(a.appVersion);
-            expect((await storage.getLatest()).appVersion).toBe(a.appVersion);
+            expect((await storage.getLatest()).appVersion).toBe('v-a');
+            expect(await storage.getAll()).toHaveLength(2);
+        });
+
+        it('getSignedEnvelope returns the stored {pay, sig} envelope', async () => {
+            const signedEnvelope = { pay: { files: { '/a.js': 'h' } }, sig: '0xdeadbeef' };
+            await storage.addLatest(entry('v-1', { files: { '/a.js': 'h' } }, signedEnvelope));
+
+            expect(await storage.getSignedEnvelope('v-1')).toEqual(signedEnvelope);
+            expect(await storage.getSignedEnvelope('unknown')).toBeUndefined();
         });
 
         describe('age-based pruning', () => {
@@ -106,43 +106,33 @@ describe('createManifestStore', () => {
 
             it('prunes entries older than 24h on next addLatest', async () => {
                 vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-                const stale = await storage.addLatest({
-                    files: { '/old.js': 'gone' },
-                });
-                expect(await storage.get(stale.appVersion)).toBeDefined();
+                await storage.addLatest(entry('v-stale', { files: { '/old.js': 'gone' } }));
+                expect(await storage.get('v-stale')).toBeDefined();
 
                 vi.setSystemTime(new Date('2026-01-02T00:00:01Z'));
-                const fresh = await storage.addLatest({
-                    files: { '/new.js': 'kept' },
-                });
+                await storage.addLatest(entry('v-fresh', { files: { '/new.js': 'kept' } }));
 
-                expect(await storage.get(stale.appVersion)).toBeUndefined();
-                expect(await storage.get(fresh.appVersion)).toBeDefined();
+                expect(await storage.get('v-stale')).toBeUndefined();
+                expect(await storage.get('v-fresh')).toBeDefined();
             });
 
             it('does not prune entries younger than 24h', async () => {
                 vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-                const first = await storage.addLatest({
-                    files: { '/a.js': 'ha' },
-                });
+                await storage.addLatest(entry('v-first', { files: { '/a.js': 'ha' } }));
                 vi.setSystemTime(new Date('2026-01-01T23:59:59Z'));
-                await storage.addLatest({ files: { '/b.js': 'hb' } });
+                await storage.addLatest(entry('v-second', { files: { '/b.js': 'hb' } }));
 
-                expect(await storage.get(first.appVersion)).toBeDefined();
+                expect(await storage.get('v-first')).toBeDefined();
             });
         });
 
         it('getAll returns entries newest-first', async () => {
-            const a = await storage.addLatest({ files: { '/a.js': 'ha' } });
-            const b = await storage.addLatest({ files: { '/b.js': 'hb' } });
-            const c = await storage.addLatest({ files: { '/c.js': 'hc' } });
+            await storage.addLatest(entry('v-a', { files: { '/a.js': 'ha' } }));
+            await storage.addLatest(entry('v-b', { files: { '/b.js': 'hb' } }));
+            await storage.addLatest(entry('v-c', { files: { '/c.js': 'hc' } }));
 
             const all = await storage.getAll();
-            expect(all.map((e) => e.appVersion)).toEqual([
-                c.appVersion,
-                b.appVersion,
-                a.appVersion,
-            ]);
+            expect(all.map((e) => e.appVersion)).toEqual(['v-c', 'v-b', 'v-a']);
         });
 
         it('getAll returns an empty array when nothing is stored', async () => {
