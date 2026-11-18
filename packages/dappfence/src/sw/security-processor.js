@@ -180,12 +180,12 @@ export function createSecurityProcessor(deps, streams) {
     }
 
     async function reportOnClientRequest(/** @type {ExtendableMessageEvent} */ event) {
-        logger.log(`reportOnClientRequest clientId=${event?.source?.id}`);
+        logger.debug(`reportOnClientRequest clientId=${event?.source?.id}`);
         await handleReport(event);
     }
 
     async function reportOnPageLoad(/** @type {ExtendableMessageEvent} */ event) {
-        logger.log(
+        logger.debug(
             `reportOnPageLoad clientId=${event?.source?.id} pageUrl=${event?.data?.pageUrl}`
         );
         await handleReport(event);
@@ -194,7 +194,7 @@ export function createSecurityProcessor(deps, streams) {
     // Sync is the only report* that lets errors propagate — a thrown
     // waitUntil tells Chromium to schedule backoff + eventually lastChance.
     async function reportOnSync(/** @type {SyncEvent} */ event) {
-        logger.log(`reportOnSync lastChance=${event?.lastChance}`);
+        logger.debug(`reportOnSync lastChance=${event?.lastChance}`);
         await safely(flushPending, (e) => logger.error('flushPending failed:', e));
         taskManager.attach(event, true);
         const results = await Promise.all(

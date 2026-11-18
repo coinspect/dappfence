@@ -82,30 +82,32 @@ export function createStreamDriver(spec) {
     }
 
     async function sendLoop(isSyncAttempt) {
-        if (!(await canRun())) {
-            logger.log(`[${name}] sendLoop: canRun=false; exiting`);
+        if (!(await logger.withDebugLog(() => canRun()))) {
+            logger.debug(`[${name}] sendLoop: canRun=false; exiting`);
             return DONE;
         }
 
         if (!isSyncAttempt) {
             const state =
-                (await telemetryBatchesStore.getRetryStateForStream(name)) ?? RETRY_DEFAULT;
+                (await logger.withDebugLog(() =>
+                    telemetryBatchesStore.getRetryStateForStream(name)
+                )) ?? RETRY_DEFAULT;
             const delta = state.nextAttemptAt - Date.now();
             if (delta > 0) {
-                logger.log(`[${name}] sendLoop: backoff active, +${delta}ms to go`);
+                logger.debug(`[${name}] sendLoop: backoff active, +${delta}ms to go`);
                 return DONE;
             }
         }
 
         try {
-            await swContext.registerSync(SYNC_TAG_TELEMETRY);
+            await logger.withDebugLog(() => swContext.registerSync(SYNC_TAG_TELEMETRY));
         } catch (err) {
             logger.warn(`[${name}] sync.register failed:`, err);
         }
 
         sendScheduled = false;
         try {
-            await init();
+            await logger.withDebugLog(() => init());
         } catch (err) {
             logger.error(`[${name}] init threw:`, err);
             return DONE;
@@ -115,7 +117,7 @@ export function createStreamDriver(spec) {
             while (true) {
                 await new Promise((r) => setTimeout(r, TICK_MS));
 
-                const result = await tryToSend(commitWhenDone);
+                const result = await logger.withDebugLog(() => tryToSend(commitWhenDone));
                 switch (result) {
                     case 'sent':
                         sendScheduled = false;
@@ -129,7 +131,7 @@ export function createStreamDriver(spec) {
                             sendScheduled = false;
                             continue;
                         }
-                        logger.log(`[${name}] sendLoop: nothing waiting; nothing to send`);
+                        logger.debug(`[${name}] sendLoop: nothing waiting; nothing to send`);
                         return DONE;
                     default: {
                         logger.error(`[${name}] unknown tryToSend result: ${result}`);

@@ -66,7 +66,6 @@ export function createEventStream({ swContext, appStore, manifestService, taskMa
             reason: verdict.reason,
             expectedHashes: verdict.expectedHashes,
             actualHash: verdict.actualHash,
-            url: verdict.url,
             destination: verdict.destination,
             httpStatus: verdict.httpStatus,
             clientId: verdict.clientId,

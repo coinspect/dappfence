@@ -189,6 +189,12 @@ export const normalizeManifestData = (manifestData) => {
         },
     };
 
+    const logsMinLevel =
+        typeof manifestData?.logsMinLevel === 'string' &&
+        ['debug', 'log', 'warn', 'error'].includes(manifestData.logsMinLevel)
+            ? manifestData.logsMinLevel
+            : null;
+
     return {
         ...(typeof manifestData === 'object' && manifestData !== null ? manifestData : {}),
         files: normalizedFiles,
@@ -199,6 +205,7 @@ export const normalizeManifestData = (manifestData) => {
         csp,
         messages: normalizeMessages(manifestData?.messages),
         telemetry,
+        logsMinLevel,
     };
 };
 
@@ -298,6 +305,7 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             const { appVersion, manifest } = await trustedManifestStore.addLatest(
                 normalizeManifestData(signatureResult.payload)
             );
+            logger.setMinLevel(manifest.logsMinLevel ?? config.logsMinLevel ?? 'log');
             logger.log(
                 `Loaded manifest, app version: ${appVersion.substring(0, 12)}... (${Object.keys(manifest.files).length} files)`
             );
@@ -349,7 +357,9 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
     const resolveLatest = async () => {
         const cached = await trustedManifestStore.getLatest();
         if (cached) {
-            logger.log(`Resolved manifest from cache ${cached.appVersion} ${cached.manifest.mode}`);
+            logger.debug(
+                `Resolved manifest from cache ${cached.appVersion} ${cached.manifest.mode}`
+            );
             return cached;
         }
         const fetched = await fetchAndStoreManifest();

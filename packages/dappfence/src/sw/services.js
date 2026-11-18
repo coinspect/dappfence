@@ -33,6 +33,7 @@ function parseConfig(swContext) {
         manifestSignatureIdentity: url.searchParams.get('manifestSignatureIdentity'),
         eventsEndpoint: url.searchParams.get('eventsEndpoint'),
         logsEndpoint: url.searchParams.get('logsEndpoint'),
+        logsMinLevel: url.searchParams.get('logsMinLevel'),
     };
 }
 
@@ -43,6 +44,9 @@ function parseConfig(swContext) {
 export function createServices(swGlobal) {
     const swContext = createSwContext(swGlobal);
     const config = parseConfig(swContext);
+    if (config.logsMinLevel) {
+        logger.setMinLevel(config.logsMinLevel);
+    }
     logger.log('Configuration:', config);
 
     const appStore = createAppStore(swGlobal.indexedDB);
