@@ -118,11 +118,10 @@ export function createActivateHandler({ swContext, onSecurityViolation, appStore
  */
 export function createSyncHandler({ securityProcessor }) {
     return async (event, callChildHandlers) => {
-        logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
         if (event.tag === SYNC_TAG_TELEMETRY) {
             await securityProcessor.reportOnSync(event);
         } else {
-            logger.log('Received sync event:', event.tag);
+            logger.log(`sync tag=${event.tag} lastChance=${event.lastChance}`);
             callChildHandlers(event);
         }
     };

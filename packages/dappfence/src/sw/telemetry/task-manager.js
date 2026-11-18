@@ -36,7 +36,7 @@ export function createTaskManager({ graceMs = 3000 } = {}) {
             }
             keepaliveResolve = null;
             carrierIsSync = false;
-            logger.log('[tm] keepalive released');
+            logger.debug('[tm] keepalive released');
         }, graceMs);
     }
 
@@ -55,7 +55,7 @@ export function createTaskManager({ graceMs = 3000 } = {}) {
         const hasWork = workCount > 0;
         const inGrace = graceTimer !== null;
         if (!hasWork && !inGrace) {
-            logger.log('[tm] attach skipped: idle (no work, no grace)');
+            logger.debug('[tm] attach skipped: idle (no work, no grace)');
             return;
         }
         cancelGrace();
@@ -65,12 +65,12 @@ export function createTaskManager({ graceMs = 3000 } = {}) {
         if (isSync) {
             hopEvent(event);
             carrierIsSync = true;
-            logger.log(`[tm] hopped to sync; work=${workCount}, inGrace=${inGrace}`);
+            logger.debug(`[tm] hopped to sync; work=${workCount}, inGrace=${inGrace}`);
         } else if (carrierIsSync) {
-            logger.log('[tm] hop skipped: preserving sync carrier');
+            logger.debug('[tm] hop skipped: preserving sync carrier');
         } else {
             hopEvent(event);
-            logger.log(`[tm] hopped; work=${workCount}, inGrace=${inGrace}`);
+            logger.debug(`[tm] hopped; work=${workCount}, inGrace=${inGrace}`);
         }
         if (!hasWork) {
             // In grace: restart the clock so this event's attach keeps the

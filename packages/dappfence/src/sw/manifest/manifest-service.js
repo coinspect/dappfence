@@ -54,7 +54,7 @@ export const createManifestService = (deps) => {
         const latestManifest = await manifestLoader.resolveLatest();
         const mode = getEffectiveMode(latestManifest?.manifest);
         const telemetryEndpoints = await resolveTelemetryEndpoints(latestManifest?.manifest);
-        logger.log(`Resolved manifest ${latestManifest?.appVersion} with mode ${mode}`);
+        logger.debug(`Resolved manifest ${latestManifest?.appVersion} with mode ${mode}`);
 
         return {
             mode,

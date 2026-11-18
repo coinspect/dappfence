@@ -91,7 +91,7 @@ export function createTelemetryBatchesStore(db) {
                     const allVerdicts = await verificationResults.getAll();
                     const unclaimedVerdicts = allVerdicts.filter((v) => !v.batchId);
                     if (unclaimedVerdicts.length === 0) {
-                        logger.log('telemetryBatchesStore.createBatch: no unclaimed verdicts');
+                        logger.debug('telemetryBatchesStore.createBatch: no unclaimed verdicts');
                         return null;
                     }
 
@@ -204,7 +204,7 @@ export function createTelemetryBatchesStore(db) {
         async purge(cutoffMs) {
             const now = Date.now();
             if (now - lastPurgeAt < PURGE_RATE_LIMIT_MS) {
-                logger.log('telemetryBatchesStore.purge: rate-limited; skipping');
+                logger.debug('telemetryBatchesStore.purge: rate-limited; skipping');
                 return;
             }
             lastPurgeAt = now;
@@ -212,7 +212,7 @@ export function createTelemetryBatchesStore(db) {
                 const all = await telemetryBatches.getAll();
                 const stale = all.filter((batch) => batch.sentAt && batch.sentAt < cutoffMs);
                 if (stale.length === 0) {
-                    logger.log('telemetryBatchesStore.purge: no stale sent batches');
+                    logger.debug('telemetryBatchesStore.purge: no stale sent batches');
                     return;
                 }
                 await Promise.all(stale.map((batch) => telemetryBatches.delete(batch.id)));
