@@ -18,6 +18,9 @@ import { createSwContext } from './context.js';
 import { createLogger } from '../core/logger.js';
 import { createApiHandler } from './api-handler.js';
 import { createSecurityProcessor } from './security-processor.js';
+import { createTaskManager } from './telemetry/task-manager.js';
+import { createLogStream } from './telemetry/log-stream.js';
+import { createEventStream } from './telemetry/event-stream.js';
 
 const logger = createLogger();
 
@@ -30,6 +33,7 @@ function parseConfig(swContext) {
         manifestSignatureIdentity: url.searchParams.get('manifestSignatureIdentity'),
         eventsEndpoint: url.searchParams.get('eventsEndpoint'),
         logsEndpoint: url.searchParams.get('logsEndpoint'),
+        logsMinLevel: url.searchParams.get('logsMinLevel'),
     };
 }
 
@@ -40,16 +44,24 @@ function parseConfig(swContext) {
 export function createServices(swGlobal) {
     const swContext = createSwContext(swGlobal);
     const config = parseConfig(swContext);
+    if (config.logsMinLevel) {
+        logger.setMinLevel(config.logsMinLevel);
+    }
     logger.log('Configuration:', config);
 
     const appStore = createAppStore(swGlobal.indexedDB);
-    const securityProcessor = createSecurityProcessor({ appStore });
 
     const manifestService = createManifestService({ swContext, appStore, config });
     const messageBroker = createMessageBroker(swContext, {
         getMessageOverrides: async () =>
             (await appStore.trustedManifestStore.getLatest())?.manifest?.messages,
     });
+
+    const taskManager = createTaskManager();
+    const streamDeps = { swContext, appStore, manifestService, taskManager };
+    const streams = [createEventStream(streamDeps), createLogStream(streamDeps)];
+    const securityProcessor = createSecurityProcessor(streamDeps, streams);
+
     const core = {
         swContext,
         appStore,

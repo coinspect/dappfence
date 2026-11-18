@@ -7,7 +7,7 @@
  * indexes.
  */
 
-import { VERIFICATION_STATUS } from '../../core/constants.js';
+import { VERIFICATION_STATUS_BY_NAME } from '../../core/constants.js';
 import { createLogger } from '../../core/logger.js';
 
 /** @typedef {import('./verification-results-store.js').VerdictRow} VerdictRow */
@@ -35,18 +35,16 @@ const logger = createLogger();
 
 const PURGE_RATE_LIMIT_MS = 60_000;
 
-/** @type {Set<string>} */
-const VIOLATION_STATUSES = new Set(
-    Object.values(VERIFICATION_STATUS)
-        .filter((v) => v.isViolation)
-        .map((v) => v.description)
-);
+function retryKeyForStream(stream) {
+    return `${stream.toUpperCase()}_RETRY_STATE_KEY`;
+}
 
 /**
  * @param {import('./indexeddb.js').DbHandle} db
  */
 export function createTelemetryBatchesStore(db) {
     let lastPurgeAt = 0;
+    const retryCache = new Map();
 
     return {
         /** @param {BatchRecord} batch */
@@ -93,7 +91,7 @@ export function createTelemetryBatchesStore(db) {
                     const allVerdicts = await verificationResults.getAll();
                     const unclaimedVerdicts = allVerdicts.filter((v) => !v.batchId);
                     if (unclaimedVerdicts.length === 0) {
-                        logger.log('telemetryBatchesStore.createBatch: no unclaimed verdicts');
+                        logger.debug('telemetryBatchesStore.createBatch: no unclaimed verdicts');
                         return null;
                     }
 
@@ -108,7 +106,9 @@ export function createTelemetryBatchesStore(db) {
                     const batch = {
                         id: crypto.randomUUID(),
                         createdAt: Date.now(),
-                        priority: claimedVerdicts.some((v) => VIOLATION_STATUSES.has(v.status)),
+                        priority: claimedVerdicts.some(
+                            (v) => VERIFICATION_STATUS_BY_NAME.get(v.status)?.isViolation
+                        ),
                     };
                     await telemetryBatches.add(batch);
                     for (const verdict of claimedVerdicts) {
@@ -124,29 +124,74 @@ export function createTelemetryBatchesStore(db) {
         },
 
         /**
-         * Flip all `ids` to sent in one tx. Array signature is required —
-         * a merged POST must flip every contributing batch atomically.
-         * @param {string[]} ids
+         * Per-stream read of retry state. Cached — first read hits IDB,
+         * subsequent reads hit the in-memory cache. Cache is refreshed by
+         * `withRetryTxForStream` after a successful tx commit.
+         * @param {string} stream
+         * @returns {Promise<{attemptNumber: number, nextAttemptAt: number} | null>}
          */
-        async markSent(ids) {
-            if (ids.length === 0) {
-                logger.log('telemetryBatchesStore.markSent: empty id list; skipping');
-                return;
-            }
-            await db.write(['telemetryBatches'], async ({ telemetryBatches }) => {
-                const now = Date.now();
-                for (const id of ids) {
-                    const batch = await telemetryBatches.get(id);
-                    if (!batch) {
-                        logger.log(
-                            `telemetryBatchesStore.markSent: no batch for id ${id}; skipping`
-                        );
-                        continue;
-                    }
-                    batch.sentAt = now;
-                    await telemetryBatches.put(batch);
+        async getRetryStateForStream(stream) {
+            try {
+                if (retryCache.has(stream)) {
+                    return retryCache.get(stream);
                 }
-            });
+                const val = await db.read(['settings'], ({ settings }) =>
+                    settings.get(retryKeyForStream(stream))
+                );
+                retryCache.set(stream, val);
+                return val;
+            } catch (error) {
+                logger.error(`Error reading retry key for stream: ${stream}`, error);
+            }
+            return null;
+        },
+
+        /**
+         * Per-stream atomic tx across `telemetryBatches` + the stream's retry
+         * row. The `retry` helper is bound to
+         * `settings[retryKeyForStream(stream)]`, so each stream's backoff
+         * state is isolated by name without the store having to enumerate
+         * streams.
+         * @template T
+         * @param {string} stream
+         * @param {(helpers: {
+         *   telemetryBatches: {
+         *     get: (id: string) => Promise<BatchRecord | undefined>,
+         *     put: (batch: BatchRecord) => Promise<any>,
+         *   },
+         *   retry: {
+         *     get: () => Promise<{ attemptNumber: number, nextAttemptAt: number } | undefined>,
+         *     put: (val: { attemptNumber: number, nextAttemptAt: number }) => Promise<any>,
+         *   },
+         * }) => Promise<T>} fn
+         * @returns {Promise<T>}
+         */
+        async withRetryTxForStream(stream, fn) {
+            const key = retryKeyForStream(stream);
+            let latestRetry = null;
+            const result = await db.write(
+                ['telemetryBatches', 'settings'],
+                async ({ telemetryBatches, settings }) => {
+                    const helpers = {
+                        telemetryBatches: {
+                            get: async (id) => telemetryBatches.get(id),
+                            put: async (batch) => telemetryBatches.put(batch),
+                        },
+                        retry: {
+                            get: async () => settings.get(key),
+                            put: async (val) => {
+                                latestRetry = val;
+                                return settings.put(val, key);
+                            },
+                        },
+                    };
+                    return await fn(helpers);
+                }
+            );
+            if (latestRetry !== null) {
+                retryCache.set(stream, latestRetry);
+            }
+            return result;
         },
 
         /**
@@ -159,7 +204,7 @@ export function createTelemetryBatchesStore(db) {
         async purge(cutoffMs) {
             const now = Date.now();
             if (now - lastPurgeAt < PURGE_RATE_LIMIT_MS) {
-                logger.log('telemetryBatchesStore.purge: rate-limited; skipping');
+                logger.debug('telemetryBatchesStore.purge: rate-limited; skipping');
                 return;
             }
             lastPurgeAt = now;
@@ -167,7 +212,7 @@ export function createTelemetryBatchesStore(db) {
                 const all = await telemetryBatches.getAll();
                 const stale = all.filter((batch) => batch.sentAt && batch.sentAt < cutoffMs);
                 if (stale.length === 0) {
-                    logger.log('telemetryBatchesStore.purge: no stale sent batches');
+                    logger.debug('telemetryBatchesStore.purge: no stale sent batches');
                     return;
                 }
                 await Promise.all(stale.map((batch) => telemetryBatches.delete(batch.id)));

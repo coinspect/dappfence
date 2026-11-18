@@ -131,8 +131,6 @@ export function createMessageHandler({
     onPageLoadedMessage = async () => {},
 }) {
     return async (event, callChildHandlers) => {
-        logger.log('Received message:', event.data);
-
         if (event.data && event.data.type === MSG.CLAIM_CONTROL) {
             logger.log('CLAIM_CONTROL - Client requested control - claiming all clients');
             await swContext.claimClients();
@@ -142,10 +140,8 @@ export function createMessageHandler({
             );
             await onClientReady(event.source.id);
         } else if (event.data && event.data.type === MSG.REPORT_EVENTS) {
-            logger.log(`REPORT_EVENTS from client ${event.source?.id}`);
             await onReportEventsMessage(event);
         } else if (event.data && event.data.type === MSG.PAGE_LOADED) {
-            logger.log(`PAGE_LOADED from client ${event.source?.id}`);
             await onPageLoadedMessage(event);
         } else {
             logger.log('Received message:', event.data);

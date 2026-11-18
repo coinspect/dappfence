@@ -33,7 +33,7 @@ export const MSG = {
     MESSAGES: 'DAPPFENCE_MESSAGES',
 };
 
-export const SYNC_TAG_REPORT_EVENTS = 'dappfence-report-events';
+export const SYNC_TAG_TELEMETRY = 'dappfence-sync-tag-telemetry';
 
 export const MODE = {
     REPORTING: 'reporting', // log to console and indexeddb
@@ -85,6 +85,17 @@ export const VERIFICATION_STATUS = Object.freeze({
 });
 
 /** @typedef {typeof VERIFICATION_STATUS[keyof typeof VERIFICATION_STATUS]} VerificationStatus */
+
+/**
+ * Inverse index: look up the status object by its description string. Verdict
+ * rows persist `status` as the description (not the object), so callers that
+ * need to query properties like `.isViolation` from a stored row rehydrate
+ * via this Map. Returns undefined for unknown descriptions.
+ * @type {Map<string, {description: string, isViolation: boolean}>}
+ */
+export const VERIFICATION_STATUS_BY_NAME = new Map(
+    Object.values(VERIFICATION_STATUS).map((v) => [v.description, v])
+);
 
 /**
  * The subset of status descriptions that actually reach the warning page.
