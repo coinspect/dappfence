@@ -746,6 +746,9 @@
                         >
                             /csp-test-allowed + inject
                         </button>
+                        <button class="btn" onclick="devFireCspViolation()">
+                            Fire CSP violation (report-uri)
+                        </button>
                     </div>
                     <div
                         id="csp-inject-indicator"
@@ -814,6 +817,180 @@
                     <button class="btn btn--secondary" onclick="devClearIntercept()">
                         Clear intercept
                     </button>
+                </div>
+
+                <div
+                    style="
+                        margin-top: var(--space-3);
+                        padding-top: var(--space-2);
+                        border-top: 1px solid var(--color-border);
+                    "
+                >
+                    <p
+                        style="
+                            font-size: 0.78rem;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-1);
+                        "
+                    >
+                        Dev Tools
+                    </p>
+                    <p
+                        style="
+                            font-size: 0.8rem;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-2);
+                        "
+                    >
+                        Hand-QA pages (top group) bundle CSP reports + DF SW telemetry to the same
+                        destination, in paired PROTECTED/REPORTING flavors. E2e-helper pages (bottom
+                        group) are what the Playwright suite drives — single channel each, local
+                        capture.
+                    </p>
+                    <table
+                        style="
+                            font-size: 0.8rem;
+                            border-collapse: collapse;
+                            width: 100%;
+                            table-layout: fixed;
+                        "
+                    >
+                        <thead>
+                            <tr style="text-align: left; color: var(--color-muted)">
+                                <th style="padding: 4px 8px 4px 0; width: 36%">Page</th>
+                                <th style="padding: 4px 8px; width: 14%">Mode</th>
+                                <th style="padding: 4px 8px; width: 32%">Destination</th>
+                                <th style="padding: 4px 0; width: 18%">Channels</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-top: 1px solid var(--color-border)">
+                                <td
+                                    colspan="4"
+                                    style="
+                                        padding: 6px 0 2px;
+                                        color: var(--color-muted);
+                                        font-weight: 600;
+                                    "
+                                >
+                                    Hand QA
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-worker-protected.html"
+                                        >/csp-worker-protected.html</a
+                                    >
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px">
+                                    <code>127.0.0.1:8787</code> (wrangler dev)
+                                </td>
+                                <td style="padding: 4px 0">CSP + telemetry</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-worker-reporting.html"
+                                        >/csp-worker-reporting.html</a
+                                    >
+                                </td>
+                                <td style="padding: 4px 8px">REPORTING</td>
+                                <td style="padding: 4px 8px">
+                                    <code>127.0.0.1:8787</code> (wrangler dev)
+                                </td>
+                                <td style="padding: 4px 0">CSP + telemetry</td>
+                            </tr>
+                            <!-- #IF BUILD_CLOUD_PAGES -->
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-cloud-protected.html"
+                                        >/csp-cloud-protected.html</a
+                                    >
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px">
+                                    cloud worker (<code>REPORTING_URL</code>)
+                                </td>
+                                <td style="padding: 4px 0">CSP + telemetry</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-cloud-reporting.html"
+                                        >/csp-cloud-reporting.html</a
+                                    >
+                                </td>
+                                <td style="padding: 4px 8px">REPORTING</td>
+                                <td style="padding: 4px 8px">
+                                    cloud worker (<code>REPORTING_URL</code>)
+                                </td>
+                                <td style="padding: 4px 0">CSP + telemetry</td>
+                            </tr>
+                            <!-- /IF -->
+                            <tr style="border-top: 1px solid var(--color-border)">
+                                <td
+                                    colspan="4"
+                                    style="
+                                        padding: 6px 0 2px;
+                                        color: var(--color-muted);
+                                        font-weight: 600;
+                                    "
+                                >
+                                    E2e helpers
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-report.html">/csp-report.html</a>
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px"><code>/capture/csp</code></td>
+                                <td style="padding: 4px 0">CSP only</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/csp-report-only.html">/csp-report-only.html</a>
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px">
+                                    <code>/capture/csp</code> (Report-Only header)
+                                </td>
+                                <td style="padding: 4px 0">CSP only</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/no-csp-entries.html">/no-csp-entries.html</a>
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px">—</td>
+                                <td style="padding: 4px 0">nonce-only CSP (no page entries)</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/telemetry.html">/telemetry.html</a>
+                                </td>
+                                <td style="padding: 4px 8px">PROTECTED</td>
+                                <td style="padding: 4px 8px">
+                                    <code>/capture/events</code>+<code>/logs</code>
+                                </td>
+                                <td style="padding: 4px 0">telemetry</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px 4px 0">
+                                    <a href="/telemetry-reporting.html"
+                                        >/telemetry-reporting.html</a
+                                    >
+                                </td>
+                                <td style="padding: 4px 8px">REPORTING</td>
+                                <td style="padding: 4px 8px">
+                                    <code>/capture/events</code>+<code>/logs</code>
+                                </td>
+                                <td style="padding: 4px 0">telemetry</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -960,6 +1137,20 @@
                     return;
                 }
                 _devToast('Intercept cleared — server serving clean files again');
+            }
+
+            // Deterministic CSP violation: inject an inline <script> whose body is unique
+            // per click (Date.now()) so its hash can never be in the manifest's scripts
+            // allowlist. Browser blocks it + POSTs a report to csp.reportUri if set.
+            function devFireCspViolation() {
+                const s = document.createElement('script');
+                s.textContent =
+                    'window.__dfCspTestFired = ' + Date.now() + '; /* must be blocked */';
+                document.body.appendChild(s);
+                _devToast(
+                    'Un-hashed inline <script> appended — check report-uri destination',
+                    'var(--color-warn)'
+                );
             }
         </script>
 
