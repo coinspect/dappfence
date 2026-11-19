@@ -89,7 +89,7 @@ describe('verifyLocation', () => {
         const response = new Response('file content');
         const deps = {
             swContext: {
-                fetch: vi.fn().mockResolvedValue(response),
+                fetchWrapped: vi.fn().mockResolvedValue(response),
                 getLocationHref: () => baseHref,
             },
             manifestService: mockManifestService(verifyResponse),
@@ -97,7 +97,7 @@ describe('verifyLocation', () => {
 
         const result = await verifyLocation(deps, '/lib.js');
 
-        expect(deps.swContext.fetch).toHaveBeenCalledWith('/lib.js', {
+        expect(deps.swContext.fetchWrapped).toHaveBeenCalledWith('/lib.js', {
             headers: { 'x-dappfence': 'sw-verification' },
         });
         expect(verifyResponse).toHaveBeenCalledWith(
@@ -111,7 +111,7 @@ describe('verifyLocation', () => {
         const verifyResponse = vi.fn();
         const deps = {
             swContext: {
-                fetch: vi.fn().mockResolvedValue({ ok: false, status: 500 }),
+                fetchWrapped: vi.fn().mockResolvedValue({ ok: false, status: 500 }),
                 getLocationHref: () => baseHref,
             },
             manifestService: mockManifestService(verifyResponse),
@@ -131,7 +131,7 @@ describe('verifyLocation', () => {
         const verifyResponse = vi.fn();
         const deps = {
             swContext: {
-                fetch: vi.fn().mockRejectedValue(new Error('network down')),
+                fetchWrapped: vi.fn().mockRejectedValue(new Error('network down')),
                 getLocationHref: () => baseHref,
             },
             manifestService: mockManifestService(verifyResponse),
@@ -160,7 +160,7 @@ describe('verifyImportedScript', () => {
             manifestService: mockManifestService(verifyResponse),
             securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
-                fetch: vi.fn().mockResolvedValue(new Response('content')),
+                fetchWrapped: vi.fn().mockResolvedValue(new Response('content')),
                 getLocationHref: () => baseHref,
             },
         };
@@ -186,7 +186,7 @@ describe('verifyImportedScript', () => {
             manifestService: mockManifestService(verifyResponse),
             securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
-                fetch: vi.fn().mockResolvedValue(new Response('bad')),
+                fetchWrapped: vi.fn().mockResolvedValue(new Response('bad')),
                 getLocationHref: () => baseHref,
             },
         };
@@ -210,7 +210,7 @@ describe('verifyImportedScript', () => {
             manifestService: mockManifestService(verifyResponse),
             securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
-                fetch: vi.fn().mockResolvedValue({ ok: false, status: 404 }),
+                fetchWrapped: vi.fn().mockResolvedValue({ ok: false, status: 404 }),
                 getLocationHref: () => baseHref,
             },
         };
@@ -234,7 +234,7 @@ describe('verifyImportedScript', () => {
             manifestService: mockManifestService(verifyResponse),
             securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
-                fetch: vi.fn().mockRejectedValue(new Error('network down')),
+                fetchWrapped: vi.fn().mockRejectedValue(new Error('network down')),
                 getLocationHref: () => baseHref,
             },
         };
@@ -259,7 +259,7 @@ describe('verifyImportedScript', () => {
             manifestService: mockManifestService(verifyResponse),
             securityProcessor: { processSecurityEvent: vi.fn() },
             swContext: {
-                fetch: vi.fn().mockResolvedValue(new Response('content')),
+                fetchWrapped: vi.fn().mockResolvedValue(new Response('content')),
                 getLocationHref: () => baseHref,
             },
         };

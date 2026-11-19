@@ -5,7 +5,8 @@
  * handoff.
  */
 
-import { ASSET_TYPE, MODE, VERIFICATION_STATUS } from '../../core/constants.js';
+import { ASSET_TYPE, MANIFEST_MAX_BYTES, MODE, VERIFICATION_STATUS } from '../../core/constants.js';
+import { BodyTooLargeError } from '../context.js';
 import { createSingleFlight, hasConfigManifest } from '../../core/utils.js';
 import { toPathname, verifyManifestSignature } from './verification.js';
 import { createLogger } from '../../core/logger.js';
@@ -253,7 +254,7 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
 
     const storeManifestFromResponse = async (response) => {
         try {
-            const json = await response.json();
+            const json = await response.json(MANIFEST_MAX_BYTES);
             const signatureResult = verifyManifestSignature(
                 manifestSignatureType,
                 manifestSignatureIdentity,
@@ -273,7 +274,10 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             logger.error('Error processing manifest:', error);
             return manifestResult({
                 status: VERIFICATION_STATUS.MANIFEST_UNTRUSTED,
-                reason: 'MANIFEST_PARSE_ERROR',
+                reason:
+                    error instanceof BodyTooLargeError
+                        ? 'MANIFEST_TOO_LARGE'
+                        : 'MANIFEST_PARSE_ERROR',
             });
         }
     };
@@ -281,7 +285,7 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
     const loadManifestFromUrl = async () => {
         logger.log(`Loading manifest from ${manifestUrl} fileKey: ${manifestFileKey}`);
         try {
-            const response = await swContext.fetch(manifestUrl, {
+            const response = await swContext.fetchWrapped(manifestUrl, {
                 cache: 'no-cache',
                 headers: { 'x-dappfence': 'manifest-load' },
             });

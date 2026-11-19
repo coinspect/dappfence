@@ -1,6 +1,7 @@
 import { createLogger } from '../../../core/logger.js';
 import { calculateHash } from '../../../core/crypto.js';
-import { VERIFICATION_STATUS } from '../../../core/constants.js';
+import { ASSET_MAX_BYTES, VERIFICATION_STATUS } from '../../../core/constants.js';
+import { BodyTooLargeError } from '../../context.js';
 
 const logger = createLogger();
 
@@ -40,7 +41,7 @@ export const TRANSFORMS = {
  * through to the next contentRule action.
  *
  * @param {string} fileKey
- * @param {{ getBodyBytes(): Promise<{ value: Uint8Array } | { status: object }> }} wrappedResponse
+ * @param {{ bytes(maxBytes: number): Promise<Uint8Array> }} wrappedResponse
  * @param {{ appVersion: string, manifest: { files: Record<string, string[]> } }} manifestInfo
  * @param {object} action - contentRule action with `transform` name
  * @returns {Promise<object|null>}
@@ -51,12 +52,17 @@ export const handleTransform = async (fileKey, wrappedResponse, manifestInfo, ac
         logger.warn(`Unknown transform: ${action.transform}`);
         return null;
     }
-    const bytes = await wrappedResponse.getBodyBytes();
-    if ('status' in bytes) {
-        return bytes;
+    let bytes;
+    try {
+        bytes = await wrappedResponse.bytes(ASSET_MAX_BYTES);
+    } catch (err) {
+        return {
+            status: VERIFICATION_STATUS.ERROR,
+            reason: err instanceof BodyTooLargeError ? 'ASSET_TOO_LARGE' : 'BODY_UNREADABLE',
+        };
     }
     const { appVersion, manifest } = manifestInfo;
-    const text = new TextDecoder().decode(bytes.value);
+    const text = new TextDecoder().decode(bytes);
     const ranges = rule.findStripRanges(text);
     let stripped = text;
     for (const [start, end] of ranges.sort((a, b) => b[0] - a[0])) {

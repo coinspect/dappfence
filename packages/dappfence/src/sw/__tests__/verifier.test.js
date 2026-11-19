@@ -74,13 +74,20 @@ function makeSubResource(path = '/app.js') {
     };
 }
 
-function makeOkResponse() {
+function makeOkResponse(bodyHash = FILE_HASH) {
+    // WrappedResponse-shaped mock: exposes the native-ish metadata plus the
+    // new wrapper API (bytes/calculateBodyHash with a maxBytes cap).
     const r = {
         ok: true,
         type: 'basic',
-        arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(8))),
+        status: 200,
+        bytes: vi.fn(() => Promise.resolve(new Uint8Array([1, 2, 3]))),
+        calculateBodyHash: vi.fn(() => Promise.resolve(bodyHash)),
+        json: vi.fn(() => Promise.resolve({})),
+        unwrap: vi.fn(() => ({})),
     };
-    r.clone = vi.fn(() => makeOkResponse());
+    // Legacy clone-based tests still hit this; new verifier never calls it.
+    r.clone = vi.fn(() => makeOkResponse(bodyHash));
     return r;
 }
 
@@ -236,70 +243,11 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
             const req = makeSubResource('/integrity-manifest.json');
             const response = makeOkResponse();
             const result = await verify(req, response);
-            expect(response.clone).toHaveBeenCalled();
-            const clonedResponse = response.clone.mock.results[0].value;
-            expect(storeManifestFromResponse).toHaveBeenCalledWith(clonedResponse);
+            // Verifier hands the WrappedResponse to the loader; the wrapper's
+            // internal body read clones as needed.
+            expect(storeManifestFromResponse).toHaveBeenCalledWith(response);
             expect(fetchAndStoreManifest).not.toHaveBeenCalled();
             expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-        });
-    });
-
-    describe('manifest self-verification — response clone', () => {
-        it('passes a clone to storeManifestFromResponse so the original body stays unconsumed', async () => {
-            let originalConsumed = false;
-            let cloneConsumed = false;
-
-            const clonedResponse = {
-                ok: true,
-                type: 'basic',
-                json: vi.fn(async () => {
-                    cloneConsumed = true;
-                    return {};
-                }),
-            };
-            const response = {
-                ok: true,
-                type: 'basic',
-                clone: vi.fn(() => clonedResponse),
-                json: vi.fn(async () => {
-                    originalConsumed = true;
-                    return {};
-                }),
-                arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(8))),
-            };
-
-            const storeManifestFromResponse = vi.fn(async (r) => {
-                await r.json();
-                return {
-                    status: VERIFICATION_STATUS.MATCH,
-                    appVersion: 'v1',
-                    manifest: MANIFEST_V1,
-                };
-            });
-
-            const { verifyResponse } = createVerifier(
-                {
-                    swContext: makeSwContext(),
-                    appStore: makeAppStore(),
-                    config: { manifestUrl: 'https://example.com/integrity-manifest.json' },
-                },
-                {
-                    storeManifestFromResponse,
-                    fetchAndStoreManifest: vi.fn(),
-                    getManifestHistory: vi.fn(() => Promise.resolve([])),
-                },
-                strategy
-            );
-
-            await verifyResponse(
-                makeSubResource('/integrity-manifest.json'),
-                response,
-                'client-1',
-                null
-            );
-
-            expect(cloneConsumed).toBe(true);
-            expect(originalConsumed).toBe(false);
         });
     });
 
@@ -360,10 +308,9 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
             await verifyResponse(makeNav('/'), makeOkResponse(), 'client-1', INFO_V1);
             fetchAndStoreManifest.mockClear();
 
-            calculateHash.mockResolvedValueOnce('sha256-tampered');
             const result = await verifyResponse(
                 makeSubResource('/index.html'),
-                makeOkResponse(),
+                makeOkResponse('sha256-tampered'),
                 'client-1',
                 INFO_V1
             );
@@ -493,23 +440,10 @@ describe.each(STRATEGIES)('createVerifier — $name strategy', ({ strategy }) =>
         });
     });
 
-    describe('body-hash caching across escalation', () => {
-        it('hashes the response body once per request even when escalating through multiple manifests', async () => {
-            // latest + 2 historic + fetched = 4 manifest attempts; only the fetched
-            // one has the right hash. Without caching, calculateHash fires per attempt.
-            const { verify } = makeFactoryVerifier({
-                latestManifest: { appVersion: 'v-stale-1', manifest: MANIFEST_V2 },
-                historicManifests: [
-                    { appVersion: 'v-stale-2', manifest: MANIFEST_V2 },
-                    { appVersion: 'v-stale-3', manifest: MANIFEST_V2 },
-                ],
-                fetchResult: INFO_V1,
-            });
-            const result = await verify(makeNav('/'), makeOkResponse());
-            expect(result.status).toBe(VERIFICATION_STATUS.MATCH);
-            expect(calculateHash).toHaveBeenCalledTimes(1);
-        });
-    });
+    // Body-hash caching is a property of the response wrapper (see
+    // context.test.js); the verifier's job is just to call .calculateBodyHash
+    // once per action.verify invocation, which escalation already exercises
+    // via the step 2/3/4 tests above.
 
     describe('stale client pruning', () => {
         it('calls matchAllClients after pinning', async () => {

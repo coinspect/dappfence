@@ -125,7 +125,7 @@ export const verifyManifestSignature = (
  */
 export async function verifyLocation({ swContext, manifestService }, url) {
     try {
-        const response = await swContext.fetch(
+        const response = await swContext.fetchWrapped(
             url,
             isFeatureEnabled('mark_request')
                 ? { headers: { 'x-dappfence': 'sw-verification' } }

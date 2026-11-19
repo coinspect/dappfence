@@ -5,8 +5,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { basicVerifyAgainstManifest } from '../manifest/security-verifier.js';
-import { makeResponseWrapper } from '../manifest/html/response-wrapper.js';
+import { createSwContext } from '../context.js';
 import { VERIFICATION_STATUS } from '../../core/constants.js';
+
+const { wrapResponse } = createSwContext({
+    location: { href: '', origin: '' },
+    clients: { matchAll: async () => [], get: async () => null, claim: async () => null },
+    navigator: { userAgent: '' },
+    skipWaiting: async () => null,
+    fetch: async () => null,
+});
 
 const FILE_HASH = 'sha256-abc123';
 const LOCATION_HREF = 'https://example.com/sw.js';
@@ -40,18 +48,59 @@ function makeReq(path = '/index.html') {
     };
 }
 
+function makeStreamOverBytes(bytes) {
+    return {
+        getReader() {
+            let delivered = false;
+            return {
+                async read() {
+                    if (delivered || bytes.byteLength === 0) {
+                        return { value: undefined, done: true };
+                    }
+                    delivered = true;
+                    return { value: bytes, done: false };
+                },
+                async cancel() {},
+                releaseLock() {},
+            };
+        },
+    };
+}
+
 function makeResponse(bytes = new Uint8Array([1, 2, 3])) {
-    return makeResponseWrapper({
+    const build = () => ({
         ok: true,
-        clone: () => ({ arrayBuffer: () => Promise.resolve(bytes.buffer) }),
+        status: 200,
+        type: 'basic',
+        url: '',
+        redirected: false,
+        headers: new Headers(),
+        body: makeStreamOverBytes(bytes),
+        clone: () => build(),
     });
+    return wrapResponse(build());
 }
 
 function makeFailingResponse() {
-    return makeResponseWrapper({
+    const build = () => ({
         ok: true,
-        clone: () => ({ arrayBuffer: () => Promise.reject(new Error('boom')) }),
+        status: 200,
+        type: 'basic',
+        url: '',
+        redirected: false,
+        headers: new Headers(),
+        body: {
+            getReader: () => ({
+                async read() {
+                    throw new Error('boom');
+                },
+                async cancel() {},
+                releaseLock() {},
+            }),
+        },
+        clone: () => build(),
     });
+    return wrapResponse(build());
 }
 
 describe('basicVerifyAgainstManifest', () => {
