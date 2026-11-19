@@ -130,7 +130,7 @@ export const VERIFICATION_STATUS = Object.freeze({
 // (scripts, HTML documents) are capped generously — large enough for any
 // realistic bundle, small enough to bound hash-verification memory per fetch.
 export const MANIFEST_MAX_BYTES = 256 * 1024;
-export const ASSET_MAX_BYTES = 10 * 1024 * 1024;
+export const ASSET_MAX_BYTES = 100 * 1024 * 1024;
 
 /**
  * @typedef {'UNSUPPORTED_METHOD'
