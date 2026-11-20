@@ -74,10 +74,10 @@ const STATUS_LOG = {
  * statuses (REWRITE / CSP_PROTECTED) are logged to the events store but never
  * activate a block; violations go all the way through.
  *
- * Status/assetType invariant held by the callers: MANIFEST and SERVICE_WORKER
- * asset types only reach the processor with MATCH / SKIPPED / isViolation
- * statuses — never REWRITE / CSP_PROTECTED / REDIRECT. The telemetry branch
- * below is therefore only ever hit for ASSET-type verdicts in practice.
+ * Status/assetType invariant held by the callers: MANIFEST asset type only
+ * reaches the processor with MATCH / SKIPPED / isViolation statuses — never
+ * REWRITE / CSP_PROTECTED / REDIRECT. The telemetry branch below is therefore
+ * only ever hit for ASSET-type verdicts in practice.
  *
  * Static typing on `SecurityEventDetails` is enforced; callers that type-check
  * cannot pass malformed payloads, so no runtime devAsserts.

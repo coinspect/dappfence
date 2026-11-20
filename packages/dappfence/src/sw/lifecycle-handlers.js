@@ -7,17 +7,10 @@ const logger = createLogger();
  * @param {object} deps.swContext - Service worker context wrapper
  * @param {object} deps.config - Parsed URL config (appSW, manifestUrl, etc.)
  * @param {object} deps.manifestService - Manifest verification service
- * @param {function} deps.onInstallDone - Called when install event processing completes
  * @param {object} deps.securityProcessor - Security event orchestrator
  * @returns {function} Install event handler (event, callChildHandlers) => Promise<void>
  */
-export function createInstallHandler({
-    swContext,
-    config,
-    manifestService,
-    onInstallDone,
-    securityProcessor,
-}) {
+export function createInstallHandler({ swContext, config, manifestService, securityProcessor }) {
     /**
      * When a web app has its own service worker, we load it using `importScripts` but after hooking functions to maintain our code.
      */
@@ -67,9 +60,6 @@ export function createInstallHandler({
             await new Promise((resolve) => setTimeout(resolve));
             logger.log('calling child handlers');
             callChildHandlers(event);
-
-            logger.log('Install event done');
-            onInstallDone();
 
             logger.log('Install complete');
         } catch (error) {

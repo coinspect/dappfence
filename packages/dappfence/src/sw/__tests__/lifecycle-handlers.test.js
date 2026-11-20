@@ -23,7 +23,6 @@ function makeInstallDeps({
         appVersion: 'v1',
         manifest: { mode: 'reporting' },
     },
-    onInstallDone = vi.fn(),
     processSecurityEvent = vi.fn(() => Promise.resolve(false)),
     reportAfterInstall = vi.fn(() => Promise.resolve()),
 } = {}) {
@@ -33,7 +32,6 @@ function makeInstallDeps({
         manifestService: {
             fetchAndStoreManifest: vi.fn(() => Promise.resolve(fetchAndStoreManifestResult)),
         },
-        onInstallDone,
         securityProcessor: {
             processSecurityEvent,
             reportAfterInstall,
@@ -127,16 +125,6 @@ describe('createInstallHandler', () => {
         await expect(handler({}, vi.fn())).resolves.toBeUndefined();
     });
 
-    it('calls onInstallDone even when importScripts throws', async () => {
-        globalThis.importScripts = vi.fn(() => {
-            throw new Error('importScripts failed');
-        });
-        const deps = makeInstallDeps({ appSW: 'https://example.com/app-sw.js' });
-        const handler = createInstallHandler(deps);
-        await handler({}, vi.fn());
-        expect(deps.onInstallDone).toHaveBeenCalledTimes(1);
-    });
-
     it('calls callChildHandlers', async () => {
         const deps = makeInstallDeps();
         const handler = createInstallHandler(deps);
@@ -144,13 +132,6 @@ describe('createInstallHandler', () => {
         const callChildHandlers = vi.fn();
         await handler(event, callChildHandlers);
         expect(callChildHandlers).toHaveBeenCalledWith(event);
-    });
-
-    it('calls onInstallDone', async () => {
-        const deps = makeInstallDeps();
-        const handler = createInstallHandler(deps);
-        await handler({}, vi.fn());
-        expect(deps.onInstallDone).toHaveBeenCalledTimes(1);
     });
 
     it('calls securityProcessor.reportAfterInstall', async () => {
