@@ -69,15 +69,13 @@ const projectsPerEnv = (env: string) => [
             ...devices['Desktop Chrome'],
         },
     })),
-    ...['simple-app-' + env, 'simple-app-sw-fixed-' + env, 'simple-app-sw-capture-' + env].map(
-        (name) => ({
-            name,
-            testMatch: [`${name}/**/*.spec.ts`, 'common/**/*.spec.ts'],
-            use: {
-                ...devices['Desktop Chrome'],
-            },
-        })
-    ),
+    ...['simple-app', 'simple-app-sw-fixed', 'simple-app-sw-capture'].map((name) => ({
+        name: `${name}-${env}`,
+        testMatch: [`${name}/**/*.spec.ts`, 'common/**/*.spec.ts'],
+        use: {
+            ...devices['Desktop Chrome'],
+        },
+    })),
 ];
 
 /**
