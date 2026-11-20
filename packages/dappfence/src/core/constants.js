@@ -99,8 +99,6 @@ export const VERIFICATION_STATUS = Object.freeze({
 /**
  * @typedef {'NULL_RESPONSE'
  *         | 'BODY_UNREADABLE'
- *         | 'FETCH_BAD_STATUS'
- *         | 'FETCH_EXCEPTION'
  *         | 'NO_MANIFEST_AVAILABLE'
  *         } AssetErrorReason
  */
@@ -136,7 +134,6 @@ export const VERIFICATION_STATUS = Object.freeze({
 
 export const ASSET_TYPE = Object.freeze({
     ASSET: 'asset',
-    SERVICE_WORKER: 'service-worker',
     MANIFEST: 'manifest',
 });
 

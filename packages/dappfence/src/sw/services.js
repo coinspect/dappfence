@@ -10,7 +10,6 @@ import {
     createSyncHandler,
 } from './lifecycle-handlers.js';
 import { createHookService } from './appsw-hooks.js';
-import { verifyImportedScript } from './manifest/verification.js';
 import { createManifestService } from './manifest/manifest-service.js';
 import { createMessageBroker, createMessageHandler } from './message-broker.js';
 import { createAppStore } from './storage/index.js';
@@ -56,7 +55,7 @@ export function createServices(swGlobal) {
         onSecurityViolation: messageBroker.broadcastSecurityViolation,
     };
 
-    const hookService = createHookService((scriptPath) => verifyImportedScript(core, scriptPath));
+    const hookService = createHookService();
     const handleApiEndpoint = createApiHandler(core);
 
     return {
@@ -65,7 +64,6 @@ export function createServices(swGlobal) {
         installHandler: createInstallHandler({
             ...core,
             config,
-            onInstallDone: hookService.installEventDone,
         }),
         activateHandler: createActivateHandler(core),
         syncHandler: createSyncHandler({ securityProcessor }),
