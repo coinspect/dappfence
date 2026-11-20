@@ -57,7 +57,7 @@ src/
 │   │   ├── manifest-loader.js   # Fetching, signature verification, normalization, storage handoff
 │   │   ├── verifier.js          # Hash-every-response + pathRules key resolution + escalation walk
 │   │   ├── rules.js             # pathRules evaluation (resolveManifestKey)
-│   │   └── verification.js      # verifyManifestSignature, verifyLocation, verifyImportedScript, toPathname
+│   │   └── verification.js      # verifyManifestSignature, toPathname, decodePathname
 │   ├── storage/
 │   │   ├── indexeddb.js       # Low-level IndexedDB wrapper
 │   │   ├── index.js           # App store facade (recordSecurityViolation)
@@ -89,7 +89,7 @@ main.js
         │     ├── manifest-loader.js (fetch, verify signature, normalize, hand to store)
         │     ├── verifier.js (hash-every-response + escalation walk)
         │     ├── rules.js (pathRules — resolveManifestKey)
-        │     └── verification.js (verifyManifestSignature, verifyLocation, verifyImportedScript)
+        │     └── verification.js (verifyManifestSignature, toPathname, decodePathname)
         ├── message-broker.js
         ├── appsw-hooks.js
         ├── fetch-handler.js
@@ -111,8 +111,9 @@ raw `self`), making it testable with a mock global. Returns
 **`context.js`** wraps the SW global scope behind a testable interface: `fetch`, `location`,
 `clients`, `skipWaiting`, `navigator.userAgent`.
 
-**`appsw-hooks.js`** monkey-patches `importScripts` and `addEventListener` to intercept app SW
-operations. Receives an `onVerifyScript(scriptPath)` callback — no knowledge of manifest or storage.
+**`appsw-hooks.js`** monkey-patches `importScripts` (log-only) and `addEventListener` (routes
+child-SW listeners through the DappFence chain). Takes only the SW global scope — no knowledge of
+manifest or storage.
 
 **`response.js`** provides pure functions for creating block responses and navigation warning
 redirects.
@@ -126,8 +127,8 @@ All handlers receive a shared `core` object:
     the API handler, verifies assets via the ctx returned by `manifestService.resolveManifest`,
     broadcasts violations.
 -   **`lifecycle-handlers.js`** — `install` initializes the manifest, loads the app SW via
-    `importScripts`, signals `onInstallDone`. `activate` claims clients and re-broadcasts
-    violations.
+    `importScripts`, drains queued telemetry via `reportAfterInstall`. `activate` claims clients and
+    re-broadcasts violations.
 -   **`api-handler.js`** — handles `/sw-api/*` endpoints (status, security-warning page, block
     details, site unblock).
 -   **`message-broker.js`** — queues and delivers security messages to clients. Handles
@@ -139,8 +140,7 @@ All handlers receive a shared `core` object:
 cross-module contract strings.
 
 **`manifest/verification.js`** contains pure verification primitives: `verifyManifestSignature`
-(secp256k1 recovery), `toPathname` / `decodePathname` (URL → manifest key), `verifyLocation` (fetch
-and verify), `verifyImportedScript` (delegates to `verifyLocation`, records violations).
+(secp256k1 recovery) and `toPathname` / `decodePathname` (URL → manifest key).
 
 **`manifest/rules.js`** evaluates pathRules — `resolveManifestKey(req, base, manifest, response)`
 applies `directory-index`, `html-extension`, `match`/`resolveAs`, and last-resort `error-page` rules
@@ -202,8 +202,8 @@ Ethereum-style secp256k1 key recovery.
 
 ## Design Patterns
 
--   **Callbacks over objects** — modules receive focused callbacks (`onSecurityViolation`,
-    `onInstallDone`, `onVerifyScript`) instead of full service objects.
+-   **Callbacks over objects** — modules receive focused callbacks (e.g. `onSecurityViolation`)
+    instead of full service objects.
 -   **Shared `core` deps** — `{ swContext, appStore, manifestService, onSecurityViolation }` bundled
     and spread into handlers.
 -   **`swContext` wraps all globals** — no module touches `self` directly except `appsw-hooks.js`

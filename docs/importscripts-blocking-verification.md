@@ -1,11 +1,32 @@
 # Blocking `importScripts` Verification via SharedWorker + Atomics
 
+> **Status (2026-11-20):** design doc for a future capability. The previous fire-and-forget
+> verification of `importScripts` was removed — it executed the script before the async hash check
+> could complete, so it offered no actual blocking. `importScripts` is now entirely unverified at
+> runtime; this doc describes the only path known to us for restoring a real block.
+
 ## Problem
 
 When DappFence's SW loads the app service worker via `importScripts(config.appSW)`, and when the app
-SW itself calls `importScripts()` for additional scripts, verification is currently
-**fire-and-forget**: the script is fetched and executed synchronously by the browser before the
-async hash check completes. A compromised script runs before DappFence can do anything about it.
+SW itself calls `importScripts()` for additional scripts, the scripts run synchronously with no
+integrity check. The browser fetches and executes them before any async hash check can complete, so
+a compromised script runs before DappFence can do anything about it.
+
+### Practical mitigation observed in testing
+
+With a long HTTP cache lifetime (`Cache-Control: max-age=…`) on the imported scripts, the browser
+serves subsequent `importScripts` calls from the HTTP cache rather than re-fetching from the origin.
+We verified this empirically: once a script has been loaded with a long-lived cache entry, the
+origin can be swapped and the SW keeps evaluating the cached bytes on every reinstall until the
+entry expires. That narrows the exploit window to:
+
+-   the first install (the bootstrap gap, already accepted)
+-   installs that happen after the cache entry expires
+
+In other words, the "every `importScripts` call is a free execution window" framing overstates the
+exposure for sites that cache their SW payload aggressively. The gap is real but narrower than the
+spec text suggests, which is why we stopped shipping fire-and-forget verification (it added no
+blocking power and ran an extra fetch on the hot path that cache already made redundant).
 
 The fetch handler covers `<script>` tags on controlled pages — those go through `respondWith()`
 which can hold the response until verification passes. `importScripts` inside the SW is the

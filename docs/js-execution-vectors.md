@@ -595,8 +595,11 @@ importScripts('/lib.js');
 
 Synchronously fetches and evaluates one or more scripts.
 
-**DappFence**: **SW intercept** for scripts fetched by app workers. For the app SW specifically,
-DappFence monkey-patches `importScripts` to intercept calls and verify content before execution.
+**DappFence**: **SW intercept** for scripts fetched by app workers. For the app SW itself,
+`importScripts` cannot currently be blocked on verification — the call is synchronous and no
+in-scope primitive lets us hold it on an async hash check. See
+`docs/importscripts-blocking-verification.md` for the SharedWorker + `Atomics` design that would
+close the gap.
 
 ---
 

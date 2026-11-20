@@ -58,8 +58,6 @@
 
     "block.ERROR.NULL_RESPONSE": "Verification failed: no response received",
     "block.ERROR.BODY_UNREADABLE": "Verification failed: response body unreadable",
-    "block.ERROR.FETCH_BAD_STATUS": "Verification failed: non-OK HTTP status",
-    "block.ERROR.FETCH_EXCEPTION": "Verification failed: fetch threw",
     "block.ERROR.NO_MANIFEST_AVAILABLE": "Verification failed: no trusted manifest available",
     "block.ERROR.fallback": "Verification error ({reason})",
 

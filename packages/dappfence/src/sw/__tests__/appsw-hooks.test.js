@@ -18,74 +18,39 @@ describe('createHookService (with importScripts)', () => {
     });
 
     it('installHooks patches importScripts when it is defined', () => {
-        const onVerifyScript = vi.fn().mockResolvedValue(undefined);
         const scope = {
             addEventListener: vi.fn(),
             importScripts: vi.fn(),
         };
-        const svc = createHookService(onVerifyScript, scope);
+        const svc = createHookService(scope);
         svc.installHooks();
         expect(scope.importScripts).not.toBe(globalThis.importScripts);
     });
 
-    it('patched importScripts calls onVerifyScript for each script path', async () => {
-        const onVerifyScript = vi.fn().mockResolvedValue(undefined);
+    it('patched importScripts forwards to the original importScripts', () => {
         const originalImportScriptsFn = vi.fn();
         const scope = {
             addEventListener: vi.fn(),
             importScripts: originalImportScriptsFn,
         };
-        const svc = createHookService(onVerifyScript, scope);
+        const svc = createHookService(scope);
         svc.installHooks();
 
         scope.importScripts('/app-sw.js', '/vendor.js');
 
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        expect(onVerifyScript).toHaveBeenCalledWith('/app-sw.js');
-        expect(onVerifyScript).toHaveBeenCalledWith('/vendor.js');
         expect(originalImportScriptsFn).toHaveBeenCalledWith('/app-sw.js', '/vendor.js');
-    });
-
-    it('patched importScripts logs warning when called after installEventDone', async () => {
-        const onVerifyScript = vi.fn().mockResolvedValue(undefined);
-        const scope = {
-            addEventListener: vi.fn(),
-            importScripts: vi.fn(),
-        };
-        const svc = createHookService(onVerifyScript, scope);
-        svc.installHooks();
-        svc.installEventDone();
-
-        expect(() => scope.importScripts('/after-install.js')).not.toThrow();
-    });
-
-    it('patched importScripts logs error when onVerifyScript rejects', async () => {
-        const onVerifyScript = vi.fn().mockRejectedValue(new Error('verification failed'));
-        const scope = {
-            addEventListener: vi.fn(),
-            importScripts: vi.fn(),
-        };
-        const svc = createHookService(onVerifyScript, scope);
-        svc.installHooks();
-
-        scope.importScripts('/bad-script.js');
-
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        expect(onVerifyScript).toHaveBeenCalledWith('/bad-script.js');
     });
 });
 
 describe('createHookService', () => {
     let originalAddEventListener;
-    let onVerifyScript;
     let service;
     let swScope;
 
     beforeEach(() => {
         originalAddEventListener = vi.fn();
         swScope = { addEventListener: originalAddEventListener };
-        onVerifyScript = vi.fn().mockResolvedValue(undefined);
-        service = createHookService(onVerifyScript, swScope);
+        service = createHookService(swScope);
     });
 
     it('installHooks patches swScope.addEventListener', () => {
@@ -110,11 +75,6 @@ describe('createHookService', () => {
         service.installHooks();
         service.addDefaultEventListeners();
         expect(originalAddEventListener).toHaveBeenCalledTimes(15);
-    });
-
-    it('installEventDone is a function and does not throw when called', () => {
-        expect(typeof service.installEventDone).toBe('function');
-        expect(() => service.installEventDone()).not.toThrow();
     });
 
     it('a listener appended via patched swScope.addEventListener is invoked when callChildHandlers fires', () => {

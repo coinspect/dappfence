@@ -1,7 +1,6 @@
-import { ASSET_TYPE, VERIFICATION_STATUS } from '../../core/constants.js';
+import { VERIFICATION_STATUS } from '../../core/constants.js';
 import { recoverEthereumAddress, recoverPersonalSign } from '../../core/crypto.js';
 import { createLogger } from '../../core/logger.js';
-import { isFeatureEnabled } from '../../core/utils.js';
 
 /** @typedef {import('../../core/constants.js').ManifestLoadReason} ManifestLoadReason */
 /** @typedef {import('../../core/constants.js').AssetErrorReason} AssetErrorReason */
@@ -112,69 +111,3 @@ export const verifyManifestSignature = (
         };
     }
 };
-
-/**
- * Fetch a URL and verify its content against the trusted manifest.
- * The synthetic destination 'script' is used since importScripts is the primary caller.
- *
- * @param {object} deps
- * @param {object} deps.swContext
- * @param {object} deps.manifestService
- * @param {string} url
- * @returns {Promise<{ status: VerificationStatus, reason?: AssetErrorReason, httpStatus?: number }>}
- */
-export async function verifyLocation({ swContext, manifestService }, url) {
-    try {
-        const response = await swContext.fetch(
-            url,
-            isFeatureEnabled('mark_request')
-                ? { headers: { 'x-dappfence': 'sw-verification' } }
-                : {}
-        );
-        if (response) {
-            if (response.ok) {
-                const ctx = await manifestService.resolveManifest();
-                return ctx.verifyResponse(
-                    { url, destination: 'script', method: 'GET', mode: '' },
-                    response
-                );
-            }
-            logger.error(`Failed to fetch ${url}: ${response.status}`);
-            return {
-                status: VERIFICATION_STATUS.ERROR,
-                reason: 'FETCH_BAD_STATUS',
-                httpStatus: response.status,
-            };
-        }
-        logger.error(`Failed to fetch ${url}: null response`);
-    } catch (error) {
-        logger.error(`Error verifying ${url}:`, error);
-    }
-    return { status: VERIFICATION_STATUS.ERROR, reason: 'FETCH_EXCEPTION' };
-}
-
-/**
- * Verify an imported script against the trusted manifest.
- * @param {object} deps
- * @param {object} deps.manifestService
- * @param {object} deps.swContext
- * @param {object} deps.securityProcessor
- * @param {string} scriptPath
- */
-export async function verifyImportedScript(deps, scriptPath) {
-    const fileKey = toPathname(scriptPath, deps.swContext.getLocationHref());
-    const verificationResult = await verifyLocation(deps, scriptPath);
-    await deps.securityProcessor.processSecurityEvent({
-        ...verificationResult,
-        url: scriptPath,
-        fileKey,
-        assetType: ASSET_TYPE.SERVICE_WORKER,
-    });
-    if (verificationResult.status.isViolation) {
-        logger.log(
-            `Security violation detected for ${scriptPath}: ${verificationResult.status.description}`
-        );
-    } else {
-        logger.log(`Script verified: ${scriptPath}`);
-    }
-}
