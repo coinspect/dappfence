@@ -1,6 +1,7 @@
-import { expect, test } from '../sw-fixtures';
+import { expect, test, SWHelper } from '../sw-fixtures';
+import type { Page, TestInfo } from '@playwright/test';
 
-test.setTimeout(20 * 60 * 60 * 1000); // 20 minutes
+test.setTimeout(20 * 60 * 1000); // 20 minutes
 
 function formatTimestampDelta(start: number, end: number) {
     const deltaSecs = Math.floor((end - start) / 1000);
@@ -193,7 +194,10 @@ test.describe('24hs limit', () => {
         await page.reload();
         await page.waitForURL('/');
         await page.waitForTimeout(500);
-        await page.reload();
+        // give null an opportunity to activate
+        await page.goto('about:blank');
+        await page.waitForTimeout(500);
+        await page.goto('/');
         await page.waitForURL('/');
 
         // Now when we reload, we are not protected anymore
@@ -201,7 +205,9 @@ test.describe('24hs limit', () => {
         await swHelper.setFakeTime(`+31h x600`);
         await page.reload();
         await page.waitForURL('/');
-        await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+        // Default 5s matcher timeout is a hair too short for the post-Soft-Update parse
+        // under +31h x600 fake-time churn (seen ~6s real-time); 60s is defensive headroom.
+        await expect(page).toHaveTitle('DappFence - Manifest Mode Example', { timeout: 60_000 });
 
         // Wait for null.js's IIFE to log NULL in SW context. Observed via the fixture's
         // waitForServiceWorkerMessage (which listens on SW consoles, not page console).
@@ -318,5 +324,241 @@ test.describe('24hs limit', () => {
             dappfenceStillInControl,
             `attack should have SUCCEEDED (24h Soft Update is not blockable by DappFence); dappfenceStillInControl=${dappfenceStillInControl}`
         ).toBe(false);
+    });
+});
+
+/*
+ * Child SW cache behavior across Chromium's 24h soft-update boundary.
+ *
+ * ─── Chromium cache logic for SW update checks ─────────────────────────
+ *
+ * DappFence registers its SW with `updateViaCache: 'all'` (see
+ * packages/dappfence/src/client/sw-registration.js:182, 292, 305).
+ *
+ * Cache decision lives in Chromium at
+ *   content/browser/service_worker/service_worker_loader_helpers.cc
+ *   → ShouldValidateBrowserCacheForScript(is_main_script, force_bypass_cache,
+ *      cache_mode, time_since_last_check)
+ * called from
+ *   content/browser/service_worker/service_worker_single_script_update_checker.cc
+ *   → ServiceWorkerSingleScriptUpdateChecker ctor.
+ *
+ * Sets net::LOAD_VALIDATE_CACHE (conditional GET → server hit even on 304)
+ * when ANY of:
+ *   (A) ShouldBypassCacheDueToUpdateViaCache: cache_mode == 'none', OR
+ *       (cache_mode == 'imports' AND is_main_script).
+ *   (B) time_since_last_check > kServiceWorkerScriptMaxCacheAge (24h).
+ *       Applies to BOTH main script and imports.
+ *   (C) force_bypass_cache (DevTools).
+ *
+ * With updateViaCache='all': (A) never fires. (B) fires at 24h for both main
+ * and imports → revalidation requests hit the server for dappfence.js AND
+ * sw_app.js on the next update check.
+ *
+ * ─── Why we simulate the SW kill instead of waiting for idle ──────────
+ *
+ * Playwright auto-attaches a CDP session to every ServiceWorker target in
+ * the context (needed for its Worker object + console events — we rely on
+ * this for waitForServiceWorkerMessage etc.). Chromium's
+ *   content/browser/service_worker/embedded_worker_instance.cc
+ *   → StopIfNotAttachedToDevTools()
+ * explicitly SKIPS idle termination when ANY debugger is attached ("Service
+ * Worker termination by a timeout timer was canceled because DevTools is
+ * attached"). So under Playwright, SWs don't idle-terminate no matter how
+ * long the page sits on about:blank or how aggressive we make faketime.
+ * Verified both by Chromium source read and by direct testing.
+ *
+ * The orthogonal note: the Soft Update check itself (whether to revalidate
+ * the SW script) is NOT affected by devtools attachment. It's triggered by
+ * `navigation + 1s delay` or `SW idle for 30s` in service_worker_version.cc.
+ * Under Playwright the "navigation + 1s" path still fires normally — so the
+ * 24h revalidation at +25h is observable without any workaround.
+ *
+ * To test cold-restart cache behavior (which does require a dead SW) we
+ * simulate the kill:
+ *   1. page.goto('about:blank')  — drop page JS context (kills the 15s
+ *      REPORT_EVENTS ping that would otherwise keep the SW busy)
+ *   2. Wait ~20s real-time       — > one ping interval, so any in-flight
+ *      REPORT_EVENTS message drains and the SW is genuinely idle
+ *   3. CDP ServiceWorker.stopWorker — maps to Chromium's Stop() path,
+ *      bypasses the devtools-attached inhibition
+ *   4. Await CDP stopped confirmation
+ * Next navigation then cold-starts the SW from stored bytes, same as a
+ * natural idle-terminated SW would.
+ *
+ *
+ * ─── Per-checkpoint expectations (verified empirically) ───────────────
+ *
+ *   Plain-reloads mode (SW stays alive):
+ *     +9h, +23h:   no update check (<24h stale). dappfence=0, swApp=0.
+ *     +25h:        24h stale → LOAD_VALIDATE_CACHE for main + imports.
+ *                  dappfence=1 (active SW URL revalidation). swApp=1.
+ *
+ *   Simulated-kill mode (CDP stopWorker between steps):
+ *     +9h, +23h:   cold-restart only. scriptRuns delta=1.
+ *                  dappfence=0, swApp=0, installs=0  — child SW came
+ *                  from SW script storage, not server, no new install.
+ *     +25h:        cold-restart PLUS Soft Update revalidation.
+ *                  scriptRuns delta=1. dappfence=1 (active URL).
+ *
+ * Capture-mode note: the "two SWs" (dappfence.js and
+ * dappfence.js?appSW=sw_app.js) end as one active registration after SW #2
+ * replaces SW #1 in the capture dance. Soft Update only revalidates the
+ * active URL → expected dappfence refetch is 1, same as fixed.
+ */
+test.describe('child SW stays HTTP-cached until Chromium soft-update past 24h', () => {
+    const CACHE_10_DAYS_SECONDS = 10 * 24 * 3600;
+    const MAIN_SW_START_MESSAGE = 'Initializing service worker protection';
+    const CHILD_SW_INITIAL_MESSAGE = 'CHILD SERVICE WORKER ACTIVE';
+    const CHILD_SW_CACHE_HEADERS = [
+        {
+            match: '*dappfence.js',
+            headers: { 'Cache-Control': `max-age=${CACHE_10_DAYS_SECONDS}` },
+        },
+        { match: '*sw_app.js', headers: { 'Cache-Control': `max-age=${CACHE_10_DAYS_SECONDS}` } },
+        { match: '*', headers: { 'Cache-Control': 'max-age=108000' } },
+    ];
+
+    async function getTestHelpers(page: Page, swHelper: SWHelper, testInfo: TestInfo) {
+        const initialSetup = async (app: string) => {
+            const env = testInfo.project.name.replace(/^fake-time-/, '');
+            await swHelper.setServerTestParameters({
+                appName: `${app}-${env}`,
+                appVersion: 'latest',
+                saveResponses: true,
+                responseHeaders: CHILD_SW_CACHE_HEADERS,
+            });
+            const childLoadPromise = swHelper.waitForServiceWorkerMessage(CHILD_SW_INITIAL_MESSAGE);
+            await page.goto('');
+            await expect(page).toHaveTitle('DappFence - Manifest Mode Example');
+            await swHelper.waitForServiceWorkerActivation(page);
+            await childLoadPromise;
+        };
+        const reload = async (timeOffset: string) => {
+            await swHelper.setFakeTime(timeOffset);
+            await page.goto('');
+            await page.waitForURL('/');
+        };
+
+        const simulateSWKill = async () => {
+            // stop client timers
+            await page.goto('about:blank');
+            // simulate chrome timeout
+            // await new Promise((resolve) => setTimeout(resolve, 20_000));
+            // kill the server using dev tools
+            await swHelper.killAllServiceWorkers(page);
+        };
+
+        const getCounters = async () => {
+            const responses = await swHelper.getServerResponses();
+            const countUrl = (needle: string) =>
+                responses.filter((r) => r.url.includes(needle)).length;
+            return {
+                dappfence: countUrl('/dappfence.js'),
+                swApp: countUrl('/sw_app.js'),
+                responses: responses
+                    .map((r) => r.url)
+                    .filter((r) => ['dappfence', 'sw_app'].some((x) => r.includes(x))),
+            };
+        };
+        return {
+            initialSetup,
+            getCounters,
+            simulateSWKill,
+            reload,
+        };
+    }
+
+    ['simple-app-sw-fixed', 'simple-app-sw-capture'].forEach((app) => {
+        test(`${app}: plain reloads keep SW alive; +25h soft-update refetches`, async ({
+            page,
+            swHelper,
+        }, testInfo) => {
+            const { initialSetup, reload, getCounters } = await getTestHelpers(
+                page,
+                swHelper,
+                testInfo
+            );
+
+            await initialSetup(app);
+            const initial = await getCounters();
+            expect(initial.dappfence).toBe(app === 'simple-app-sw-fixed' ? 2 : 3);
+            // importScript(childSW) will populate the cache and our full file hash check uses that cache (there are no extre fetch)
+            expect(initial.swApp).toBe(1);
+
+            // Soft update does the fetch but doesn't do anything if the file didn't changed.
+            await swHelper.interceptAndModifyPageContent('**/dappfence.js');
+
+            await reload('+9h');
+            const c9 = await getCounters();
+            expect(c9.dappfence).toBe(initial.dappfence);
+            expect(c9.swApp).toBe(initial.swApp);
+
+            await reload('+23h');
+            const c23 = await getCounters();
+            expect(c23.dappfence).toBe(initial.dappfence);
+            expect(c23.swApp).toBe(initial.swApp);
+
+            const childLoadPromise25 =
+                swHelper.waitForServiceWorkerMessage(CHILD_SW_INITIAL_MESSAGE);
+            await reload('+25h');
+            await childLoadPromise25;
+            const c25 = await getCounters();
+            expect(c25.dappfence).toBe(initial.dappfence + 1);
+            // Even in this case appSW is taken from the cache (or even not reloaded)
+            expect(c25.swApp).toBe(initial.swApp);
+        });
+
+        test(`${app}: simulated SW kill between steps; cold-restart from storage`, async ({
+            page,
+            swHelper,
+        }, testInfo) => {
+            const { initialSetup, simulateSWKill, reload, getCounters } = await getTestHelpers(
+                page,
+                swHelper,
+                testInfo
+            );
+
+            await initialSetup(app);
+            const initial = await getCounters();
+            expect(initial.dappfence).toBe(app === 'simple-app-sw-fixed' ? 2 : 3);
+            expect(initial.swApp).toBe(1);
+            await simulateSWKill();
+
+            // Soft update does the fetch but doesn't do anything if the file didn't changed.
+            await swHelper.interceptAndModifyPageContent('**/dappfence.js');
+
+            const mainSWInitPromise9 = swHelper.waitForServiceWorkerMessage(MAIN_SW_START_MESSAGE);
+            await reload('+9h');
+            await mainSWInitPromise9;
+            const c9 = await getCounters();
+            expect(c9.dappfence).toBe(initial.dappfence);
+            expect(c9.swApp).toBe(initial.swApp);
+            await simulateSWKill();
+
+            const mainSWInitPromise23 = swHelper.waitForServiceWorkerMessage(MAIN_SW_START_MESSAGE);
+            await reload('+23h');
+            await mainSWInitPromise23;
+            const c23 = await getCounters();
+            expect(c23.dappfence).toBe(initial.dappfence);
+            expect(c23.swApp).toBe(initial.swApp);
+            await simulateSWKill();
+
+            const mainSWInitPromise25 = swHelper.waitForServiceWorkerMessage(MAIN_SW_START_MESSAGE);
+            const childLoadPromise25 =
+                swHelper.waitForServiceWorkerMessage(CHILD_SW_INITIAL_MESSAGE);
+
+            await reload('+25h');
+            await mainSWInitPromise25;
+
+            // in Playwright even after a soft update the V2 never get activated
+            await simulateSWKill();
+            await childLoadPromise25;
+
+            const c25 = await getCounters();
+            expect(c25.dappfence).toBe(initial.dappfence + 1);
+            // Even in this case appSW is taken from the cache (or even not reloaded)
+            expect(c25.swApp).toBe(initial.swApp);
+        });
     });
 });
