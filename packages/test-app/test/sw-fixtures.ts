@@ -109,6 +109,7 @@ export type SWHelper = {
     setServerTestParameters: (testParameters?: ServerTestParameters) => Promise<void>;
     clearServerTestParameters: (port: number) => Promise<void>;
     getServerResponses: () => Promise<ServerTestResponse[]>;
+    killAllServiceWorkers: (page: Page) => Promise<void>;
 };
 
 // Define the type for your new fixture
@@ -499,6 +500,39 @@ async function swHelper(
         getServerResponses: async () => {
             const res = await request.get('/api/test-responses');
             return await res.json();
+        },
+        killAllServiceWorkers: async (page: Page) => {
+            type Version = { versionId: string; runningStatus: string };
+            const cdp = await page.context().newCDPSession(page);
+            const pending = new Set<string>();
+            let sawSnapshot = false;
+
+            const done = new Promise<void>((resolve) => {
+                cdp.on('ServiceWorker.workerVersionUpdated', (data) => {
+                    const { versions }: { versions: Version[] } = data;
+                    for (const v of versions) {
+                        if (v.runningStatus === 'running' && !pending.has(v.versionId)) {
+                            pending.add(v.versionId);
+                            cdp.send('ServiceWorker.stopWorker', { versionId: v.versionId });
+                        }
+                        if (v.runningStatus === 'stopped') {
+                            pending.delete(v.versionId);
+                        }
+                    }
+                    sawSnapshot = true;
+                    if (pending.size === 0) {
+                        resolve();
+                    }
+                });
+            });
+
+            await cdp.send('ServiceWorker.enable');
+            await done;
+            await cdp.detach();
+
+            if (!sawSnapshot) {
+                throw new Error('killAllServiceWorkers: no workerVersionUpdated event received');
+            }
         },
     };
 

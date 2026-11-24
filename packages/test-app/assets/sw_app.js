@@ -25,7 +25,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-    log('activate listener');
+    log('CHILD SERVICE WORKER ACTIVE');
     event.waitUntil(self.clients.claim());
 });
 
