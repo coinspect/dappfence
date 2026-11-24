@@ -489,4 +489,132 @@ test.describe('SW OOM — hash buffering under oversized bodies', () => {
             }
         });
     }
+
+    // -----------------------------------------------------------------
+    // (SW-sweep) Bracket where DappFence's SW path starts returning
+    // BODY_UNREADABLE instead of completing the hash. (c) above proves
+    // the SW handles 500 MB cleanly; (b) proves it fails at 2.1 GB. This
+    // walks 1000 → 2000 MB to pin where `response.clone().arrayBuffer()`
+    // starts refusing. The signal is the SW console: a successful hash
+    // logs no SECURITY ALERT (NOT_IN_MANIFEST fires silently in reporting
+    // mode's pass-through path); a failed hash logs
+    // `Verification error (BODY_UNREADABLE)`.
+    // -----------------------------------------------------------------
+    for (const mb of [1000, 1250, 1500, 1750, 2000]) {
+        test(`(SW-sweep ${mb} MB) DappFence hash path`, async ({ browser }) => {
+            test.setTimeout(20 * 60 * 1000);
+            const context = await browser.newContext();
+            const page = await freshDappFencePage(context);
+
+            const swErrors: string[] = [];
+            const swWorker = context.serviceWorkers()[0];
+            if (swWorker) {
+                swWorker.on('console', (msg) => {
+                    if (msg.type() === 'error') swErrors.push(msg.text());
+                });
+            }
+
+            const { loaded, errored, elapsed, pageCrashed } = await triggerAndWait(
+                page,
+                mb,
+                1,
+                15 * 60 * 1000
+            );
+
+            const bodyUnreadable = swErrors.some((e) =>
+                /BODY_UNREADABLE|Verification error/i.test(e)
+            );
+
+            console.log(
+                `[SW-sweep ${mb}MB]`,
+                JSON.stringify({
+                    loaded,
+                    errored,
+                    elapsedMs: elapsed,
+                    pageCrashed,
+                    bodyUnreadable,
+                    swErrorCount: swErrors.length,
+                })
+            );
+
+            try {
+                await context.close();
+            } catch {
+                // ignore
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // (CSP-probe long) 2000 MB with a 20 min nav timeout. The sweep found
+    // 1.5 GB completes in ~7.6 min and 2 GB hits the 10-min goto timeout
+    // with no violation / crash signal. This probe distinguishes
+    // "super-linear but still progressing" from "Chromium silently gave
+    // up." If this completes, no hard CSP-hash cap exists below 2 GB.
+    // -----------------------------------------------------------------
+    test('(CSP-probe long) 2000 MB with 20 min nav timeout', async ({ browser }) => {
+        test.setTimeout(25 * 60 * 1000);
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        let pageCrashed = false;
+        page.on('crash', () => {
+            pageCrashed = true;
+        });
+        await page.addInitScript(() => {
+            (window as unknown as Record<string, unknown>).__cspHits = [];
+            document.addEventListener('securitypolicyviolation', (e) => {
+                ((window as unknown as Record<string, unknown>).__cspHits as unknown[]).push({
+                    violatedDirective: e.violatedDirective,
+                    blockedURI: e.blockedURI,
+                    sample: (e.sample ?? '').slice(0, 80),
+                });
+            });
+        });
+
+        const t0 = Date.now();
+        let navErr: string | null = null;
+        try {
+            await page.goto('/huge/csp-page?mb=2000&seed=3', { timeout: 20 * 60 * 1000 });
+        } catch (e) {
+            navErr = (e as Error).message.slice(0, 180);
+        }
+        const elapsed = Date.now() - t0;
+
+        let cspReady: boolean | null = null;
+        let cspHits: unknown[] = [];
+        if (!pageCrashed) {
+            try {
+                cspReady = await page.evaluate(() => {
+                    const w = window as unknown as Record<string, unknown>;
+                    return typeof w.__oomCspReady === 'boolean'
+                        ? (w.__oomCspReady as boolean)
+                        : null;
+                });
+                cspHits = await page.evaluate(() => {
+                    const w = window as unknown as Record<string, unknown>;
+                    return Array.isArray(w.__cspHits) ? (w.__cspHits as unknown[]) : [];
+                });
+            } catch {
+                // page may have died; ignore
+            }
+        }
+
+        console.log(
+            '[CSP-probe 2000MB long]',
+            JSON.stringify({
+                navSucceeded: navErr === null,
+                navErr,
+                pageCrashed,
+                cspReady,
+                cspHits,
+                elapsedMs: elapsed,
+            })
+        );
+
+        try {
+            await context.close();
+        } catch {
+            // ignore
+        }
+    });
 });

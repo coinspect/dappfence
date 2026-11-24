@@ -9,6 +9,14 @@ The accompanying test harness is in `packages/test-app/test/sw-oom/`. Run it loc
 `RUN_OOM=1 npx playwright test --project=sw-oom-dev` from `packages/test-app`. Expect 40+ minutes of
 wall time at the large sizes.
 
+> **Measurement baseline.** All numbers below were captured against `main` (see sibling commit for
+> the harness). `main` reads SW response bodies through `sw/manifest/html/response-wrapper.js`,
+> which wraps `response.clone().arrayBuffer()` in a `try/catch` — that's the catch the SW-survival
+> findings credit. This branch (`feat/sw-fetch-capped`) replaces that primitive with a
+> `WrappedResponse` in `sw/context.js` that adds explicit `maxBytes` caps; running the same harness
+> against this branch's code would short-circuit before the hash step and would not reproduce the
+> unbounded-hash numbers. The findings are what motivated closing this PR rather than merging it.
+
 ## The question
 
 DappFence hashes every response body it verifies. That hash step is one of two things, depending on
@@ -148,17 +156,38 @@ framing was wrong.
 -   **Browser CSP-hash path:** no observed hard upper bound up to 1.5 GB. Chromium hashes and
     executes. At 2+ GB, undetermined — pending the longer-timeout probe.
 
-## Open questions (probes queued)
+## Follow-up probes (now resolved)
 
-1. **CSP: slow vs. hung at 2 GB?** Rerun 2 GB with a 20-minute `page.goto` timeout. If it completes,
-   Chromium has no hard CSP-hash cap (just super-linear slowness, same pattern as the smaller
-   sizes). If it times out again, points to a silent giveup.
-2. **SW: bracket where BODY_UNREADABLE starts.** Today we know the SW survives 500 MB (hashes
-   cleanly) and fails at 2.1 GB (BODY_UNREADABLE). The boundary is probably around V8's
-   `ArrayBuffer` max — nominally 2 GiB but the practical ceiling varies with V8 heap limits. A short
-   sweep at 1000 / 1500 / 1750 / 2000 MB would pin where the catch starts firing.
+### CSP: 2 GB with a 20-minute timeout
 
-Both are tracked as follow-up runs; neither blocks the write-up.
+Reran the 2000 MB CSP-hash case with a 20-min `page.goto` timeout instead of 10. **Nav completed in
+12.8 minutes.** cspReady=true, zero violations, no crash. So Chromium has no hard CSP-hash cap below
+2 GB — the earlier "fail" at 10 min was just the super-linear slowness catching up with the budget.
+Per-MB at 2000 MB: 384 ms/MB (vs 305 at 1500 MB and 216 at 500 MB — continuing the super-linear
+trend).
+
+### SW: bracket where BODY_UNREADABLE starts
+
+Walked the SW hash path at 1000 / 1250 / 1500 / 1750 / 2000 MB in reporting mode. **At every size up
+to 2000 MB the SW's hash step completed successfully** — no BODY_UNREADABLE verdict. The page V8
+OOMed and the tab crashed, but the SW itself kept going.
+
+| Size    | SW hashed | SW BODY_UNREADABLE | Page crashed |
+| ------- | --------- | ------------------ | ------------ |
+| 1000 MB | yes       | no                 | yes          |
+| 1250 MB | yes       | no                 | yes          |
+| 1500 MB | yes       | no                 | yes          |
+| 1750 MB | yes       | no                 | yes          |
+| 2000 MB | yes       | no                 | yes          |
+| 2100 MB | no        | **yes**            | yes          |
+
+So the SW's wall sits **between 2000 and 2100 MB** — consistent with V8's historical ~2 GiB
+`ArrayBuffer` ceiling (`kMaxByteLength = 2³¹ - 1`). The page V8 wall is a lot earlier: everything
+below 500 MB loads cleanly, everything at or above 1000 MB crashes the page. So the practical
+ordering is: **page breaks at 500 MB — 1 GB; SW breaks at ~2 GiB.** The attacker's useful range for
+"crash the tab via oversize body" starts well below the SW's wall, which means (a) the SW is almost
+always still alive when the page dies, and (b) the hash step is only interesting for sizes in a
+narrow window where it starts rejecting before the page would have died anyway.
 
 ## How to run the harness
 
