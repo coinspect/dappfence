@@ -78,6 +78,22 @@ const projectsPerEnv = (env: string) => [
             },
         })
     ),
+    // OOM tests — gated behind RUN_OOM=1, use the reporting-mode build so
+    // repeated NOT_IN_MANIFEST hits pay the hash cost each time instead of
+    // short-circuiting through the protected-mode site lock.
+    // OOM tests are gated behind RUN_OOM=1. The top-level `workers`/
+    // `fullyParallel` settings keep concurrency controlled — each test
+    // consumes most of the renderer's heap, so overlapping them would
+    // double-OOM the host unpredictably.
+    ...(process.env.RUN_OOM
+        ? [
+              {
+                  name: 'sw-oom-' + env,
+                  testMatch: ['sw-oom/**/*.spec.ts'],
+                  use: { ...devices['Desktop Chrome'] },
+              },
+          ]
+        : []),
 ];
 
 /**
@@ -93,14 +109,16 @@ const projectsPerEnv = (env: string) => [
  */
 export default defineConfig({
     testDir: './test',
-    /* Run e2e in files in parallel */
-    fullyParallel: true,
+    /* Run e2e in files in parallel — but not when RUN_OOM is set, since
+       each OOM test consumes most of the renderer heap and overlapping
+       them would double-OOM the host unpredictably. */
+    fullyParallel: !process.env.RUN_OOM,
     /* Fail the build on CI if you accidentally left test.only in the source code. */
     forbidOnly: !!process.env.CI,
     /* Retry on CI only */
     retries: process.env.CI ? 2 : 0,
-    /* Opt out of parallel e2e on CI. */
-    workers: process.env.CI ? 1 : undefined,
+    /* Opt out of parallel e2e on CI or when running OOM tests. */
+    workers: process.env.CI || process.env.RUN_OOM ? 1 : undefined,
     /* Reporter to use. See https://playwright.dev/docs/test-reporters */
     reporter: process.env.CI ? 'html' : 'list',
     /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

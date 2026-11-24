@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { TRANSFORM } from '@dappfence/core/constants';
 
+import { streamPayload, computeHash, cspHashFor } from './huge-payload.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_ROOT = path.resolve(__dirname, '..', 'assets');
 const DAPPFENCE_DIST = fileURLToPath(import.meta.resolve('@dappfence/core'));
@@ -351,6 +353,160 @@ export function startServer({
             });
     }
 
+    /**
+     * OOM test harness — streams PRNG-backed payloads of arbitrary size to drive
+     * DappFence SW / browser SRI / browser CSP into the hash-buffering path. See
+     * test/common/sw-oom.spec.ts for the consumers.
+     *
+     * Routes:
+     *   GET /huge/bytes?mb=N&seed=S     → raw JS payload (deterministic)
+     *   GET /huge/sri-page?mb=N&seed=S  → HTML with <script src integrity=...>
+     *   GET /huge/csp-page?mb=N&seed=S  → HTML with inline <script> + CSP sha256
+     *   GET /huge/df-page?mb=N&seed=S   → HTML that registers DappFence SW + loads bytes
+     */
+    function serveHuge(req, res, testParams) {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const mb = Math.max(0, Math.min(16384, parseInt(url.searchParams.get('mb'), 10) || 0));
+        const seed = parseInt(url.searchParams.get('seed'), 10) || 1;
+        const totalBytes = mb * 1024 * 1024;
+        const route = testParams.requestPath;
+
+        logRequestToConsole(req, testParams, `🧨 ${route} mb=${mb} seed=${seed}`);
+
+        if (route === '/huge/bytes') {
+            res.writeHead(200, {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Content-Length': String(totalBytes),
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'X-Dappfence-Payload-Seed': String(seed),
+                'X-Dappfence-Payload-Bytes': String(totalBytes),
+            });
+            streamPayload(res, totalBytes, seed)
+                .then(() => res.end())
+                .catch((err) => {
+                    console.error('[huge/bytes] stream error:', err.message);
+                    try {
+                        res.destroy();
+                    } catch {
+                        // already closed
+                    }
+                });
+            return;
+        }
+
+        if (route === '/huge/sri-page') {
+            const integrity = computeHash(seed, totalBytes);
+            const html = `<!DOCTYPE html>
+<html><head><title>OOM SRI ${mb}MB seed=${seed}</title></head>
+<body>
+<p>SRI integrity test, mb=${mb}, seed=${seed}</p>
+<script>window.__oomStart = performance.now();</script>
+<script
+    src="/huge/bytes?mb=${mb}&seed=${seed}"
+    integrity="${integrity}"
+    crossorigin="anonymous"
+    onload="window.__oomScriptLoaded = true; window.__oomElapsed = performance.now() - window.__oomStart;"
+    onerror="window.__oomScriptError = true; window.__oomElapsed = performance.now() - window.__oomStart;"
+></script>
+</body></html>`;
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            });
+            res.end(html);
+            return;
+        }
+
+        if (route === '/huge/csp-page') {
+            const inlineHash = cspHashFor(seed, totalBytes);
+            // Marker scripts run under a nonce so the big hashed script and
+            // the small instrumentation scripts coexist cleanly. CSP spec:
+            // when a nonce or hash source is present, `'unsafe-inline'` is
+            // ignored — so without this nonce the markers would be blocked
+            // and we'd never know whether the big-hash path worked.
+            const nonce = crypto.randomBytes(16).toString('base64');
+            const head = `<!DOCTYPE html>
+<html><head><title>OOM CSP ${mb}MB seed=${seed}</title></head>
+<body>
+<p>CSP sha256 test, mb=${mb}, seed=${seed}</p>
+<script nonce="${nonce}">window.__oomStart = performance.now(); window.__oomCspReady = false;</script>
+<script>`;
+            const tail = `</script>
+<script nonce="${nonce}">window.__oomCspReady = true; window.__oomElapsed = performance.now() - window.__oomStart;</script>
+</body></html>`;
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                // Allow the nonced marker scripts and the hashed big script.
+                // The browser hashes the inline <script> body and compares
+                // to the hash source; full match → run, mismatch → blocked.
+                'Content-Security-Policy': `script-src 'nonce-${nonce}' '${inlineHash}'; object-src 'none'; base-uri 'none';`,
+            });
+            res.write(head);
+            streamPayload(res, totalBytes, seed)
+                .then(() => {
+                    res.write(tail);
+                    res.end();
+                })
+                .catch((err) => {
+                    console.error('[huge/csp-page] stream error:', err.message);
+                    try {
+                        res.destroy();
+                    } catch {
+                        // already closed
+                    }
+                });
+            return;
+        }
+
+        if (route === '/huge/df-page') {
+            // Minimal DappFence-registered page that pulls in /huge/bytes as a
+            // <script>. The SW intercepts, hashes, and (when `mb` is large) OOMs.
+            // DAPPFENCE_CFG is populated by dev-server from the active app's
+            // manifest config; we reuse the simple-app values so the SW thinks
+            // it has a legit manifest. The huge payload path isn't in that
+            // manifest → NOT_IN_MANIFEST path → SW still hashes before
+            // recording the violation. See docs/manifest-rules-design.md.
+            const html = `<!DOCTYPE html>
+<html><head><title>OOM DF ${mb}MB seed=${seed}</title>
+<script
+    src="/dappfence.js"
+    data-manifest="/integrity-manifest.json"
+    data-manifest-signature-type="noble-secp256k1-recovered-eth"
+    data-manifest-signature-identity="0x0d5b81e9bd4d6ab0a0487ea9fe161a4152b11625"
+></script>
+</head>
+<body>
+<p>DappFence SW OOM test, mb=${mb}, seed=${seed}</p>
+<script>
+window.__oomStart = performance.now();
+window.__oomScriptLoaded = false;
+window.__oomScriptError = false;
+// Wait for SW to control this page, THEN trigger the huge fetch.
+(async () => {
+    if (!navigator.serviceWorker.controller) {
+        await new Promise((r) => navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }));
+    }
+    const s = document.createElement('script');
+    s.src = '/huge/bytes?mb=${mb}&seed=${seed}';
+    s.onload = () => { window.__oomScriptLoaded = true; window.__oomElapsed = performance.now() - window.__oomStart; };
+    s.onerror = () => { window.__oomScriptError = true; window.__oomElapsed = performance.now() - window.__oomStart; };
+    document.head.appendChild(s);
+})();
+</script>
+</body></html>`;
+            res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            });
+            res.end(html);
+            return;
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end(`unknown /huge route: ${route}`);
+    }
+
     function serveApi(res, req, testParams) {
         const params = testParameters[testParams.testKey];
         if (req.method === 'DELETE') {
@@ -564,6 +720,10 @@ export function startServer({
             Object.keys(CORS_HEADERS).forEach((header) => {
                 res.setHeader(header, CORS_HEADERS[header]);
             });
+        }
+
+        if (testParams.requestPath.startsWith('/huge/')) {
+            return serveHuge(req, res, testParams);
         }
 
         if (testParams.requestPath.startsWith('/api/')) {
