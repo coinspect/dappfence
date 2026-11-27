@@ -1,4 +1,5 @@
-import { expect, test, SWHelper } from '../sw-fixtures';
+import { SWHelper } from '../sw-fixtures';
+import { CdpLessChromeHandle, expect, IdleProbeChrome, test } from './cdp-less-fixtures';
 import type { Page, TestInfo } from '@playwright/test';
 
 test.setTimeout(20 * 60 * 1000); // 20 minutes
@@ -17,6 +18,7 @@ test('measure cache expiration time for DappFence reload with fake time accelera
     swHelper,
     baseURL,
 }) => {
+    test.skip(!process.env.FAKE_TIME_MEASURE, 'slow test');
     await swHelper.setServerTestParameters({
         appName: 'simple-app-dev',
         appVersion: 'latest',
@@ -561,4 +563,210 @@ test.describe('child SW stays HTTP-cached until Chromium soft-update past 24h', 
             expect(c25.swApp).toBe(initial.swApp);
         });
     });
+});
+
+/*
+ * Natural idle-termination variant of the "SW kill between steps" test above.
+ *
+ * Same +9h / +23h / +25h cadence and same counter expectations, but the SW is
+ * terminated by Chromium's own ~30s idle timer instead of DevTools. That path
+ * goes through the real production code: no debugger attached, SW cold-starts
+ * from script storage, and the Soft Update at +25h fires through a terminated-
+ * then-restarted worker — not a worker that Playwright has been holding alive.
+ *
+ * Runs in a sibling chrome spawned by the `idleProbeChrome` fixture; Playwright
+ * never attaches to it (see cdp-less-fixtures.ts). Faketime is forwarded via
+ * LD_PRELOAD so setFakeTime still steers the clock for Soft Update.
+ *
+ */
+test.describe('child SW stays HTTP-cached across idle-termination cold restart', () => {
+    const CACHE_10_DAYS_SECONDS = 10 * 24 * 3600;
+    const CHILD_SW_CACHE_HEADERS = [
+        {
+            match: '*dappfence.js',
+            headers: { 'Cache-Control': `max-age=${CACHE_10_DAYS_SECONDS}` },
+        },
+        { match: '*sw_app.js', headers: { 'Cache-Control': `max-age=${CACHE_10_DAYS_SECONDS}` } },
+        { match: '*', headers: { 'Cache-Control': 'max-age=108000' } },
+    ];
+    const IDLE_GAP_MS = 45_000;
+
+    function getIdleTestHelpers(
+        idleProbeChrome: IdleProbeChrome,
+        probe: CdpLessChromeHandle,
+        baseURL: string,
+        testInfo: TestInfo
+    ) {
+        const { session, swTargetsCreated, swTargetsDestroyed, evalExpr, waitFor, sleep } = probe;
+
+        const waitForSWActive = () =>
+            waitFor(
+                () =>
+                    evalExpr<boolean>(
+                        `navigator.serviceWorker.getRegistration().then(r => !!r?.active)`
+                    ),
+                240_000,
+                'SW activation'
+            );
+
+        const initialSetup = async (app: string) => {
+            const env = testInfo.project.name.replace(/^fake-time-/, '');
+            await idleProbeChrome.setServerTestParameters({
+                appName: `${app}-${env}`,
+                appVersion: 'latest',
+                saveResponses: true,
+                responseHeaders: CHILD_SW_CACHE_HEADERS,
+            });
+            const loaded = session.once('Page.loadEventFired');
+            await session.send('Page.navigate', { url: baseURL });
+            await loaded;
+            await waitForSWActive();
+            await waitFor(() => swTargetsCreated.length > 0, 60_000, 'initial SW target');
+        };
+
+        const idleGap = async () => {
+            const destroyedBefore = swTargetsDestroyed.size;
+            const loaded = session.once('Page.loadEventFired');
+            await session.send('Page.navigate', { url: 'about:blank' });
+            await loaded;
+            await sleep(IDLE_GAP_MS);
+            await waitFor(
+                () => swTargetsDestroyed.size > destroyedBefore,
+                30_000,
+                'SW target destroyed during idle gap'
+            );
+        };
+
+        const reload = async (timeOffset: string) => {
+            await idleProbeChrome.setFakeTime(timeOffset);
+            const chromeTime = await evalExpr<number>('Date.now()');
+            console.log(
+                `[idle-cache] after setFakeTime('${timeOffset}') chrome Date.now()=${new Date(chromeTime).toISOString()}`
+            );
+            const createdBefore = swTargetsCreated.length;
+            const loaded = session.once('Page.loadEventFired');
+            await session.send('Page.navigate', { url: baseURL });
+            await loaded;
+            await waitForSWActive();
+            await waitFor(
+                () => swTargetsCreated.length > createdBefore,
+                60_000,
+                'new SW target after reload'
+            );
+        };
+
+        const getCounters = async () => {
+            const responses = await idleProbeChrome.getServerResponses();
+            const countUrl = (needle: string) =>
+                responses.filter((r) => r.url.includes(needle)).length;
+            return {
+                dappfence: countUrl('/dappfence.js'),
+                swApp: countUrl('/sw_app.js'),
+            };
+        };
+
+        return { initialSetup, idleGap, reload, getCounters };
+    }
+
+    test('simple-app-sw-fixed: idle-termination between steps; +25h soft-update refetches', async ({
+        baseURL,
+        idleProbeChrome,
+    }, testInfo) => {
+        const log = (m: string) => console.log('[idle-cache]', m);
+        const probe = await idleProbeChrome.launch(log);
+        const { initialSetup, idleGap, reload, getCounters } = getIdleTestHelpers(
+            idleProbeChrome,
+            probe,
+            baseURL!,
+            testInfo
+        );
+
+        await initialSetup('simple-app-sw-fixed');
+        const initial = await getCounters();
+        expect(initial.dappfence).toBe(2);
+        expect(initial.swApp).toBe(1);
+        await idleGap();
+        // No intercept is armed by default, this test exercises the "natural
+        // idle-termination with unchanged scripts" path. The two commented
+        // intercepts below are kept in place because together they document the
+        // three distinct Chromium behaviors at the +25h update-check boundary.
+        // All three were confirmed empirically (netlog + SW target lifecycle +
+        // "CHILD SERVICE WORKER ACTIVE" count); pick whichever one matches the
+        // scenario you want to exercise.
+        //
+        //   (A) NO intercept (this test, both lines commented):
+        //       - Main (dappfence.js) fetched with LOAD_DISABLE_CACHE at +25h.
+        //         Server returns same bytes → NO V2 install, SW stays at V1.
+        //       - The SAME update check revalidates the import (sw_app.js) with
+        //         LOAD_VALIDATE_CACHE → forced conditional GET to the server
+        //         even though the HTTP cache entry is fresh (304 or 200).
+        //       - Target lifecycle: ONE new target (V1 cold-restart). ONE
+        //         "CHILD SERVICE WORKER ACTIVE" (from initial install only).
+        //       - Net: dappfence +1, swApp +1. No reinstall, just two
+        //         update-check server trips.
+        //
+        //   (B) Intercept MAIN SCRIPT (uncomment the dappfence line):
+        //       - Main fetched fresh → bytes DIFFER → V2 install triggered.
+        //       - V2's importScripts(sw_app.js) uses updateViaCache='all'
+        //         (default) which honors the fresh HTTP cache → cache hit → no
+        //         server trip for the import.
+        //       - Target lifecycle: TWO new targets at +25h (V1 cold-restart
+        //         + V2 install). TWO "CHILD SERVICE WORKER ACTIVE" (V1 initial
+        //         + V2 activation).
+        //       - Net: dappfence +1, swApp +0. Reinstalled as V2 but the
+        //         import stays cached. This is the kill test's assertion.
+        // await idleProbeChrome.interceptAndModifyPageContent('**/dappfence.js');
+        //
+        //   (C) Intercept IMPORTED SCRIPT (uncomment the sw_app line):
+        //       - Main fetched fresh → bytes match. But Chromium's update
+        //         checker ALSO compares each import's bytes (diverges from a
+        //         strict W3C spec reading, which only compares main). Import
+        //         bytes DIFFER → V2 install triggered for an imports-only change.
+        //       - V2's importScripts(sw_app.js) fetches the new bytes via the
+        //         revalidation that already found them → one server trip.
+        //       - Target lifecycle: TWO new targets at +25h (V1 cold-restart
+        //         + V2 install). TWO "CHILD SERVICE WORKER ACTIVE".
+        //       - Net: dappfence +1, swApp +1. Reinstalled as V2 because an
+        //         import changed. Spec-adjacent Chromium behavior worth knowing.
+        // await idleProbeChrome.interceptAndModifyPageContent('**/sw_app.js');
+        //
+
+        await reload('+9h');
+        const c9 = await getCounters();
+        expect(c9.dappfence).toBe(initial.dappfence);
+        expect(c9.swApp).toBe(initial.swApp);
+        await idleGap();
+
+        await reload('+23h');
+        const c23 = await getCounters();
+        expect(c23.dappfence).toBe(initial.dappfence);
+        expect(c23.swApp).toBe(initial.swApp);
+        await idleGap();
+
+        await reload('+25h');
+        // Soft-update's background fetch lands a1synchronously after the
+        // navigation resolves — poll the server log until the refetch shows up
+        // before asserting. Libfaketime makes the fetch itself slow, hence 60s.
+        await probe.waitFor(
+            async () => (await getCounters()).swApp > initial.swApp,
+            60_000,
+            'soft-update refetch of sw_app.js at +25h'
+        );
+        const c25 = await getCounters();
+        expect(c25.dappfence).toBe(initial.dappfence + 1);
+        // swApp also ticks up: Chromium's 24h update check forces a conditional
+        // revalidation of SW imports (LOAD_VALIDATE_CACHE), which lands at the
+        // server regardless of HTTP cache freshness. See the three-scenario
+        // comment above the commented-out intercepts for the full matrix.
+        expect(c25.swApp).toBe(initial.swApp + 1);
+    });
+});
+
+test.beforeEach(async ({ baseURL }, testInfo) => {
+    // Access test metadata, annotations, project info, etc.
+    console.log(`Start test: ${testInfo.title} at ${testInfo.workerIndex} => ${baseURL}`);
+});
+test.afterEach(async ({ baseURL }, testInfo) => {
+    // Access test metadata, annotations, project info, etc.
+    console.log(`Done test: ${testInfo.title} at ${testInfo.workerIndex} => ${baseURL}`);
 });
