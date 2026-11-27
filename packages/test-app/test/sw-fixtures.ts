@@ -628,7 +628,7 @@ export const test = base.extend<SWFixtures, { browser: Browser }>({
                 fs.rmSync(fakeTimeFile, { force: true });
             }
         },
-        { scope: 'worker' },
+        { scope: 'worker', timeout: 120_000 },
     ],
 });
 

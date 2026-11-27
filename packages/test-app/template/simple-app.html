@@ -720,6 +720,44 @@
                             margin: 0 0 var(--space-1);
                         "
                     >
+                        Cache
+                    </p>
+                    <div class="btn-row">
+                        <button class="btn" onclick="devArmLongCache()">Arm long cache</button>
+                        <button class="btn btn--secondary" onclick="devListRequests()">
+                            List requests
+                        </button>
+                        <button class="btn btn--secondary" onclick="devResetCounters()">
+                            Reset counters
+                        </button>
+                        <a
+                            href="about:blank"
+                            class="btn btn--secondary"
+                            title="about:blank is an uncontrolled client → leaving the SW with zero clients lets Chromium's ~30s idle timer fire and terminate the worker. A same-origin page (even without dappfence.js) stays under the SW's scope and keeps it alive. Park here ~45s to reproduce a real cold restart, then come back and click 'List requests' — dappfence.js / sw_app.js counts should NOT grow (served from SW script storage)."
+                        >
+                            about:blank (park → idle-terminate)
+                        </a>
+                    </div>
+                    <details id="cache-request-log" class="collapsible" style="display: none">
+                        <summary>
+                            Request log
+                            <span class="summary-meta" id="cache-request-log-meta"></span>
+                        </summary>
+                        <pre class="pre-json" id="cache-request-log-body"></pre>
+                    </details>
+                </div>
+
+                <div style="margin-bottom: var(--space-2)">
+                    <p
+                        style="
+                            font-size: 0.78rem;
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                            color: var(--color-muted);
+                            margin: 0 0 var(--space-1);
+                        "
+                    >
                         CSP
                     </p>
                     <div class="btn-row">
@@ -958,6 +996,63 @@
                     return;
                 }
                 _devToast('Intercept cleared — server serving clean files again');
+            }
+
+            const CHILD_SW_CACHE_HEADERS = [
+                { match: '*dappfence.js', headers: { 'Cache-Control': 'max-age=864000' } },
+                { match: '*sw_app.js', headers: { 'Cache-Control': 'max-age=864000' } },
+                { match: '*', headers: { 'Cache-Control': 'max-age=108000' } },
+            ];
+
+            async function devArmLongCache() {
+                const ok = await _devPost({
+                    saveResponses: true,
+                    responseHeaders: CHILD_SW_CACHE_HEADERS,
+                });
+                if (!ok) {
+                    _devToast('Error: could not reach /api/test-config', 'var(--color-danger)');
+                    return;
+                }
+                _devToast(
+                    'Cache armed: dappfence+sw_app 10d, others 30h — reload to populate',
+                    'var(--color-brand)'
+                );
+            }
+
+            async function devListRequests() {
+                const res = await fetch('/api/test-responses');
+                if (!res.ok) {
+                    _devToast('Error: could not reach /api/test-responses', 'var(--color-danger)');
+                    return;
+                }
+                const responses = await res.json();
+                const interesting = responses
+                    .map((r) => r.url || r.requestPath || '')
+                    .filter((u) => ['dappfence.js', 'sw_app.js'].some((n) => u.includes(n)));
+                const counts = {};
+                for (const url of interesting) {
+                    counts[url] = (counts[url] || 0) + 1;
+                }
+                const details = document.getElementById('cache-request-log');
+                const meta = document.getElementById('cache-request-log-meta');
+                const body = document.getElementById('cache-request-log-body');
+                meta.textContent = `${interesting.length} SW-script hits · ${responses.length} total`;
+                body.textContent = JSON.stringify(counts, null, 2);
+                details.style.display = '';
+                details.open = true;
+            }
+
+            async function devResetCounters() {
+                const ok = await _devPost({ saveResponses: true, testResponse: [] });
+                if (!ok) {
+                    _devToast('Error: could not reach /api/test-config', 'var(--color-danger)');
+                    return;
+                }
+                const details = document.getElementById('cache-request-log');
+                if (details) {
+                    details.style.display = 'none';
+                }
+                _devToast('Request counters reset', 'var(--color-brand)');
             }
         </script>
 

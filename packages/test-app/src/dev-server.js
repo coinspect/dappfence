@@ -127,10 +127,20 @@ function logRequestToConsole(req, testParams, result) {
     console.log(
         '\ttest key:',
         testParams.testKey,
+        'testId:',
+        testParams.testId,
         'app:',
         testParams.appName,
         'version:',
         testParams.appVersion
+    );
+    console.log(
+        '\thost:',
+        req.headers.host,
+        'origin:',
+        req.headers.origin ?? '(none)',
+        'localPort:',
+        req.socket && req.socket.localPort
     );
     console.log('\t', result);
 }
@@ -337,6 +347,10 @@ export function startServer({
                             i && i.formula && INTERCEPT_FORMULAS[i.formula] ? i.formula : 'default',
                     }));
                 }
+                console.log(
+                    `[${getTimestamp()}]  \x1b[36m[TEST-CONFIG] Setting parameters for key ${testParams.testKey} testId=${params.testId ?? '(none)'} host=${req.headers.host} origin=${req.headers.origin ?? '(none)'}\x1b[0m`,
+                    JSON.stringify(params)
+                );
                 testParameters[testParams.testKey] = {
                     ...testParameters[testParams.testKey],
                     ...params,
@@ -354,9 +368,10 @@ export function startServer({
     function serveApi(res, req, testParams) {
         const params = testParameters[testParams.testKey];
         if (req.method === 'DELETE') {
+            const prevTestId = params && params.testId;
             console.log('');
             console.log(
-                `[${getTimestamp()}]  \x1b[36m[TEST-CONFIG] Deleting test parameters for key ${testParams.testKey}\x1b[0m`
+                `[${getTimestamp()}]  \x1b[36m[TEST-CONFIG] Deleting test parameters for key ${testParams.testKey} prevTestId=${prevTestId ?? '(none)'} host=${req.headers.host} origin=${req.headers.origin ?? '(none)'}\x1b[0m`
             );
             testParameters[testParams.testKey] = {};
             res.writeHead(200, { 'Content-Type': 'application/json' });
