@@ -178,10 +178,10 @@ describe('createSecurityPageResponse — DAPPFENCE_CONFIG view', () => {
 
     it('resolves view for ERROR by reason', async () => {
         const res = createSecurityPageResponse('tok', [
-            block({ status: 'ERROR', reason: 'FETCH_BAD_STATUS', httpStatus: 500 }),
+            block({ status: 'ERROR', reason: 'NULL_RESPONSE' }),
         ]);
         const cfg = await extractConfig(res);
-        expect(cfg.activeBlocks[0].view.title).toBe('Verification failed: non-OK HTTP status');
+        expect(cfg.activeBlocks[0].view.title).toBe('Verification failed: no response received');
     });
 
     it('falls back on unknown ERROR reason', async () => {

@@ -78,7 +78,7 @@ is **not** part of `core` — it is passed only to the two factories that need i
 const core = {
     swContext, // wrapper around `self` (location, clients, fetch)
     appStore, // all IndexedDB stores + recordSecurityViolation()
-    manifestService, // fetchAndStoreManifest, resolveManifest, verifyLocation
+    manifestService, // fetchAndStoreManifest, resolveManifest
     onSecurityViolation, // messageBroker.broadcastSecurityViolation
 };
 ```
@@ -88,7 +88,7 @@ const core = {
 
 ```js
 const manifestService = createManifestService({ swContext, appStore, config });
-const installHandler = createInstallHandler({ ...core, config, onInstallDone });
+const installHandler = createInstallHandler({ ...core, config });
 ```
 
 `indexedDB` is injected from `swGlobal.indexedDB` (passed into `createDatabase`) rather than
@@ -96,13 +96,12 @@ accessed directly from `self`, so all IndexedDB usage is testable.
 
 Which fields each receiver actually uses:
 
-| Module                       | `swContext` | `appStore` | `manifestService` | `onSecurityViolation` _(explicit)_ | `config` |
-| ---------------------------- | :---------: | :--------: | :---------------: | :--------------------------------: | :------: |
-| fetch-handler                |      ✓      |     ✓      |         ✓         |                 ✓                  |          |
-| api-handler                  |             |     ✓      |                   |                 ✓                  |          |
-| install-handler              |      ✓      |     ✓      |         ✓         |                                    |    ✓     |
-| activate-handler             |      ✓      |     ✓      |                   |                 ✓                  |          |
-| appsw-hooks _(via callback)_ |             |     ✓      |         ✓         |                                    |          |
+| Module           | `swContext` | `appStore` | `manifestService` | `onSecurityViolation` _(explicit)_ | `config` |
+| ---------------- | :---------: | :--------: | :---------------: | :--------------------------------: | :------: |
+| fetch-handler    |      ✓      |     ✓      |         ✓         |                 ✓                  |          |
+| api-handler      |             |     ✓      |                   |                 ✓                  |          |
+| install-handler  |      ✓      |     ✓      |         ✓         |                                    |    ✓     |
+| activate-handler |      ✓      |     ✓      |                   |                 ✓                  |          |
 
 `api-handler` and `activate-handler` use only two `core` fields each; they receive the full spread
 because the convenience outweighs the noise. If either module grows, narrowing their deps is the
@@ -165,12 +164,12 @@ sequenceDiagram
 | `api-handler.js`               | `/sw-api/*` router: status, warning page, unblock                                                               |
 | `lifecycle-handlers.js`        | install (manifest fetch + app SW load) and activate (client claim + rebroadcast)                                |
 | `message-broker.js`            | Outbound violation broadcasts + inbound `CLAIM_CONTROL`/`CLIENT_READY` routing                                  |
-| `appsw-hooks.js`               | Monkey-patches `importScripts` and `addEventListener` on the SW scope                                           |
+| `appsw-hooks.js`               | Monkey-patches `addEventListener` on the SW scope (and `importScripts` in dev builds for logging)               |
 | `manifest/manifest-service.js` | Thin composition layer: wires loader + verifier, exposes public API                                             |
 | `manifest/manifest-loader.js`  | Manifest I/O: fetch, signature verification, storage (`getLatest`/`getAll`/`fetchAndStore`), singleFlight dedup |
 | `manifest/file-verifier.js`    | Rule engine + manifest escalation: 4-step resolution, per-client pinning, action pipeline                       |
 | `manifest/rules.js`            | Pure rules evaluation: pathRules resolution, contentRules matching, transforms, hash verification               |
-| `manifest/verification.js`     | Async verification: manifest signature, fetch-and-verify location, imported script verification                 |
+| `manifest/verification.js`     | Manifest signature verification + URL → manifest-key helpers (`toPathname` / `decodePathname`)                  |
 | `response.js`                  | Pure response builders: block, redirect, warning page                                                           |
 | `storage/index.js`             | `appStore` facade; single entry point for all persistence                                                       |
 | `storage/indexeddb.js`         | Low-level key-value wrapper over IndexedDB (injected, not accessed via `self`)                                  |
@@ -208,8 +207,12 @@ a newer manifest. Stale pins are pruned lazily via `swContext.matchAllClients()`
 -   `storage/indexeddb.js` is a stable key-value floor; every store builds on it without leaking
     IndexedDB internals. It is injected via `swGlobal.indexedDB` rather than read from `self`,
     keeping it testable in isolation.
--   `appsw-hooks.js` receives an `onVerifyScript` callback rather than `core` directly — the
-    cleanest dep injection pattern in this layer.
+-   `appsw-hooks.js` takes only the SW global scope — it has no knowledge of manifest or storage,
+    its sole job is monkey-patching `addEventListener` so child-SW listeners route through the
+    DappFence chain. Dev builds additionally patch `importScripts` to log calls for operator
+    visibility; production ships without that patch (sync `importScripts` can't be blocked on an
+    async hash check — see [js-execution-vectors.md §8e](js-execution-vectors.md) for the
+    cache-trust model that replaces runtime verification).
 
 **Worth watching**
 
