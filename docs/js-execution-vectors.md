@@ -581,11 +581,11 @@ navigator.serviceWorker.register('/app-sw.js');
 
 DappFence intercepts this registration at the client side by monkey-patching
 `navigator.serviceWorker.register`, redirecting it to DappFence's own SW. Inside that SW's `install`
-event, the app SW is loaded with `importScripts(config.appSW)` and the browser runs it directly. 
-See [§8e](#8e-importscripts-inside-a-workersw) for the HTTP-cache trust model that bounds exposure.
+event, the app SW is loaded with `importScripts(config.appSW)` and the browser runs it directly. See
+[§8e](#8e-importscripts-inside-a-workersw) for the HTTP-cache trust model that bounds exposure.
 
-**DappFence**: **SW monkey-patch** of `register` keeps the app from registering a bare SW that
-would bypass DappFence entirely; the app SW bytes themselves fall under the §8e cache-trust window.
+**DappFence**: **SW monkey-patch** of `register` keeps the app from registering a bare SW that would
+bypass DappFence entirely; the app SW bytes themselves fall under the §8e cache-trust window.
 
 ---
 
