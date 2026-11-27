@@ -38,14 +38,6 @@ const createHookService = (swScope = self) => {
     const installHooks = () => {
         originalAddEventListener = swScope.addEventListener.bind(swScope);
 
-        // Dev-only to test the child SW
-        if (__DEV__ && typeof importScripts !== 'undefined') {
-            monkeyPatch(swScope, 'importScripts', (ctx, ...scriptPaths) => {
-                logger.log('importScripts called with:', scriptPaths);
-                return ctx.call(...scriptPaths);
-            });
-        }
-
         // Monkey patch addEventListener to maintain our `fetch` handler at the end of the chain
         // TODO: check if we must support the rest of the addEventListener arguments (options, etc)
         monkeyPatch(swScope, 'addEventListener', (ctx, type, listener) => {
