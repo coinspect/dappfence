@@ -26,11 +26,14 @@ describe('createAppStore', () => {
 
     it('manifest stores are functional', async () => {
         const appStore = createAppStoreFromDb(createInMemoryDb());
-        const { appVersion } = await appStore.trustedManifestStore.addLatest({
-            files: { '/a.js': 'h' },
+        const manifest = { files: { '/a.js': 'h' } };
+        await appStore.trustedManifestStore.addLatest({
+            appVersion: 'v-1',
+            signedEnvelope: { pay: manifest, sig: '0x' },
+            manifest,
         });
         const latest = await appStore.trustedManifestStore.getLatest();
-        expect(latest.appVersion).toBe(appVersion);
+        expect(latest.appVersion).toBe('v-1');
     });
 
     it('security store is functional', async () => {

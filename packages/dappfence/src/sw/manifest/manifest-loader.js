@@ -6,6 +6,7 @@
  */
 
 import { ASSET_TYPE, MODE, VERIFICATION_STATUS } from '../../core/constants.js';
+import { calculateHash } from '../../core/crypto.js';
 import { createSingleFlight, hasConfigManifest } from '../../core/utils.js';
 import { toPathname, verifyManifestSignature } from './verification.js';
 import { createLogger } from '../../core/logger.js';
@@ -13,6 +14,21 @@ import { validateMessages } from '../../messages/index.js';
 
 /** @typedef {import('../../core/constants.js').AssetType} AssetType */
 /** @typedef {import('../../core/constants.js').ManifestLoadReason} ManifestLoadReason */
+
+/**
+ * Deterministic appVersion from the signed manifest payload. Strips the
+ * `sha256-` encoding prefix before truncating, so the 16-char tail is pure
+ * entropy (~96 bits of base64). Hashes the raw pay (not the SW-normalized
+ * manifest) so a server with the same envelope can derive the same id.
+ * @param {object} pay - Raw signed payload (signatureResult.payload).
+ * @returns {Promise<string>}
+ */
+const deriveAppVersion = async (pay) => {
+    const payStr = JSON.stringify(pay);
+    const hash = await calculateHash(new TextEncoder().encode(payStr));
+    const rawHash = hash.replace(/^sha256-/, '');
+    return `manifest-${rawHash.substring(0, 16)}`;
+};
 
 /**
  * Loader output. `.status.isViolation` is the branch check at call sites;
@@ -302,9 +318,9 @@ export const createManifestLoader = ({ swContext, appStore, config }) => {
             if (signatureResult.status.isViolation) {
                 return manifestResult(signatureResult);
             }
-            const { appVersion, manifest } = await trustedManifestStore.addLatest(
-                normalizeManifestData(signatureResult.payload)
-            );
+            const appVersion = await deriveAppVersion(signatureResult.payload);
+            const manifest = normalizeManifestData(signatureResult.payload);
+            await trustedManifestStore.addLatest({ appVersion, signedEnvelope: json, manifest });
             logger.setMinLevel(manifest.logsMinLevel ?? config.logsMinLevel ?? 'log');
             logger.log(
                 `Loaded manifest, app version: ${appVersion.substring(0, 12)}... (${Object.keys(manifest.files).length} files)`
