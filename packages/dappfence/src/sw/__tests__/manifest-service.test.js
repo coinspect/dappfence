@@ -16,7 +16,8 @@ const setup = ({ latestManifest = null, config } = {}) => {
         addLatest: vi.fn(),
     };
     const verificationResultsStore = { add: vi.fn().mockResolvedValue() };
-    const appStore = { trustedManifestStore, verificationResultsStore };
+    const settingsStore = { getInstallationTime: vi.fn().mockResolvedValue(1234567890) };
+    const appStore = { trustedManifestStore, verificationResultsStore, settingsStore };
     return {
         swContext,
         appStore,
