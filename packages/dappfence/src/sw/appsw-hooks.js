@@ -121,7 +121,7 @@ const createHookService = (onVerifyScript, swScope = self) => {
         ];
         for (const eventType of eventTypes) {
             addEventListener(eventType, (event, callChildHandlers) => {
-                logger.log(`event type ${eventType} received:`, event);
+                logger.debug(`event type ${eventType} received:`, event);
                 callChildHandlers(event);
             });
         }
