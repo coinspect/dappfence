@@ -150,10 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="alert__body">
                         <h4>⚠️ Service Worker is not ready</h4>
                         <p>DappFence service worker is not active yet. Try refreshing the page or check the browser console for errors.</p>
-                        <button class="btn btn--secondary" onclick="window.checkManifestStatus()">Retry</button>
+                        <button class="btn btn--secondary" data-action="retry">Retry</button>
                     </div>
                 </div>
             `;
+                output
+                    .querySelector('[data-action="retry"]')
+                    ?.addEventListener('click', () => window.checkManifestStatus());
             }
         });
 
@@ -340,7 +343,7 @@ window.checkManifestStatus = async function () {
             <div class="card">
                 <div class="card__header">
                     <h4 class="card__title">📋 Trusted manifest status</h4>
-                    <button class="btn btn--secondary" onclick="checkManifestStatus()">Refresh</button>
+                    <button class="btn btn--secondary" data-action="refresh">Refresh</button>
                 </div>
                 <div class="stats-grid">
                     <div class="stat stat--brand">
@@ -403,6 +406,9 @@ window.checkManifestStatus = async function () {
                 </details>
             </div>
         `;
+        output
+            .querySelector('[data-action="refresh"]')
+            ?.addEventListener('click', () => checkManifestStatus());
     } catch (error) {
         log.error('Error fetching manifest status:', error);
 
@@ -415,12 +421,18 @@ window.checkManifestStatus = async function () {
                         <p><strong>Error:</strong> ${error.message}</p>
                         <p>This usually means the DappFence service worker is not ready yet.</p>
                         <div class="btn-row">
-                            <button class="btn" onclick="window.checkManifestStatus()">Retry</button>
-                            <button class="btn btn--secondary" onclick="location.reload()">Refresh page</button>
+                            <button class="btn" data-action="retry">Retry</button>
+                            <button class="btn btn--secondary" data-action="reload">Refresh page</button>
                         </div>
                     </div>
                 </div>
             `;
+            output
+                .querySelector('[data-action="retry"]')
+                ?.addEventListener('click', () => window.checkManifestStatus());
+            output
+                .querySelector('[data-action="reload"]')
+                ?.addEventListener('click', () => location.reload());
         }
     }
 };
